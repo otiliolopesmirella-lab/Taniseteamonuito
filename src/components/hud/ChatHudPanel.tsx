@@ -71,6 +71,7 @@ export const ChatHudPanel = memo(function ChatHudPanel({
 }: ChatHudPanelProps) {
   const [draft, setDraft] = useState('');
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [mobileInputFocused, setMobileInputFocused] = useState(false);
   const [desktopMinimized, setDesktopMinimized] = useState(false);
   const [unreadByChannel, setUnreadByChannel] = useState<
     Record<ChatChannel, number>
@@ -82,6 +83,7 @@ export const ChatHudPanel = memo(function ChatHudPanel({
     system: 0,
   });
 
+  const draftRef = useRef('');
   const seenIdsRef = useRef<Set<string>>(new Set());
   const initializedRef = useRef(false);
   const mobileListRef = useRef<HTMLDivElement | null>(null);
@@ -140,7 +142,13 @@ export const ChatHudPanel = memo(function ChatHudPanel({
     if (desktopListRef.current) {
       desktopListRef.current.scrollTop = desktopListRef.current.scrollHeight;
     }
-  }, [visibleMessages.length, activeChannel, mobileOpen, desktopMinimized]);
+  }, [
+    visibleMessages.length,
+    activeChannel,
+    mobileOpen,
+    mobileInputFocused,
+    desktopMinimized,
+  ]);
 
   const totalUnread =
     unreadByChannel.global +
@@ -148,12 +156,22 @@ export const ChatHudPanel = memo(function ChatHudPanel({
     unreadByChannel.guild +
     unreadByChannel.party;
 
+  function updateDraftValue(next: string) {
+    draftRef.current = next;
+    setDraft(next);
+  }
+
+  function submitDraft() {
+    const clean = draftRef.current.trim();
+    if (!clean) return;
+    draftRef.current = '';
+    setDraft('');
+    onSendMessage(clean);
+  }
+
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    const clean = draft.trim();
-    if (!clean) return;
-    onSendMessage(clean);
-    setDraft('');
+    submitDraft();
   }
 
   function getMessageColor(msg: ChatMessage): string {
@@ -181,7 +199,7 @@ export const ChatHudPanel = memo(function ChatHudPanel({
     if (activeChannel === 'party') {
       return 'Mensagem exclusiva para sua Party...';
     }
-    return 'Use Global, Mapa, Guilda ou Party para conversar...';
+    return 'Digite aqui para enviar no Global...';
   }
 
   function getEmptyStateText(): string {
@@ -236,6 +254,10 @@ export const ChatHudPanel = memo(function ChatHudPanel({
                 <button
                   key={tab.id}
                   type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
                   onClick={() => onChangeChannel(tab.id)}
                   className={`relative flex shrink-0 items-center gap-1 rounded-t-xl border-x border-t px-2 py-1 text-[10px] font-extrabold transition-all sm:px-2.5 ${
                     active
@@ -261,6 +283,7 @@ export const ChatHudPanel = memo(function ChatHudPanel({
             onClick={() => {
               if (isMobile) {
                 mobileInputRef.current?.blur();
+                setMobileInputFocused(false);
                 onChatFocusChange(false);
                 setMobileOpen(false);
               } else {
@@ -357,25 +380,55 @@ export const ChatHudPanel = memo(function ChatHudPanel({
               maxLength={140}
               onPointerDown={(e) => e.stopPropagation()}
               onTouchStart={(e) => e.stopPropagation()}
-              onChange={(e) => setDraft(e.target.value)}
-              onFocus={() => onChatFocusChange(true)}
-              onBlur={() => onChatFocusChange(false)}
+              onChange={(e) => updateDraftValue(e.target.value)}
+              onFocus={() => {
+                if (isMobile) setMobileInputFocused(true);
+                onChatFocusChange(true);
+              }}
+              onBlur={() => {
+                if (isMobile) setMobileInputFocused(false);
+                onChatFocusChange(false);
+              }}
               onKeyDown={(e) => {
                 e.stopPropagation();
                 if (e.key === 'Escape') {
                   activeInputRef.current?.blur();
+                  return;
+                }
+                if (
+                  (e.key === 'Enter' || e.keyCode === 13) &&
+                  !e.nativeEvent.isComposing
+                ) {
+                  e.preventDefault();
+                  submitDraft();
                 }
               }}
+              onKeyUp={(e) => e.stopPropagation()}
               placeholder={getPlaceholder()}
-              className="dmo-well h-9 min-w-0 flex-1 select-text rounded-md px-2.5 text-[16px] font-medium text-white placeholder:text-sky-200/60 focus:border-cyan-300 focus:outline-none md:h-7 md:text-[11px]"
+              className="dmo-well h-9 min-w-0 flex-1 touch-manipulation select-text rounded-md px-2.5 text-[16px] font-medium text-white placeholder:text-sky-200/60 focus:border-cyan-300 focus:outline-none md:h-7 md:text-[11px]"
             />
 
             <button
               type="submit"
+              onMouseDown={(e) => {
+                // Keep input focused so mobile keyboard does not collapse mid-tap before send registers
+                e.preventDefault();
+                e.stopPropagation();
+              }}
               onPointerDown={(e) => e.stopPropagation()}
               onTouchStart={(e) => e.stopPropagation()}
+              onTouchEnd={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                submitDraft();
+              }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                submitDraft();
+              }}
               aria-label="Enviar mensagem"
-              className="flex h-9 w-11 shrink-0 items-center justify-center rounded-md border border-cyan-200 bg-gradient-to-b from-[#38c4ff] to-[#0662d6] text-white shadow hover:brightness-110 active:scale-95 md:h-7 md:w-10"
+              className="flex h-9 w-11 shrink-0 touch-manipulation items-center justify-center rounded-md border border-cyan-200 bg-gradient-to-b from-[#38c4ff] to-[#0662d6] text-white shadow hover:brightness-110 active:scale-95 md:h-7 md:w-10"
             >
               <CornerDownLeft className="h-4 w-4 stroke-[2.5] md:h-3.5 md:w-3.5" />
             </button>
@@ -397,10 +450,10 @@ export const ChatHudPanel = memo(function ChatHudPanel({
           <button
             type="button"
             onClick={() => {
+              if (activeChannel === 'system') {
+                onChangeChannel('global');
+              }
               setMobileOpen(true);
-              requestAnimationFrame(() => {
-                mobileInputRef.current?.focus();
-              });
             }}
             className="dmo-frame flex h-8 items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-1 text-[11px] font-extrabold text-cyan-100 shadow-[0_0_14px_rgba(56,232,255,0.3)] active:scale-95"
           >
@@ -413,7 +466,13 @@ export const ChatHudPanel = memo(function ChatHudPanel({
             )}
           </button>
         ) : (
-          <div className="absolute bottom-0 left-0 z-[60] w-[min(312px,calc(100vw-1rem))]">
+          <div
+            className={
+              mobileInputFocused
+                ? 'fixed inset-x-2 bottom-2 z-[90]'
+                : 'absolute bottom-0 left-0 z-[65] w-[min(312px,calc(100vw-1rem))]'
+            }
+          >
             {renderChatBox(true)}
           </div>
         )}

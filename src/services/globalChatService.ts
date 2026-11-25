@@ -189,11 +189,14 @@ export async function sendGlobalChatMessage(params: {
   }
 
   const user = auth.currentUser;
-  if (!user || !user.emailVerified || user.uid !== params.senderUid) {
+  if (!user || !user.emailVerified) {
     return false;
   }
 
-  await ensurePlayerDocBootstrapped(user);
+  const ready = await ensurePlayerDocBootstrapped(user);
+  if (!ready) {
+    return false;
+  }
   const path = `globalChat/${messageId}`;
   try {
     await setDoc(doc(db, 'globalChat', messageId), {

@@ -10696,7 +10696,7 @@ export function TamerWorldCanvas({
       )}
 
       {/* LOWER HUD LAYER: Bottom-Left Chat (above GM on mobile so it clears CH without touching Party) + GM Button + Mobile Joystick */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-2 z-25 flex items-end justify-between gap-2 px-1.5 sm:bottom-3 sm:px-3">
+      <div className="pointer-events-none absolute inset-x-0 bottom-2 z-[35] flex items-end justify-between gap-2 px-1.5 sm:bottom-3 sm:px-3">
         {/* Bottom-Left Corner: On mobile -> [Chat] slightly above [GM] above [Joystick]; on desktop -> [GM] above [Chat] */}
         <div className="flex flex-col items-start gap-1.5 sm:gap-2">
           {isGM && (
@@ -10858,14 +10858,26 @@ export function TamerWorldCanvas({
                 return;
               }
 
-              // Global cross-map server chat
-              if (chatChannel === 'global') {
+              // Global cross-map server chat (also used automatically if player sends while on Sistema tab)
+              if (chatChannel === 'global' || chatChannel === 'system') {
+                if (chatChannel === 'system') {
+                  setChatChannel('global');
+                }
                 void sendGlobalChatMessage({
                   senderUid: actorUid,
                   senderName: selection.tamerName,
                   isGmSender: isServerGm,
                   mapId: simRef.current.mapId,
                   text: trimmed,
+                }).then((sentOk) => {
+                  if (!sentOk) {
+                    playDigitalTone('error', soundEnabled);
+                    pushChatMessage(
+                      'global',
+                      'Não foi possível enviar no Global agora. Verifique sua conexão ou regras do Firestore.',
+                      { tone: 'warning' }
+                    );
+                  }
                 });
                 return;
               }
@@ -10886,14 +10898,6 @@ export function TamerWorldCanvas({
                 );
                 return;
               }
-
-              // System tab is read-only for normal chat
-              playDigitalTone('click', soundEnabled);
-              pushChatMessage(
-                'system',
-                'Selecione a aba Global, Mapa, Guilda ou Party para enviar mensagens.',
-                { tone: 'info' }
-              );
             }}
             onChatFocusChange={(focused) => {
               isChatFocusedRef.current = focused;
