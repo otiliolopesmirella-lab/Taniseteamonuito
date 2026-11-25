@@ -34,7 +34,10 @@ import {
   sanitizeDigimonArchive,
   sanitizePartyDigimons,
 } from './archiveService';
-import { scheduleHudStateSync } from './cloudSaveService';
+import {
+  getCachedCloudHudStateForAccount,
+  scheduleHudStateSync,
+} from './cloudSaveService';
 import {
   isValidAvatarPhotoDataUrl,
   isValidCoverPhotoDataUrl,
@@ -937,6 +940,40 @@ export function createDefaultAccountHudState(
   };
 }
 
+function parseSafeNumericInt(
+  raw: unknown,
+  min: number,
+  max: number,
+  fallback: number
+): number {
+  const n = typeof raw === 'number' ? raw : typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : NaN;
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(n)));
+}
+
+function scoreHudProgressionCandidate(
+  candidate: Partial<AccountHudPersistence> | null | undefined
+): number {
+  if (!candidate || typeof candidate !== 'object') return -1;
+  const tamerLevel = parseSafeNumericInt(candidate.tamer?.level, 1, MAX_GAME_LEVEL, 1);
+  const digimonLevel = parseSafeNumericInt(candidate.digimon?.level, 1, MAX_GAME_LEVEL, 1);
+  const tamerExp = parseSafeNumericInt(candidate.tamer?.exp, 0, 1_000_000_000, 0);
+  const digimonExp = parseSafeNumericInt(candidate.digimon?.exp, 0, 1_000_000_000, 0);
+  const kills = parseSafeNumericInt(candidate.defeatedEnemiesTotal, 0, 1_000_000_000, 0);
+  const bits = parseSafeNumericInt(candidate.bits, 0, 1_000_000_000, 0);
+  const dCoin = parseSafeNumericInt(candidate.dCoin, 0, 1_000_000_000, 0);
+  const invLen = Array.isArray(candidate.inventory) ? candidate.inventory.length : 0;
+  return (
+    (tamerLevel - 1) * 1_000_000 +
+    (digimonLevel - 1) * 1_000_000 +
+    kills * 1_000 +
+    Math.min(500, Math.floor((tamerExp + digimonExp) / 10)) +
+    invLen * 10 +
+    (bits > 0 ? 50 : 0) +
+    (dCoin > 0 ? 50 : 0)
+  );
+}
+
 export function loadAccountHudState(
   accountUsername: string,
   starterId: StarterDigimonId = 'agumon',
@@ -945,9 +982,57 @@ export function loadAccountHudState(
   const cleanUser = (accountUsername.trim() || 'tamer_local').toLowerCase();
   const restoreFullVitals = options?.restoreFullVitalsOnSpawn === true;
   try {
-    const raw = window.localStorage.getItem(`${HUD_PERSISTENCE_PREFIX}${cleanUser}`);
-    if (!raw) return createDefaultAccountHudState(accountUsername, starterId);
-    const parsed = JSON.parse(raw) as Partial<AccountHudPersistence>;
+    let localParsed: Partial<AccountHudPersistence> | null = null;
+    try {
+      const raw = window.localStorage.getItem(`${HUD_PERSISTENCE_PREFIX}${cleanUser}`);
+      if (raw) {
+        const candidate = JSON.parse(raw) as Partial<AccountHudPersistence>;
+        if (candidate && typeof candidate === 'object') {
+          localParsed = candidate;
+        }
+      }
+    } catch {
+      localParsed = null;
+    }
+
+    const cloudCached = getCachedCloudHudStateForAccount(accountUsername) as
+      | Partial<AccountHudPersistence>
+      | null;
+
+    if (!localParsed && !cloudCached) {
+      return createDefaultAccountHudState(accountUsername, starterId);
+    }
+
+    let parsed: Partial<AccountHudPersistence>;
+    if (localParsed && cloudCached) {
+      const localScore = scoreHudProgressionCandidate(localParsed);
+      const cloudScore = scoreHudProgressionCandidate(cloudCached);
+      // Prefer whichever snapshot has higher progression; on tie, prefer authoritative cloud cache
+      // while preserving local-only extras (party reserve, archive, unlocked slots).
+      if (cloudScore >= localScore) {
+        parsed = {
+          ...localParsed,
+          ...cloudCached,
+          tamer: {
+            ...(localParsed.tamer ?? {}),
+            ...(cloudCached.tamer ?? {}),
+          } as TamerRuntimeStats,
+          digimon: {
+            ...(localParsed.digimon ?? {}),
+            ...(cloudCached.digimon ?? {}),
+          } as DigimonRuntimeStats,
+          partyDigimons: localParsed.partyDigimons,
+          digimonArchive: localParsed.digimonArchive,
+          unlockedArchiveSlots: localParsed.unlockedArchiveSlots,
+          unlockedInventorySlots: localParsed.unlockedInventorySlots,
+        };
+      } else {
+        parsed = localParsed;
+      }
+    } else {
+      parsed = (cloudCached ?? localParsed) as Partial<AccountHudPersistence>;
+    }
+
     const fallback = createDefaultAccountHudState(accountUsername, starterId);
     const equippedItems: Partial<Record<EquipmentSlotId, InventoryItem>> = {};
     if (parsed.equippedItems && typeof parsed.equippedItems === 'object') {
@@ -966,36 +1051,25 @@ export function loadAccountHudState(
       ...fallback.tamer,
       ...(parsed.tamer ?? {}),
     };
-    mergedTamer.level =
-      typeof mergedTamer.level === 'number' && Number.isFinite(mergedTamer.level)
-        ? Math.max(1, Math.min(MAX_GAME_LEVEL, Math.floor(mergedTamer.level)))
-        : 1;
+    mergedTamer.level = parseSafeNumericInt(mergedTamer.level, 1, MAX_GAME_LEVEL, 1);
     const computed = computeTamerAttributes(mergedTamer, equippedItems);
     mergedTamer.expToNext = calcTamerExpToNext(mergedTamer.level);
-    mergedTamer.exp =
-      typeof mergedTamer.exp === 'number' && Number.isFinite(mergedTamer.exp)
-        ? Math.max(0, Math.min(mergedTamer.expToNext - 1, Math.floor(mergedTamer.exp)))
-        : 0;
+    mergedTamer.exp = parseSafeNumericInt(
+      mergedTamer.exp,
+      0,
+      Math.max(0, mergedTamer.expToNext - 1),
+      0
+    );
     mergedTamer.maxHp = computed.maxHp;
     mergedTamer.maxDs = computed.maxDs;
-    const rawTamerHp = parsed.tamer?.hp;
-    const rawTamerDs = parsed.tamer?.ds;
-    if (
-      restoreFullVitals ||
-      typeof rawTamerHp !== 'number' ||
-      !Number.isFinite(rawTamerHp) ||
-      rawTamerHp <= 0
-    ) {
+    const rawTamerHp = Number(parsed.tamer?.hp);
+    const rawTamerDs = Number(parsed.tamer?.ds);
+    if (restoreFullVitals || !Number.isFinite(rawTamerHp) || rawTamerHp <= 0) {
       mergedTamer.hp = computed.maxHp;
     } else {
       mergedTamer.hp = Math.max(1, Math.min(computed.maxHp, Math.round(rawTamerHp)));
     }
-    if (
-      restoreFullVitals ||
-      typeof rawTamerDs !== 'number' ||
-      !Number.isFinite(rawTamerDs) ||
-      rawTamerDs <= 0
-    ) {
+    if (restoreFullVitals || !Number.isFinite(rawTamerDs) || rawTamerDs <= 0) {
       mergedTamer.ds = computed.maxDs;
     } else {
       mergedTamer.ds = Math.max(1, Math.min(computed.maxDs, Math.round(rawTamerDs)));
@@ -1005,10 +1079,7 @@ export function loadAccountHudState(
       ...fallback.digimon,
       ...(parsed.digimon ?? {}),
     };
-    mergedDigi.level =
-      typeof mergedDigi.level === 'number' && Number.isFinite(mergedDigi.level)
-        ? Math.max(1, Math.min(MAX_GAME_LEVEL, Math.floor(mergedDigi.level)))
-        : 1;
+    mergedDigi.level = parseSafeNumericInt(mergedDigi.level, 1, MAX_GAME_LEVEL, 1);
     const qualityProfile = getHatchQualityProfile(mergedDigi.hatchGrade);
     mergedDigi.hatchGrade = qualityProfile.grade;
     mergedDigi.hatchSizePct = clampHatchSizePct(
@@ -1043,21 +1114,22 @@ export function loadAccountHudState(
       safeForm.id
     );
     mergedDigi.expToNext = calcDigimonExpToNext(mergedDigi.level);
-    mergedDigi.exp =
-      typeof mergedDigi.exp === 'number' && Number.isFinite(mergedDigi.exp)
-        ? Math.max(0, Math.min(mergedDigi.expToNext - 1, Math.floor(mergedDigi.exp)))
-        : 0;
+    mergedDigi.exp = parseSafeNumericInt(
+      mergedDigi.exp,
+      0,
+      Math.max(0, mergedDigi.expToNext - 1),
+      0
+    );
     mergedDigi.maxHp = digiMaxHp;
     mergedDigi.maxDs = digiMaxDs;
-    const rawDigiHp = parsed.digimon?.hp;
-    const rawDigiDs = parsed.digimon?.ds;
+    const rawDigiHp = Number(parsed.digimon?.hp);
+    const rawDigiDs = Number(parsed.digimon?.ds);
     const bothDrainedOrMissing =
-      (typeof rawDigiHp !== 'number' || !Number.isFinite(rawDigiHp) || rawDigiHp <= 0) &&
-      (typeof rawDigiDs !== 'number' || !Number.isFinite(rawDigiDs) || rawDigiDs <= 0);
+      (!Number.isFinite(rawDigiHp) || rawDigiHp <= 0) &&
+      (!Number.isFinite(rawDigiDs) || rawDigiDs <= 0);
     if (
       restoreFullVitals ||
       bothDrainedOrMissing ||
-      typeof rawDigiHp !== 'number' ||
       !Number.isFinite(rawDigiHp) ||
       rawDigiHp <= 0
     ) {
@@ -1068,7 +1140,6 @@ export function loadAccountHudState(
     if (
       restoreFullVitals ||
       bothDrainedOrMissing ||
-      typeof rawDigiDs !== 'number' ||
       !Number.isFinite(rawDigiDs) ||
       rawDigiDs < 0
     ) {
@@ -1077,7 +1148,12 @@ export function loadAccountHudState(
       mergedDigi.ds = Math.max(0, Math.min(digiMaxDs, Math.round(rawDigiDs)));
     }
 
-    const sanitizedParty = sanitizePartyDigimons(parsed.partyDigimons);
+    let sanitizedParty: ReturnType<typeof sanitizePartyDigimons> = [];
+    try {
+      sanitizedParty = sanitizePartyDigimons(parsed.partyDigimons);
+    } catch {
+      sanitizedParty = [];
+    }
     const partyDigimons = restoreFullVitals
       ? sanitizedParty.map((entry) => ({
           ...entry,
@@ -1086,23 +1162,37 @@ export function loadAccountHudState(
         }))
       : sanitizedParty;
 
+    let safeInventory: InventoryItem[] = [];
+    try {
+      safeInventory = Array.isArray(parsed.inventory)
+        ? sanitizeInventoryItems(parsed.inventory)
+        : [];
+    } catch {
+      safeInventory = [];
+    }
+
+    let safeArchive: ReturnType<typeof sanitizeDigimonArchive> = [];
+    try {
+      safeArchive = sanitizeDigimonArchive(
+        parsed.digimonArchive,
+        getUnlockedArchiveSlots(parsed.unlockedArchiveSlots)
+      );
+    } catch {
+      safeArchive = [];
+    }
+
     return {
       accountUsername: parsed.accountUsername ?? fallback.accountUsername,
       tamer: mergedTamer,
       digimon: mergedDigi,
-      bits: typeof parsed.bits === 'number' && parsed.bits >= 0 ? parsed.bits : 0,
-      dCoin: typeof parsed.dCoin === 'number' && parsed.dCoin >= 0 ? parsed.dCoin : 0,
-      inventory: Array.isArray(parsed.inventory)
-        ? sanitizeInventoryItems(parsed.inventory)
-        : [],
+      bits: parseSafeNumericInt(parsed.bits, 0, 1_000_000_000, 0),
+      dCoin: parseSafeNumericInt(parsed.dCoin, 0, 1_000_000_000, 0),
+      inventory: safeInventory,
       unlockedInventorySlots: getUnlockedInventorySlots(
         parsed.unlockedInventorySlots
       ),
       partyDigimons,
-      digimonArchive: sanitizeDigimonArchive(
-        parsed.digimonArchive,
-        getUnlockedArchiveSlots(parsed.unlockedArchiveSlots)
-      ),
+      digimonArchive: safeArchive,
       unlockedArchiveSlots: getUnlockedArchiveSlots(
         parsed.unlockedArchiveSlots
       ),
@@ -1127,10 +1217,12 @@ export function loadAccountHudState(
         parsed.autoFarmVipUntilMs > 0
           ? Math.round(parsed.autoFarmVipUntilMs)
           : null,
-      defeatedEnemiesTotal:
-        typeof parsed.defeatedEnemiesTotal === 'number' && parsed.defeatedEnemiesTotal >= 0
-          ? parsed.defeatedEnemiesTotal
-          : 0,
+      defeatedEnemiesTotal: parseSafeNumericInt(
+        parsed.defeatedEnemiesTotal,
+        0,
+        1_000_000_000,
+        0
+      ),
       updatedAt: parsed.updatedAt ?? fallback.updatedAt,
     };
   } catch {

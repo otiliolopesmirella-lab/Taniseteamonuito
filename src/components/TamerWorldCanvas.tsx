@@ -212,6 +212,7 @@ import {
   saveAdventureProgressForAccount,
 } from '../services/authService';
 import {
+  clampHatchSizePct,
   computeHatchVisualScale,
   createInventoryPayloadFromCatalog,
   EVOLUTER_ICON_URL,
@@ -235,9 +236,11 @@ import {
   applyExpToDigimon,
   applyExpToTamer,
   BASIC_BITS_SHOP_ITEMS,
+  calcDigimonExpToNext,
   calcDigimonMaxDs,
   calcDigimonMaxHp,
   calcDmoKillExp,
+  calcTamerExpToNext,
   computeDerivedDigimonAttributes,
   computeTamerAttributes,
   EQUIPMENT_SLOT_LABELS,
@@ -250,12 +253,15 @@ import {
   INVENTORY_TOTAL_SLOTS,
   isEvolutionSlotUnlockedByEvoluter,
   loadAccountHudState,
+  MAX_GAME_LEVEL,
+  sanitizeUnlockedFormIdsForDigimon,
   saveAccountHudState,
   setDigimonLevelForTesting,
   switchActiveDigimonForAdmin,
   unequipSlotItem,
   unlockDigimonEvolutionWithEvoluters,
 } from '../services/hudGameService';
+import { recordObservedCloudHudProgress } from '../services/cloudSaveService';
 import {
   rollAndApplyDigimonDrops,
   type RolledDropReward,
@@ -326,6 +332,7 @@ import {
   type AutoHuntConfig,
 } from '../services/autoHuntService';
 import {
+  fetchOwnPlayerRankingBackup,
   syncGuildRankingSnapshot,
   syncPlayerRankingSnapshot,
 } from '../services/rankingsService';
@@ -401,6 +408,7 @@ import type { SavedCharacterSelection, TamerId } from '../types/character';
 import { getWildDigimonClassification } from '../types/classification';
 import {
   getDigimonFormProfile,
+  getEvolutionChainForStarter,
   resolveActiveFormProfile,
   type DigimonFormId,
   type DigimonFormProfile,
@@ -959,8 +967,8 @@ export function TamerWorldCanvas({
   const [hudAccount, setHudAccount] = useState<AccountHudPersistence>(initialHudAccount);
   const hudAccountRef = useRef<AccountHudPersistence>(initialHudAccount);
 
-  // Immediately persist healthy full-vitals HUD state on login/spawn so brand-new accounts
-  // and accounts recovering from a previous drained/0-HP/0-DS session are healed in localStorage + Firestore.
+  // Heal zero/drained vitals locally on login/spawn without ever triggering an unconditional cloud overwrite
+  // (prevents any stale/quota-failed local state from clobbering progressed Firestore saves).
   useEffect(() => {
     const cur = hudAccountRef.current;
     const needsVitalHeal =
@@ -968,27 +976,24 @@ export function TamerWorldCanvas({
       cur.digimon.ds <= 0 ||
       cur.tamer.hp <= 0 ||
       cur.tamer.ds <= 0;
-    if (needsVitalHeal) {
-      const healed: AccountHudPersistence = {
-        ...cur,
-        tamer: {
-          ...cur.tamer,
-          hp: Math.max(1, cur.tamer.maxHp),
-          ds: Math.max(1, cur.tamer.maxDs),
-        },
-        digimon: {
-          ...cur.digimon,
-          hp: Math.max(1, cur.digimon.maxHp),
-          ds: Math.max(1, cur.digimon.maxDs),
-        },
-        updatedAt: new Date().toISOString(),
-      };
-      hudAccountRef.current = healed;
-      setHudAccount(healed);
-      saveAccountHudState(healed, true);
-    } else {
-      saveAccountHudState(cur, true);
-    }
+    if (!needsVitalHeal) return;
+    const healed: AccountHudPersistence = {
+      ...cur,
+      tamer: {
+        ...cur.tamer,
+        hp: Math.max(1, cur.tamer.maxHp),
+        ds: Math.max(1, cur.tamer.maxDs),
+      },
+      digimon: {
+        ...cur.digimon,
+        hp: Math.max(1, cur.digimon.maxHp),
+        ds: Math.max(1, cur.digimon.maxDs),
+      },
+      updatedAt: new Date().toISOString(),
+    };
+    hudAccountRef.current = healed;
+    setHudAccount(healed);
+    saveAccountHudState(healed, true, { skipCloudSync: true });
   }, [selection.accountUsername]);
 
   const activeFormProfile = useMemo(
@@ -1208,6 +1213,8 @@ export function TamerWorldCanvas({
   const [activeBanNotice, setActiveBanNotice] = useState<string | null>(null);
   const banLogoutTriggeredRef = useRef<boolean>(false);
   const lastCloudMoneyRef = useRef<{ bits: number; dCoin: number } | null>(null);
+  const lastCloudLevelsRef = useRef<{ tamerLevel: number; digimonLevel: number } | null>(null);
+  const rankingBackupCheckedRef = useRef<boolean>(false);
   const lastLocalMoneyMutationAtRef = useRef<number>(0);
   const [playerGuild, setPlayerGuild] = useState<GuildRecord | null>(null);
   const playerGuildRef = useRef<GuildRecord | null>(null);
@@ -1747,11 +1754,12 @@ export function TamerWorldCanvas({
     };
   }, [actorUid, isServerGm, onExitToLogin]);
 
-  // Live Sync for external DL-DIN / GM Balance Adjustments (Mercado Pago auto-credit + GM credits) on /players/{actorUid}
+  // Live Sync for external DL-DIN / GM Balance / GM Level Restoration & Cloud Progression Recovery on /players/{actorUid}
   useEffect(() => {
     const user = auth.currentUser;
     if (!user || !user.emailVerified || user.uid !== actorUid) return;
     lastCloudMoneyRef.current = null;
+    lastCloudLevelsRef.current = null;
     const ref = doc(db, 'players', actorUid);
     const unsub = onSnapshot(
       ref,
@@ -1760,6 +1768,10 @@ export function TamerWorldCanvas({
         const data = snap.data() as Record<string, unknown>;
         const cloudHud = (data?.hudState ?? null) as Record<string, unknown> | null;
         if (!cloudHud) return;
+
+        // Always update high-water cloud progression cache so no subsequent local save can downgrade this account
+        recordObservedCloudHudProgress(actorUid, cloudHud, selection.accountUsername);
+
         const cloudBits =
           typeof cloudHud.bits === 'number' && Number.isFinite(cloudHud.bits)
             ? Math.max(0, Math.round(cloudHud.bits))
@@ -1777,6 +1789,168 @@ export function TamerWorldCanvas({
           cloudHud.autoFarmVipUntilMs > 0
             ? Math.round(cloudHud.autoFarmVipUntilMs)
             : null;
+
+        // Live progression recovery & GM level update sync (Tamer Lv, Digimon Lv, active form, defeated enemies)
+        const rawCloudTamer =
+          cloudHud.tamer && typeof cloudHud.tamer === 'object'
+            ? (cloudHud.tamer as Record<string, unknown>)
+            : null;
+        const rawCloudDigi =
+          cloudHud.digimon && typeof cloudHud.digimon === 'object'
+            ? (cloudHud.digimon as Record<string, unknown>)
+            : null;
+        const cloudTamerLevel = Math.max(
+          1,
+          Math.min(MAX_GAME_LEVEL, Math.floor(Number(rawCloudTamer?.level) || 1))
+        );
+        const cloudTamerExp = Math.max(0, Math.floor(Number(rawCloudTamer?.exp) || 0));
+        const cloudDigiLevel = Math.max(
+          1,
+          Math.min(MAX_GAME_LEVEL, Math.floor(Number(rawCloudDigi?.level) || 1))
+        );
+        const cloudDigiExp = Math.max(0, Math.floor(Number(rawCloudDigi?.exp) || 0));
+        const cloudDefeatedTotal = Math.max(
+          0,
+          Math.floor(Number(cloudHud.defeatedEnemiesTotal) || 0)
+        );
+        const prevLevels = lastCloudLevelsRef.current;
+        lastCloudLevelsRef.current = {
+          tamerLevel: cloudTamerLevel,
+          digimonLevel: cloudDigiLevel,
+        };
+
+        const curBeforeLevels = hudAccountRef.current;
+        const cloudHasHigherLevels =
+          cloudTamerLevel > curBeforeLevels.tamer.level ||
+          cloudDigiLevel > curBeforeLevels.digimon.level ||
+          (curBeforeLevels.tamer.level <= 1 &&
+            curBeforeLevels.digimon.level <= 1 &&
+            curBeforeLevels.defeatedEnemiesTotal === 0 &&
+            cloudDefeatedTotal > 0);
+        const externalGmLevelAdjustment =
+          prevLevels !== null &&
+          (cloudTamerLevel !== prevLevels.tamerLevel ||
+            cloudDigiLevel !== prevLevels.digimonLevel) &&
+          (cloudTamerLevel !== curBeforeLevels.tamer.level ||
+            cloudDigiLevel !== curBeforeLevels.digimon.level);
+
+        if (cloudHasHigherLevels || externalGmLevelAdjustment) {
+          const nextTamerLevel = externalGmLevelAdjustment
+            ? cloudTamerLevel
+            : Math.max(curBeforeLevels.tamer.level, cloudTamerLevel);
+          const nextDigiLevel = externalGmLevelAdjustment
+            ? cloudDigiLevel
+            : Math.max(curBeforeLevels.digimon.level, cloudDigiLevel);
+
+          const nextTamerExpToNext = calcTamerExpToNext(nextTamerLevel);
+          const nextTamerBase = {
+            ...curBeforeLevels.tamer,
+            level: nextTamerLevel,
+            expToNext: nextTamerExpToNext,
+            exp: Math.min(nextTamerExpToNext - 1, cloudTamerExp),
+          };
+          const computedTamer = computeTamerAttributes(
+            nextTamerBase,
+            curBeforeLevels.equippedItems
+          );
+          const nextTamer = {
+            ...nextTamerBase,
+            maxHp: computedTamer.maxHp,
+            hp: computedTamer.maxHp,
+            maxDs: computedTamer.maxDs,
+            ds: computedTamer.maxDs,
+          };
+
+          const qualityProfile = getHatchQualityProfile(
+            typeof rawCloudDigi?.hatchGrade === 'number'
+              ? rawCloudDigi.hatchGrade
+              : curBeforeLevels.digimon.hatchGrade
+          );
+          const hatchSizePct = clampHatchSizePct(
+            qualityProfile.grade,
+            typeof rawCloudDigi?.hatchSizePct === 'number'
+              ? rawCloudDigi.hatchSizePct
+              : curBeforeLevels.digimon.hatchSizePct
+          );
+          const resolvedForm = resolveActiveFormProfile(
+            starterDigimon.digimonId,
+            typeof rawCloudDigi?.activeFormId === 'string'
+              ? (rawCloudDigi.activeFormId as DigimonFormId)
+              : curBeforeLevels.digimon.activeFormId
+          );
+          const safeForm =
+            nextDigiLevel >= resolvedForm.unlockLevel
+              ? resolvedForm
+              : getEvolutionChainForStarter(resolvedForm.starterId)[0];
+          const nextUnlockedFormIds = sanitizeUnlockedFormIdsForDigimon(
+            resolvedForm.starterId,
+            nextDigiLevel,
+            Array.isArray(rawCloudDigi?.unlockedFormIds)
+              ? (rawCloudDigi.unlockedFormIds as string[])
+              : curBeforeLevels.digimon.unlockedFormIds,
+            safeForm.id
+          );
+          const nextDigiMaxHp = calcDigimonMaxHp(
+            nextDigiLevel,
+            safeForm.id,
+            qualityProfile.grade,
+            hatchSizePct
+          );
+          const nextDigiMaxDs = calcDigimonMaxDs(
+            nextDigiLevel,
+            safeForm.id,
+            qualityProfile.grade,
+            hatchSizePct
+          );
+          const nextDigiExpToNext = calcDigimonExpToNext(nextDigiLevel);
+          const nextDigimon = {
+            ...curBeforeLevels.digimon,
+            level: nextDigiLevel,
+            expToNext: nextDigiExpToNext,
+            exp: Math.min(nextDigiExpToNext - 1, cloudDigiExp),
+            maxHp: nextDigiMaxHp,
+            hp: nextDigiMaxHp,
+            maxDs: nextDigiMaxDs,
+            ds: nextDigiMaxDs,
+            activeFormId: safeForm.id,
+            unlockedFormIds: nextUnlockedFormIds,
+            hatchGrade: qualityProfile.grade,
+            hatchSizePct,
+          };
+
+          const syncedProgressState: AccountHudPersistence = {
+            ...curBeforeLevels,
+            tamer: nextTamer,
+            digimon: nextDigimon,
+            bits: Math.max(curBeforeLevels.bits, cloudBits),
+            dCoin: Math.max(curBeforeLevels.dCoin, cloudDCoin),
+            defeatedEnemiesTotal: Math.max(
+              curBeforeLevels.defeatedEnemiesTotal,
+              cloudDefeatedTotal
+            ),
+            autoFarmVipUnlocked:
+              curBeforeLevels.autoFarmVipUnlocked === true || cloudAutoFarmVip,
+            autoFarmVipUntilMs:
+              Math.max(
+                curBeforeLevels.autoFarmVipUntilMs ?? 0,
+                cloudAutoFarmVipUntilMs ?? 0
+              ) || null,
+            updatedAt: new Date().toISOString(),
+          };
+          hudAccountRef.current = syncedProgressState;
+          setHudAccount(syncedProgressState);
+          saveAccountHudState(syncedProgressState, true, { skipCloudSync: true });
+          pushNotification(
+            'Progresso Sincronizado',
+            `Tamer Lv.${nextTamerLevel} · Digimon Lv.${nextDigiLevel} restaurados da nuvem!`
+          );
+          pushChatMessage(
+            'system',
+            `[Sistema] Progresso sincronizado com o servidor: Tamer Lv.${nextTamerLevel} · Digimon Lv.${nextDigiLevel} (HP e DS restaurados).`,
+            { tone: 'loot' }
+          );
+        }
+
         const curVipUntilMs = hudAccountRef.current.autoFarmVipUntilMs ?? 0;
         if (
           (cloudAutoFarmVip && hudAccountRef.current.autoFarmVipUnlocked !== true) ||
@@ -1890,7 +2064,144 @@ export function TamerWorldCanvas({
       }
     );
     return unsub;
-  }, [actorUid, pushChatMessage, pushNotification, soundEnabled]);
+  }, [
+    actorUid,
+    pushChatMessage,
+    pushNotification,
+    selection.accountUsername,
+    soundEnabled,
+    starterDigimon.digimonId,
+  ]);
+
+  // Automatic backup recovery: if /players/{actorUid} was previously overwritten to Lv.1 while
+  // /playerRankings/{actorUid} still holds the player's progressed levels, automatically restore them!
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user || !user.emailVerified || user.uid !== actorUid) {
+      rankingBackupCheckedRef.current = true;
+      return;
+    }
+
+    let cancelled = false;
+    rankingBackupCheckedRef.current = false;
+
+    void (async () => {
+      try {
+        const cur = hudAccountRef.current;
+        if (
+          cur.tamer.level > 1 ||
+          cur.digimon.level > 1 ||
+          cur.defeatedEnemiesTotal > 0
+        ) {
+          return;
+        }
+        const backup = await fetchOwnPlayerRankingBackup(actorUid);
+        if (cancelled || !backup) return;
+
+        const latest = hudAccountRef.current;
+        const needsRestore =
+          backup.tamerLevel > latest.tamer.level ||
+          backup.digimonLevel > latest.digimon.level ||
+          backup.defeatedEnemiesTotal > latest.defeatedEnemiesTotal;
+        if (!needsRestore) return;
+
+        const nextTamerLevel = Math.max(latest.tamer.level, backup.tamerLevel);
+        const nextDigiLevel = Math.max(latest.digimon.level, backup.digimonLevel);
+        const nextTamerExpToNext = calcTamerExpToNext(nextTamerLevel);
+        const nextTamerBase = {
+          ...latest.tamer,
+          level: nextTamerLevel,
+          expToNext: nextTamerExpToNext,
+          exp: Math.min(nextTamerExpToNext - 1, backup.tamerExp),
+        };
+        const computedTamer = computeTamerAttributes(
+          nextTamerBase,
+          latest.equippedItems
+        );
+        const nextTamer = {
+          ...nextTamerBase,
+          maxHp: computedTamer.maxHp,
+          hp: computedTamer.maxHp,
+          maxDs: computedTamer.maxDs,
+          ds: computedTamer.maxDs,
+        };
+
+        const qualityProfile = getHatchQualityProfile(latest.digimon.hatchGrade);
+        const hatchSizePct = clampHatchSizePct(
+          qualityProfile.grade,
+          latest.digimon.hatchSizePct
+        );
+        const resolvedForm = resolveActiveFormProfile(
+          starterDigimon.digimonId,
+          backup.digimonFormId ?? latest.digimon.activeFormId
+        );
+        const safeForm =
+          nextDigiLevel >= resolvedForm.unlockLevel
+            ? resolvedForm
+            : getEvolutionChainForStarter(resolvedForm.starterId)[0];
+        const nextUnlockedFormIds = sanitizeUnlockedFormIdsForDigimon(
+          resolvedForm.starterId,
+          nextDigiLevel,
+          latest.digimon.unlockedFormIds,
+          safeForm.id
+        );
+        const nextDigiMaxHp = calcDigimonMaxHp(
+          nextDigiLevel,
+          safeForm.id,
+          qualityProfile.grade,
+          hatchSizePct
+        );
+        const nextDigiMaxDs = calcDigimonMaxDs(
+          nextDigiLevel,
+          safeForm.id,
+          qualityProfile.grade,
+          hatchSizePct
+        );
+        const nextDigiExpToNext = calcDigimonExpToNext(nextDigiLevel);
+
+        const recovered: AccountHudPersistence = {
+          ...latest,
+          tamer: nextTamer,
+          digimon: {
+            ...latest.digimon,
+            level: nextDigiLevel,
+            expToNext: nextDigiExpToNext,
+            exp: Math.min(nextDigiExpToNext - 1, backup.digimonExp),
+            maxHp: nextDigiMaxHp,
+            hp: nextDigiMaxHp,
+            maxDs: nextDigiMaxDs,
+            ds: nextDigiMaxDs,
+            activeFormId: safeForm.id,
+            unlockedFormIds: nextUnlockedFormIds,
+            hatchGrade: qualityProfile.grade,
+            hatchSizePct,
+          },
+          defeatedEnemiesTotal: Math.max(
+            latest.defeatedEnemiesTotal,
+            backup.defeatedEnemiesTotal
+          ),
+          updatedAt: new Date().toISOString(),
+        };
+
+        commitHudAccount(recovered, true);
+        pushNotification(
+          'Níveis Recuperados!',
+          `Seus níveis foram restaurados automaticamente (Tamer Lv.${nextTamerLevel} · Digimon Lv.${nextDigiLevel}).`
+        );
+        pushChatMessage(
+          'system',
+          `[Recuperação Automática] Níveis restaurados pelo backup do Ranking: Tamer Lv.${nextTamerLevel} · Digimon Lv.${nextDigiLevel}!`,
+          { tone: 'loot' }
+        );
+      } finally {
+        rankingBackupCheckedRef.current = true;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [actorUid, pushChatMessage, pushNotification, starterDigimon.digimonId]);
 
   // Auto-reconcile pending Mercado Pago orders on login, Checkout Pro redirect (?order_id=...), or returning from mobile bank app
   useEffect(() => {
@@ -2381,6 +2692,15 @@ export function TamerWorldCanvas({
 
   // Keep Tamers & Digimons leaderboards synchronized (throttled on EXP/kills, immediate on level/form/guild/photo/cover change)
   useEffect(() => {
+    // Wait until the one-time ranking backup recovery check has completed before allowing a Lv.1 snapshot to sync
+    if (
+      !rankingBackupCheckedRef.current &&
+      hudAccount.tamer.level <= 1 &&
+      hudAccount.digimon.level <= 1 &&
+      hudAccount.defeatedEnemiesTotal === 0
+    ) {
+      return;
+    }
     const cur = hudAccountRef.current;
     const tamerAttrs = computeTamerAttributes(cur.tamer, cur.equippedItems);
     const derivedDigimon = computeDerivedDigimonAttributes(

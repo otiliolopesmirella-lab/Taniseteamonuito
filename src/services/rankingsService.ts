@@ -2,6 +2,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   limit,
   orderBy,
@@ -118,6 +119,48 @@ function writeLocalMap<T>(key: string, map: Record<string, T>): void {
   }
 }
 
+export interface PlayerRankingBackup {
+  tamerLevel: number;
+  tamerExp: number;
+  digimonLevel: number;
+  digimonExp: number;
+  digimonFormId: DigimonFormId | null;
+  defeatedEnemiesTotal: number;
+}
+
+export async function fetchOwnPlayerRankingBackup(
+  uid: string
+): Promise<PlayerRankingBackup | null> {
+  const user = auth.currentUser;
+  if (!user || !user.emailVerified || user.uid !== uid) return null;
+  try {
+    const snap = await getDoc(doc(db, 'playerRankings', uid));
+    if (!snap.exists()) return null;
+    const data = snap.data() as Record<string, unknown>;
+    const tamerLevel = safeInt(data.tamerLevel, 1, 200, 1);
+    const tamerExp = safeInt(data.tamerExp, 0, 100_000_000, 0);
+    const digimonLevel = safeInt(data.digimonLevel, 1, 200, 1);
+    const digimonExp = safeInt(data.digimonExp, 0, 100_000_000, 0);
+    const defeatedEnemiesTotal = safeInt(data.defeatedEnemiesTotal, 0, 100_000_000, 0);
+    if (tamerLevel <= 1 && digimonLevel <= 1 && defeatedEnemiesTotal === 0) {
+      return null;
+    }
+    return {
+      tamerLevel,
+      tamerExp,
+      digimonLevel,
+      digimonExp,
+      digimonFormId:
+        typeof data.digimonFormId === 'string' && data.digimonFormId.length > 0
+          ? (data.digimonFormId as DigimonFormId)
+          : null,
+      defeatedEnemiesTotal,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function syncPlayerRankingSnapshot(
   entry: PlayerRankingRecord
 ): Promise<void> {
@@ -150,9 +193,28 @@ export async function syncPlayerRankingSnapshot(
     tamerCoverUrl: cleanCover,
   };
 
+  // Strip heavy base64 images before persisting local ranking cache so mobile localStorage never hits QuotaExceededError
   const localMap = readLocalMap<PlayerRankingRecord>(LOCAL_PLAYER_RANKS_KEY);
-  localMap[sanitized.userId] = sanitized;
-  writeLocalMap(LOCAL_PLAYER_RANKS_KEY, localMap);
+  const slimLocalEntry: PlayerRankingRecord = {
+    ...sanitized,
+    tamerPhotoUrl: null,
+    tamerCoverUrl: null,
+  };
+  localMap[sanitized.userId] = slimLocalEntry;
+  const localKeys = Object.keys(localMap);
+  if (localKeys.length > 60) {
+    const trimmedMap: Record<string, PlayerRankingRecord> = {};
+    for (const k of localKeys.slice(-60)) {
+      const item = localMap[k];
+      if (item) {
+        trimmedMap[k] = { ...item, tamerPhotoUrl: null, tamerCoverUrl: null };
+      }
+    }
+    trimmedMap[sanitized.userId] = slimLocalEntry;
+    writeLocalMap(LOCAL_PLAYER_RANKS_KEY, trimmedMap);
+  } else {
+    writeLocalMap(LOCAL_PLAYER_RANKS_KEY, localMap);
+  }
 
   const user = auth.currentUser;
   if (!user || !user.emailVerified || sanitized.userId !== user.uid) return;
@@ -162,6 +224,24 @@ export async function syncPlayerRankingSnapshot(
 
   const path = `playerRankings/${user.uid}`;
   try {
+    // Anti-regression guard: never overwrite an existing progressed playerRanking document with blank Lv.1 data
+    if (
+      sanitized.tamerLevel <= 1 &&
+      sanitized.digimonLevel <= 1 &&
+      sanitized.defeatedEnemiesTotal === 0
+    ) {
+      const existingSnap = await getDoc(doc(db, 'playerRankings', user.uid));
+      if (existingSnap.exists()) {
+        const existingData = existingSnap.data() as Record<string, unknown>;
+        const existingTamerLv = safeInt(existingData.tamerLevel, 1, 200, 1);
+        const existingDigiLv = safeInt(existingData.digimonLevel, 1, 200, 1);
+        const existingKills = safeInt(existingData.defeatedEnemiesTotal, 0, 100_000_000, 0);
+        if (existingTamerLv > 1 || existingDigiLv > 1 || existingKills > 0) {
+          return;
+        }
+      }
+    }
+
     await setDoc(doc(db, 'playerRankings', user.uid), {
       ownerUid: user.uid,
       tamerName: sanitized.tamerName,
@@ -212,6 +292,7 @@ export async function syncGuildRankingSnapshot(guild: GuildRecord): Promise<void
 
   const localRecord: GuildRankingRecord = {
     ...firestorePayload,
+    emblemPhotoUrl: null,
     maxMembers: getGuildMaxMembersForLevel(clampedLevel),
   };
 

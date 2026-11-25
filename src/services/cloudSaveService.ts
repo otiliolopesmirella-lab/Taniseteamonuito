@@ -451,6 +451,130 @@ const ALLOWED_PLAYER_TOP_LEVEL_KEYS = new Set([
 const inFlightBootstrapByUid = new Map<string, Promise<PlayerCloudSnapshot>>();
 const bootstrappedUids = new Set<string>();
 const writeQueueByUid = new Map<string, Promise<void>>();
+const cachedCloudHudByUserKey = new Map<string, CloudHudState>();
+const cachedCloudHudByUid = new Map<string, CloudHudState>();
+
+interface CloudProgressHighWater {
+  tamerLevel: number;
+  digimonLevel: number;
+  defeatedEnemiesTotal: number;
+  bits: number;
+  inventoryCount: number;
+}
+
+const cloudProgressHighWaterByUid = new Map<string, CloudProgressHighWater>();
+
+function readPositiveLevel(raw: unknown): number {
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(n)) return 1;
+  return Math.max(1, Math.min(200, Math.floor(n)));
+}
+
+function readNonNegativeInt(raw: unknown): number {
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.floor(n));
+}
+
+function extractProgressFromRawHud(
+  rawHud: unknown
+): CloudProgressHighWater | null {
+  if (!rawHud || typeof rawHud !== 'object' || Array.isArray(rawHud)) {
+    return null;
+  }
+  const obj = rawHud as Record<string, unknown>;
+  const tamer =
+    obj.tamer && typeof obj.tamer === 'object'
+      ? (obj.tamer as Record<string, unknown>)
+      : null;
+  const digimon =
+    obj.digimon && typeof obj.digimon === 'object'
+      ? (obj.digimon as Record<string, unknown>)
+      : null;
+  return {
+    tamerLevel: readPositiveLevel(tamer?.level),
+    digimonLevel: readPositiveLevel(digimon?.level),
+    defeatedEnemiesTotal: readNonNegativeInt(obj.defeatedEnemiesTotal),
+    bits: readNonNegativeInt(obj.bits),
+    inventoryCount: Array.isArray(obj.inventory) ? obj.inventory.length : 0,
+  };
+}
+
+function hasMeaningfulProgress(p: CloudProgressHighWater | null): boolean {
+  if (!p) return false;
+  return (
+    p.tamerLevel > 1 ||
+    p.digimonLevel > 1 ||
+    p.defeatedEnemiesTotal > 0 ||
+    p.bits > 0 ||
+    p.inventoryCount > 0
+  );
+}
+
+function isBlankLevelOneState(hud: CloudHudState): boolean {
+  return (
+    hud.tamer.level <= 1 &&
+    hud.digimon.level <= 1 &&
+    hud.defeatedEnemiesTotal === 0 &&
+    hud.tamer.exp === 0 &&
+    hud.digimon.exp === 0
+  );
+}
+
+export function recordObservedCloudHudProgress(
+  uid: string,
+  rawHud: unknown,
+  accountUsername?: string
+): void {
+  if (!uid) return;
+  const observed = extractProgressFromRawHud(rawHud);
+  if (!observed) return;
+  const prev = cloudProgressHighWaterByUid.get(uid);
+  const next: CloudProgressHighWater = {
+    tamerLevel: Math.max(prev?.tamerLevel ?? 1, observed.tamerLevel),
+    digimonLevel: Math.max(prev?.digimonLevel ?? 1, observed.digimonLevel),
+    defeatedEnemiesTotal: Math.max(
+      prev?.defeatedEnemiesTotal ?? 0,
+      observed.defeatedEnemiesTotal
+    ),
+    bits: Math.max(prev?.bits ?? 0, observed.bits),
+    inventoryCount: Math.max(prev?.inventoryCount ?? 0, observed.inventoryCount),
+  };
+  cloudProgressHighWaterByUid.set(uid, next);
+
+  if (rawHud && typeof rawHud === 'object' && !Array.isArray(rawHud)) {
+    const sanitized = sanitizeHudStateForCloud(rawHud as AccountHudPersistence);
+    const prevCached = cachedCloudHudByUid.get(uid);
+    const shouldReplaceCached =
+      !prevCached ||
+      sanitized.tamer.level >= prevCached.tamer.level ||
+      sanitized.digimon.level >= prevCached.digimon.level ||
+      sanitized.defeatedEnemiesTotal >= prevCached.defeatedEnemiesTotal;
+    if (shouldReplaceCached) {
+      cachedCloudHudByUid.set(uid, sanitized);
+      const cleanKey = (accountUsername ?? '').trim().toLowerCase();
+      if (cleanKey) {
+        cachedCloudHudByUserKey.set(cleanKey, sanitized);
+      }
+    }
+  }
+}
+
+export function getCachedCloudHudStateForAccount(
+  accountUsername: string
+): CloudHudState | null {
+  const cleanKey = accountUsername.trim().toLowerCase();
+  if (cleanKey) {
+    const byUser = cachedCloudHudByUserKey.get(cleanKey);
+    if (byUser) return byUser;
+  }
+  const uid = auth.currentUser?.uid;
+  if (uid) {
+    const byUid = cachedCloudHudByUid.get(uid);
+    if (byUid) return byUid;
+  }
+  return null;
+}
 
 function enqueuePlayerWrite<T>(uid: string, task: () => Promise<T>): Promise<T> {
   const previous = writeQueueByUid.get(uid) ?? Promise.resolve();
@@ -485,6 +609,9 @@ export function clearCloudSaveSessionCache(): void {
   bootstrappedUids.clear();
   inFlightBootstrapByUid.clear();
   writeQueueByUid.clear();
+  cachedCloudHudByUserKey.clear();
+  cachedCloudHudByUid.clear();
+  cloudProgressHighWaterByUid.clear();
 }
 
 function snapshotFromPlayerDoc(
@@ -520,7 +647,18 @@ async function runBootstrapPlayerCloudProfile(
 
   if (snap.exists()) {
     bootstrappedUids.add(user.uid);
-    return snapshotFromPlayerDoc(user.uid, snap.data() as PlayerCloudSnapshot);
+    const snapshot = snapshotFromPlayerDoc(
+      user.uid,
+      snap.data() as PlayerCloudSnapshot
+    );
+    if (snapshot.hudState) {
+      recordObservedCloudHudProgress(
+        user.uid,
+        snapshot.hudState,
+        snapshot.username
+      );
+    }
+    return snapshot;
   }
 
   // First-time verified sign-in: pick an unclaimed username cleanly
@@ -663,9 +801,27 @@ export async function ensurePlayerDocBootstrapped(user: User): Promise<boolean> 
   }
 }
 
+function safeLocalStorageSetItem(key: string, value: string): boolean {
+  try {
+    window.localStorage.setItem(key, value);
+    return true;
+  } catch {
+    // Evict large non-essential local caches (e.g. cached leaderboards) and retry once
+    try {
+      window.localStorage.removeItem('dw_local_player_rankings_v1');
+      window.localStorage.removeItem('dw_local_guild_rankings_v1');
+      window.localStorage.setItem(key, value);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
 /**
- * Hydrates the fast localStorage keys from the authoritative Firestore cloud save
- * so all game screens and TamerWorldCanvas immediately reflect the player's cloud state.
+ * Hydrates the fast localStorage keys AND authoritative in-memory cache from the Firestore cloud save
+ * so all game screens and TamerWorldCanvas immediately reflect the player's real cloud state even if
+ * mobile browser localStorage hits quota limits.
  */
 export function hydrateLocalCacheFromCloud(
   accountUsername: string,
@@ -673,6 +829,11 @@ export function hydrateLocalCacheFromCloud(
 ): void {
   const cleanKey = accountUsername.trim().toLowerCase();
   if (!cleanKey) return;
+
+  // Always record authoritative cloud HUD state in memory first so localStorage quota errors can never lose levels!
+  if (cloud.hudState) {
+    recordObservedCloudHudProgress(cloud.ownerUid, cloud.hudState, accountUsername);
+  }
 
   try {
     if (cloud.tamerSelection) {
@@ -690,14 +851,18 @@ export function hydrateLocalCacheFromCloud(
         },
         updatedAt: cloud.tamerSelection.updatedAt,
       };
-      window.localStorage.setItem(
+      safeLocalStorageSetItem(
         `dw_digital_war_tamer_${cleanKey}`,
         JSON.stringify(savedChar)
       );
     } else {
       window.localStorage.removeItem(`dw_digital_war_tamer_${cleanKey}`);
     }
+  } catch {
+    // Ignore storage restrictions
+  }
 
+  try {
     if (cloud.starterDigimon) {
       const savedStarter: SavedStarterDigimon = {
         accountUsername,
@@ -706,16 +871,20 @@ export function hydrateLocalCacheFromCloud(
         element: cloud.starterDigimon.element,
         chosenAt: cloud.starterDigimon.chosenAt,
       };
-      window.localStorage.setItem(
+      safeLocalStorageSetItem(
         `dw_digital_war_starter_${cleanKey}`,
         JSON.stringify(savedStarter)
       );
     } else {
       window.localStorage.removeItem(`dw_digital_war_starter_${cleanKey}`);
     }
+  } catch {
+    // Ignore storage restrictions
+  }
 
+  try {
     if (cloud.adventureProgress) {
-      window.localStorage.setItem(
+      safeLocalStorageSetItem(
         `dw_digital_war_progress_${cleanKey}`,
         JSON.stringify({
           accountUsername,
@@ -727,17 +896,44 @@ export function hydrateLocalCacheFromCloud(
     } else {
       window.localStorage.removeItem(`dw_digital_war_progress_${cleanKey}`);
     }
+  } catch {
+    // Ignore storage restrictions
+  }
 
+  try {
+    const hudKey = `dw_digital_war_hud_v1_${cleanKey}`;
     if (cloud.hudState) {
-      window.localStorage.setItem(
-        `dw_digital_war_hud_v1_${cleanKey}`,
-        JSON.stringify({
-          accountUsername,
-          ...cloud.hudState,
-        })
-      );
+      const serialized = JSON.stringify({
+        accountUsername,
+        ...cloud.hudState,
+      });
+      if (!safeLocalStorageSetItem(hudKey, serialized)) {
+        // Fallback without base64 photos if quota is tightly constrained (photos stay in memory cache)
+        const slimCloudHud = { ...cloud.hudState };
+        delete slimCloudHud.tamerPhotoUrl;
+        delete slimCloudHud.tamerCoverUrl;
+        safeLocalStorageSetItem(
+          hudKey,
+          JSON.stringify({
+            accountUsername,
+            ...slimCloudHud,
+          })
+        );
+      }
     } else {
-      window.localStorage.removeItem(`dw_digital_war_hud_v1_${cleanKey}`);
+      // Do NOT wipe local progressed state if cloud.hudState is temporarily null
+      const existingRaw = window.localStorage.getItem(hudKey);
+      if (existingRaw) {
+        try {
+          const parsedLocal = JSON.parse(existingRaw);
+          const localProgress = extractProgressFromRawHud(parsedLocal);
+          if (!hasMeaningfulProgress(localProgress)) {
+            window.localStorage.removeItem(hudKey);
+          }
+        } catch {
+          window.localStorage.removeItem(hudKey);
+        }
+      }
     }
   } catch {
     // Ignore private browsing localStorage quota errors gracefully
@@ -951,6 +1147,48 @@ async function updatePlayerDocWithSelfHeal(
 
     const path = `players/${user.uid}`;
     const playerRef = doc(db, 'players', user.uid);
+
+    // STRICT ANTI-REGRESSION GUARD:
+    // Never allow a blank Lv.1 local fallback to overwrite an existing progressed player in Firestore!
+    let effectiveHudPatch: CloudHudState | undefined = patch.hudState;
+    if (effectiveHudPatch !== undefined) {
+      let highWater = cloudProgressHighWaterByUid.get(user.uid) ?? null;
+      if (isBlankLevelOneState(effectiveHudPatch)) {
+        if (!hasMeaningfulProgress(highWater)) {
+          try {
+            const checkSnap = await getAuthoritativePlayerSnap(user.uid);
+            if (checkSnap.exists()) {
+              const serverHud = (checkSnap.data() as Record<string, unknown> | undefined)?.hudState;
+              if (serverHud) {
+                recordObservedCloudHudProgress(user.uid, serverHud);
+                highWater = cloudProgressHighWaterByUid.get(user.uid) ?? null;
+              }
+            }
+          } catch {
+            // If we cannot verify the server document before writing a blank Lv.1 state, skip hudState write safely
+            effectiveHudPatch = undefined;
+          }
+        }
+        if (effectiveHudPatch && hasMeaningfulProgress(highWater)) {
+          console.warn(
+            `[cloudSave] Blocked Lv.1 regression write for ${user.uid} (server high-water Tamer Lv.${highWater?.tamerLevel} / Digimon Lv.${highWater?.digimonLevel}).`
+          );
+          effectiveHudPatch = undefined;
+        }
+      } else if (
+        highWater &&
+        effectiveHudPatch.tamer.level <= 1 &&
+        highWater.tamerLevel > 1 &&
+        effectiveHudPatch.digimon.level <= 1 &&
+        highWater.digimonLevel > 1
+      ) {
+        console.warn(
+          `[cloudSave] Blocked accidental level-1 downgrade for ${user.uid} (server high-water Tamer Lv.${highWater.tamerLevel} / Digimon Lv.${highWater.digimonLevel}).`
+        );
+        effectiveHudPatch = undefined;
+      }
+    }
+
     const updatePayload: Record<string, unknown> = {
       updatedAt: serverTimestamp(),
     };
@@ -963,13 +1201,13 @@ async function updatePlayerDocWithSelfHeal(
     if (patch.adventureProgress !== undefined) {
       updatePayload.adventureProgress = patch.adventureProgress;
     }
-    if (patch.hudState !== undefined) {
+    if (effectiveHudPatch !== undefined) {
       if (patch.syncDCoin === true) {
-        updatePayload.hudState = patch.hudState;
+        updatePayload.hudState = effectiveHudPatch;
       } else {
         // Dotted HUD fields omit hudState.dCoin so gameplay auto-saves (XP, kills, drops)
         // can never overwrite a concurrent Mercado Pago or GM DL-DIN credit with a stale local balance.
-        const h = patch.hudState;
+        const h = effectiveHudPatch;
         updatePayload['hudState.tamer'] = h.tamer;
         updatePayload['hudState.digimon'] = h.digimon;
         updatePayload['hudState.bits'] = h.bits;
@@ -1000,8 +1238,16 @@ async function updatePlayerDocWithSelfHeal(
       }
     }
 
+    // Nothing left to write after anti-regression guard
+    if (Object.keys(updatePayload).length <= 1) {
+      return;
+    }
+
     try {
       await updateDoc(playerRef, updatePayload);
+      if (effectiveHudPatch) {
+        recordObservedCloudHudProgress(user.uid, effectiveHudPatch);
+      }
       return;
     } catch (firstErr) {
       // Ignore expected aborts if the user signed out while the request was in flight
@@ -1087,23 +1333,32 @@ async function updatePlayerDocWithSelfHeal(
         extraKeysCount = extraTopLevelKeys.length;
         const hasDottedExtraKey = extraTopLevelKeys.some((k) => k.includes('.'));
 
-        const mergedHudState: CloudHudState | null = patch.hudState
-          ? patch.syncDCoin === true || !existingHud
-            ? patch.hudState
-            : {
-                ...patch.hudState,
-                dCoin: existingHud.dCoin,
-                autoFarmVipUnlocked:
-                  patch.hudState.autoFarmVipUnlocked === true ||
-                  existingHud.autoFarmVipUnlocked === true
-                    ? true
-                    : undefined,
-                autoFarmVipUntilMs: Math.max(
-                  patch.hudState.autoFarmVipUntilMs ?? 0,
-                  existingHud.autoFarmVipUntilMs ?? 0
-                ) || undefined,
-              }
-          : existingHud;
+        const existingProgress = extractProgressFromRawHud(existingHud);
+        const wouldRegressInSelfHeal = Boolean(
+          effectiveHudPatch &&
+            existingHud &&
+            hasMeaningfulProgress(existingProgress) &&
+            isBlankLevelOneState(effectiveHudPatch)
+        );
+        const mergedHudState: CloudHudState | null =
+          effectiveHudPatch && !wouldRegressInSelfHeal
+            ? patch.syncDCoin === true || !existingHud
+              ? effectiveHudPatch
+              : {
+                  ...effectiveHudPatch,
+                  dCoin: existingHud.dCoin,
+                  autoFarmVipUnlocked:
+                    effectiveHudPatch.autoFarmVipUnlocked === true ||
+                    existingHud.autoFarmVipUnlocked === true
+                      ? true
+                      : undefined,
+                  autoFarmVipUntilMs:
+                    Math.max(
+                      effectiveHudPatch.autoFarmVipUntilMs ?? 0,
+                      existingHud.autoFarmVipUntilMs ?? 0
+                    ) || undefined,
+                }
+            : existingHud;
 
         const normalizedFields: Record<string, unknown> = {
           ownerUid: user.uid,

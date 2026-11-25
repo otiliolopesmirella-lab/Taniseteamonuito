@@ -14,7 +14,24 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
+import { clampHatchSizePct, getHatchQualityProfile } from '../data/itemsCatalog';
+import {
+  getEvolutionChainForStarter,
+  resolveActiveFormProfile,
+  type DigimonFormId,
+  type StarterDigimonId,
+} from '../types/digimon';
 import type { EquipmentSlotId, InventoryItem } from '../types/hud';
+import {
+  calcDigimonExpToNext,
+  calcDigimonMaxDs,
+  calcDigimonMaxHp,
+  calcTamerExpToNext,
+  calcTamerMaxDs,
+  calcTamerMaxHp,
+  MAX_GAME_LEVEL,
+  sanitizeUnlockedFormIdsForDigimon,
+} from './hudGameService';
 import {
   banPlayerAccount,
   isBanCurrentlyActive,
@@ -865,6 +882,172 @@ export async function adjustPlayerCurrencyForGm(input: {
   return {
     nextBits,
     nextDCoin,
+  };
+}
+
+export async function setPlayerLevelsForGm(input: {
+  targetUid: string;
+  tamerLevel: number;
+  digimonLevel: number;
+  reason?: string;
+  gmName: string;
+}): Promise<{ tamerLevel: number; digimonLevel: number }> {
+  if (!isCurrentAuthUserBootstrappedGm()) {
+    throw new Error('Acesso negado: apenas GMs autorizados.');
+  }
+
+  const nextTamerLevel = Math.max(
+    1,
+    Math.min(MAX_GAME_LEVEL, Math.floor(Number(input.tamerLevel) || 1))
+  );
+  const nextDigimonLevel = Math.max(
+    1,
+    Math.min(MAX_GAME_LEVEL, Math.floor(Number(input.digimonLevel) || 1))
+  );
+
+  const playerRef = doc(db, 'players', input.targetUid);
+  let tamerName = 'Tamer';
+
+  try {
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(playerRef);
+      if (!snap.exists()) {
+        throw new Error('Conta do jogador não encontrada no Firestore.');
+      }
+
+      const data = snap.data() ?? {};
+      const username = String(data.username ?? 'Tamer');
+      const tam =
+        data.tamerSelection && typeof data.tamerSelection === 'object'
+          ? (data.tamerSelection as Record<string, unknown>)
+          : null;
+      tamerName = String(tam?.tamerName ?? username);
+
+      const starterRaw =
+        data.starterDigimon && typeof data.starterDigimon === 'object'
+          ? (data.starterDigimon as Record<string, unknown>)
+          : null;
+      const starterId = (
+        typeof starterRaw?.digimonId === 'string' && starterRaw.digimonId.length > 0
+          ? starterRaw.digimonId
+          : 'agumon'
+      ) as StarterDigimonId;
+
+      const built = buildValidHudStatePatch(data.hudState, 0, 0);
+      const baseHud = built.nextHudState;
+      const rawDigimon =
+        baseHud.digimon && typeof baseHud.digimon === 'object'
+          ? (baseHud.digimon as Record<string, unknown>)
+          : {};
+
+      const nextTamerMaxHp = Math.max(1, Math.min(1_000_000, Math.round(calcTamerMaxHp(nextTamerLevel))));
+      const nextTamerMaxDs = Math.max(1, Math.min(1_000_000, Math.round(calcTamerMaxDs(nextTamerLevel))));
+      const nextTamer = {
+        level: nextTamerLevel,
+        exp: 0,
+        expToNext: Math.max(1, Math.min(100_000_000, Math.round(calcTamerExpToNext(nextTamerLevel)))),
+        maxHp: nextTamerMaxHp,
+        hp: nextTamerMaxHp,
+        maxDs: nextTamerMaxDs,
+        ds: nextTamerMaxDs,
+      };
+
+      const qualityProfile = getHatchQualityProfile(
+        typeof rawDigimon.hatchGrade === 'number' ? rawDigimon.hatchGrade : undefined
+      );
+      const hatchSizePct = clampHatchSizePct(
+        qualityProfile.grade,
+        typeof rawDigimon.hatchSizePct === 'number' ? rawDigimon.hatchSizePct : 100
+      );
+      const currentForm = resolveActiveFormProfile(
+        starterId,
+        typeof rawDigimon.activeFormId === 'string'
+          ? (rawDigimon.activeFormId as DigimonFormId)
+          : undefined
+      );
+      const safeForm =
+        nextDigimonLevel >= currentForm.unlockLevel
+          ? currentForm
+          : getEvolutionChainForStarter(currentForm.starterId)[0];
+      const nextUnlockedFormIds = sanitizeUnlockedFormIdsForDigimon(
+        currentForm.starterId,
+        nextDigimonLevel,
+        Array.isArray(rawDigimon.unlockedFormIds)
+          ? (rawDigimon.unlockedFormIds as string[])
+          : undefined,
+        safeForm.id
+      ).slice(0, 24);
+      const nextDigiMaxHp = Math.max(
+        1,
+        Math.min(
+          1_000_000,
+          Math.round(
+            calcDigimonMaxHp(
+              nextDigimonLevel,
+              safeForm.id,
+              qualityProfile.grade,
+              hatchSizePct
+            )
+          )
+        )
+      );
+      const nextDigiMaxDs = Math.max(
+        1,
+        Math.min(
+          1_000_000,
+          Math.round(
+            calcDigimonMaxDs(
+              nextDigimonLevel,
+              safeForm.id,
+              qualityProfile.grade,
+              hatchSizePct
+            )
+          )
+        )
+      );
+      const nextDigimon = {
+        level: nextDigimonLevel,
+        exp: 0,
+        expToNext: Math.max(1, Math.min(100_000_000, Math.round(calcDigimonExpToNext(nextDigimonLevel)))),
+        maxHp: nextDigiMaxHp,
+        hp: nextDigiMaxHp,
+        maxDs: nextDigiMaxDs,
+        ds: nextDigiMaxDs,
+        activeFormId: safeForm.id.slice(0, 32),
+        unlockedFormIds: nextUnlockedFormIds,
+      };
+
+      const nextHudState: Record<string, unknown> = {
+        ...baseHud,
+        tamer: nextTamer,
+        digimon: nextDigimon,
+        updatedAt: new Date().toISOString(),
+      };
+
+      tx.update(playerRef, {
+        hudState: nextHudState,
+        updatedAt: serverTimestamp(),
+      });
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('não encontrada')) {
+      throw error;
+    }
+    handleFirestoreError(error, OperationType.UPDATE, `players/${input.targetUid}`);
+  }
+
+  const reasonSuffix = input.reason?.trim() ? ` · Motivo: ${input.reason.trim()}` : '';
+  await logGmAction({
+    action: 'item_grant',
+    targetUid: input.targetUid,
+    targetName: tamerName,
+    summary: `Níveis definidos: Tamer Lv.${nextTamerLevel} · Digimon Lv.${nextDigimonLevel}${reasonSuffix}`,
+    gmName: input.gmName,
+  });
+
+  return {
+    tamerLevel: nextTamerLevel,
+    digimonLevel: nextDigimonLevel,
   };
 }
 

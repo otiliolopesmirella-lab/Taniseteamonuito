@@ -39,6 +39,7 @@ import {
   fetchServerSnapshotForGm,
   kickOnlinePlayerForGm,
   logGmAction,
+  setPlayerLevelsForGm,
   unbanPlayerWithAuditForGm,
   type GmDwCoinOrderEntry,
   type GmServerSnapshot,
@@ -404,6 +405,30 @@ function AdminTestModalInner({
     }
   };
 
+  const handleSetPlayerLevels = async (input: {
+    targetUid: string;
+    tamerLevel: number;
+    digimonLevel: number;
+    reason: string;
+  }) => {
+    try {
+      const res = await setPlayerLevelsForGm({
+        ...input,
+        gmName: gmTamerName,
+      });
+      showNotice(
+        'ok',
+        `Níveis atualizados! Tamer Lv.${res.tamerLevel} · Digimon Lv.${res.digimonLevel} (HP/DS restaurados).`
+      );
+      await loadServerSnapshot();
+    } catch (err) {
+      showNotice(
+        'err',
+        err instanceof Error ? err.message : 'Erro ao definir níveis do jogador.'
+      );
+    }
+  };
+
   const handleKickPlayer = async (targetUid: string, targetName: string) => {
     try {
       await kickOnlinePlayerForGm({
@@ -763,6 +788,7 @@ function AdminTestModalInner({
               selfUid={effectiveSelfUid}
               loading={snapshotLoading}
               onAdjustCurrency={handleAdjustPlayerCurrency}
+              onSetPlayerLevels={handleSetPlayerLevels}
               onKickPlayer={handleKickPlayer}
               onBanPlayer={handleBanPlayer}
               onUnbanPlayer={handleUnbanPlayer}

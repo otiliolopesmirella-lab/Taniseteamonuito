@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
+  ArrowUpCircle,
   Ban,
   Coins,
   Gem,
@@ -38,6 +39,12 @@ interface GmPlayersTabProps {
     dCoinDelta: number;
     reason: string;
   }) => Promise<void>;
+  onSetPlayerLevels: (input: {
+    targetUid: string;
+    tamerLevel: number;
+    digimonLevel: number;
+    reason: string;
+  }) => Promise<void>;
   onKickPlayer: (targetUid: string, targetName: string) => Promise<void>;
   onBanPlayer: (input: {
     targetUid: string;
@@ -54,6 +61,7 @@ export function GmPlayersTab({
   selfUid,
   loading,
   onAdjustCurrency,
+  onSetPlayerLevels,
   onKickPlayer,
   onBanPlayer,
   onUnbanPlayer,
@@ -65,6 +73,9 @@ export function GmPlayersTab({
   const [bitsDeltaInput, setBitsDeltaInput] = useState('0');
   const [dCoinDeltaInput, setDCoinDeltaInput] = useState('0');
   const [currencyReason, setCurrencyReason] = useState('');
+  const [tamerLevelInput, setTamerLevelInput] = useState('1');
+  const [digimonLevelInput, setDigimonLevelInput] = useState('1');
+  const [levelReason, setLevelReason] = useState('');
   const [banDuration, setBanDuration] = useState<BanDurationPreset>('7d');
   const [banReason, setBanReason] = useState('');
   const [actionBusy, setActionBusy] = useState(false);
@@ -89,6 +100,12 @@ export function GmPlayersTab({
     () => players.find((p) => p.uid === selectedUid) ?? null,
     [players, selectedUid]
   );
+
+  useEffect(() => {
+    if (!selectedPlayer) return;
+    setTamerLevelInput(String(selectedPlayer.tamerLevel));
+    setDigimonLevelInput(String(selectedPlayer.digimonLevel));
+  }, [selectedPlayer?.uid, selectedPlayer?.tamerLevel, selectedPlayer?.digimonLevel]);
 
   const counts = useMemo(
     () => ({
@@ -127,6 +144,30 @@ export function GmPlayersTab({
       if (customBits === undefined) setBitsDeltaInput('0');
       if (customDCoin === undefined) setDCoinDeltaInput('0');
       setCurrencyReason('');
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const handleApplyLevels = async () => {
+    if (!selectedPlayer) return;
+    const nextTamerLv = Math.max(
+      1,
+      Math.min(200, Number.parseInt(tamerLevelInput, 10) || selectedPlayer.tamerLevel)
+    );
+    const nextDigiLv = Math.max(
+      1,
+      Math.min(200, Number.parseInt(digimonLevelInput, 10) || selectedPlayer.digimonLevel)
+    );
+    setActionBusy(true);
+    try {
+      await onSetPlayerLevels({
+        targetUid: selectedPlayer.uid,
+        tamerLevel: nextTamerLv,
+        digimonLevel: nextDigiLv,
+        reason: levelReason.trim() || 'Restauração / ajuste de nível GM',
+      });
+      setLevelReason('');
     } finally {
       setActionBusy(false);
     }
@@ -279,6 +320,60 @@ export function GmPlayersTab({
               </div>
             </div>
           )}
+
+          {/* Level Restoration / Adjustment Controls */}
+          <div className="mt-2.5 rounded-lg border border-emerald-400/35 bg-[#041232] p-2.5">
+            <p className="mb-2 flex items-center gap-1.5 text-[10.5px] font-extrabold uppercase text-emerald-200">
+              <ArrowUpCircle className="h-3.5 w-3.5 text-emerald-300" />
+              <span>Restaurar / Definir Nível (Tamer & Digimon)</span>
+            </p>
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+              <div>
+                <label className="text-[9.5px] font-bold text-emerald-200">
+                  Nível Tamer (1–200)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={200}
+                  value={tamerLevelInput}
+                  onChange={(e) => setTamerLevelInput(e.target.value)}
+                  className="mt-0.5 h-9 w-full rounded-lg border border-emerald-400/35 bg-[#020b22] px-2 text-xs font-bold tabular-nums text-white outline-none focus:border-emerald-300"
+                />
+              </div>
+              <div>
+                <label className="text-[9.5px] font-bold text-cyan-200">
+                  Nível Digimon (1–200)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={200}
+                  value={digimonLevelInput}
+                  onChange={(e) => setDigimonLevelInput(e.target.value)}
+                  className="mt-0.5 h-9 w-full rounded-lg border border-cyan-400/35 bg-[#020b22] px-2 text-xs font-bold tabular-nums text-white outline-none focus:border-emerald-300"
+                />
+              </div>
+              <div className="col-span-2 flex items-end gap-1.5">
+                <input
+                  type="text"
+                  maxLength={64}
+                  value={levelReason}
+                  onChange={(e) => setLevelReason(e.target.value)}
+                  placeholder="Motivo (ex: restauração de nível)"
+                  className="h-9 flex-1 rounded-lg border border-emerald-400/35 bg-[#020b22] px-2 text-xs text-white outline-none focus:border-emerald-300"
+                />
+                <button
+                  type="button"
+                  disabled={actionBusy}
+                  onClick={() => void handleApplyLevels()}
+                  className="h-9 shrink-0 rounded-lg border border-emerald-300/75 bg-emerald-500 px-3 text-[11px] font-black text-slate-950 hover:brightness-110 disabled:opacity-50"
+                >
+                  Aplicar Nível
+                </button>
+              </div>
+            </div>
+          </div>
 
           {/* Currency Adjustment Controls */}
           <div className="mt-3 grid grid-cols-1 gap-2.5 lg:grid-cols-2">
