@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { createPortal } from 'react-dom';
 import {
   CornerDownLeft,
   Globe,
@@ -71,7 +72,6 @@ export const ChatHudPanel = memo(function ChatHudPanel({
 }: ChatHudPanelProps) {
   const [draft, setDraft] = useState('');
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [mobileInputFocused, setMobileInputFocused] = useState(false);
   const [desktopMinimized, setDesktopMinimized] = useState(false);
   const [unreadByChannel, setUnreadByChannel] = useState<
     Record<ChatChannel, number>
@@ -146,7 +146,6 @@ export const ChatHudPanel = memo(function ChatHudPanel({
     visibleMessages.length,
     activeChannel,
     mobileOpen,
-    mobileInputFocused,
     desktopMinimized,
   ]);
 
@@ -283,7 +282,6 @@ export const ChatHudPanel = memo(function ChatHudPanel({
             onClick={() => {
               if (isMobile) {
                 mobileInputRef.current?.blur();
-                setMobileInputFocused(false);
                 onChatFocusChange(false);
                 setMobileOpen(false);
               } else {
@@ -382,11 +380,9 @@ export const ChatHudPanel = memo(function ChatHudPanel({
               onTouchStart={(e) => e.stopPropagation()}
               onChange={(e) => updateDraftValue(e.target.value)}
               onFocus={() => {
-                if (isMobile) setMobileInputFocused(true);
                 onChatFocusChange(true);
               }}
               onBlur={() => {
-                if (isMobile) setMobileInputFocused(false);
                 onChatFocusChange(false);
               }}
               onKeyDown={(e) => {
@@ -440,13 +436,13 @@ export const ChatHudPanel = memo(function ChatHudPanel({
 
   return (
     <>
-      {/* Mobile Chat Button / Drawer */}
+      {/* Mobile Chat Button (closed) + Topmost Portal Drawer (open, always above Joystick, GM & bottom HUD) */}
       <div
         onPointerDown={(e) => e.stopPropagation()}
         onTouchStart={(e) => e.stopPropagation()}
         className="pointer-events-auto relative z-40 h-8 w-28 md:hidden"
       >
-        {!mobileOpen ? (
+        {!mobileOpen && (
           <button
             type="button"
             onClick={() => {
@@ -465,18 +461,21 @@ export const ChatHudPanel = memo(function ChatHudPanel({
               </span>
             )}
           </button>
-        ) : (
-          <div
-            className={
-              mobileInputFocused
-                ? 'fixed inset-x-2 bottom-2 z-[90]'
-                : 'absolute bottom-0 left-0 z-[65] w-[min(312px,calc(100vw-1rem))]'
-            }
-          >
-            {renderChatBox(true)}
-          </div>
         )}
       </div>
+
+      {mobileOpen &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            onPointerDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            className="pointer-events-auto fixed inset-x-2 bottom-2 z-[95] md:hidden"
+          >
+            {renderChatBox(true)}
+          </div>,
+          document.body
+        )}
 
       {/* Desktop Chat Panel */}
       <div

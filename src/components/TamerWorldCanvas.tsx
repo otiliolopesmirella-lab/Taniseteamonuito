@@ -8382,68 +8382,6 @@ export function TamerWorldCanvas({
         });
       }
 
-      // Off-screen directional pointers for online players on the SAME map & channel outside the camera viewport
-      if (runtimeMetaRef.current.showOffscreenPointers) {
-      for (const smooth of remoteSmoothRef.current.values()) {
-        const rp = smooth.player;
-        if (rp.mapId !== sim.mapId || rp.channelId !== currentChannelRef.current)
-          continue;
-        const screenX = (smooth.renderX - sim.camX) * cameraZoom + viewW / 2;
-        const screenY = (smooth.renderY - sim.camY) * cameraZoom + viewH / 2;
-        const marginX = 36;
-        const marginTop = 98;
-        const marginBottom = 132;
-        const isOffScreen =
-          screenX < marginX ||
-          screenX > viewW - marginX ||
-          screenY < marginTop ||
-          screenY > viewH - marginBottom;
-        if (!isOffScreen) continue;
-
-        const angle = Math.atan2(screenY - viewH / 2, screenX - viewW / 2);
-        const clampedX = Math.max(54, Math.min(viewW - 54, screenX));
-        const clampedY = Math.max(106, Math.min(viewH - 138, screenY));
-        const distM = Math.max(1, Math.round(Math.hypot(smooth.renderX - sim.x, smooth.renderY - sim.y) / 10));
-        const badgeText = `${rp.isGm ? '★ ' : ''}${rp.tamerName} (${distM}m)`;
-
-        ctx!.save();
-        const badgeFont = '800 10px "Exo 2", sans-serif';
-        ctx!.font = badgeFont;
-        const bw = Math.min(138, measureTextCached(ctx!, badgeFont, badgeText) + 24);
-        const bh = 20;
-        const bx = Math.max(10, Math.min(viewW - bw - 10, clampedX - bw / 2));
-        const by = Math.max(96, Math.min(viewH - 148, clampedY - bh / 2));
-
-        ctx!.fillStyle = rp.isGm ? 'rgba(42, 22, 4, 0.92)' : 'rgba(4, 24, 52, 0.9)';
-        ctx!.beginPath();
-        ctx!.roundRect(bx, by, bw, bh, 10);
-        ctx!.fill();
-        ctx!.strokeStyle = rp.isGm ? '#facc15' : '#34d399';
-        ctx!.lineWidth = 1.4;
-        ctx!.stroke();
-
-        // Small directional triangle indicator
-        const arrowX = bx + 10;
-        const arrowY = by + bh / 2;
-        ctx!.save();
-        ctx!.translate(arrowX, arrowY);
-        ctx!.rotate(angle);
-        ctx!.fillStyle = rp.isGm ? '#facc15' : '#34d399';
-        ctx!.beginPath();
-        ctx!.moveTo(4.5, 0);
-        ctx!.lineTo(-3.5, -3.5);
-        ctx!.lineTo(-3.5, 3.5);
-        ctx!.closePath();
-        ctx!.fill();
-        ctx!.restore();
-
-        ctx!.fillStyle = rp.isGm ? '#fef08a' : '#d1fae5';
-        ctx!.textAlign = 'left';
-        ctx!.fillText(badgeText, bx + 18, by + 13.5, bw - 24);
-        ctx!.restore();
-      }
-      }
-
       } // end shouldDrawWorldFrame
 
       // Sync React HUD Snapshot cleanly (~3-4Hz) ONLY when meaningful HUD values actually change

@@ -815,20 +815,6 @@ export function HudWindowsOverlay({
                     }
                   )}
 
-                  {renderSwitch(
-                    'Indicadores fora da tela',
-                    'Setas de distância para jogadores no mesmo mapa',
-                    preferences.showOffscreenPointers,
-                    () => {
-                      playDigitalTone('click', preferences.soundEnabled);
-                      onUpdatePreferences({
-                        ...preferences,
-                        showOffscreenPointers:
-                          !preferences.showOffscreenPointers,
-                      });
-                    }
-                  )}
-
                   <div className="rounded-xl border border-cyan-400/25 bg-[#041232] p-2.5">
                     <p className="mb-2 font-bold text-white">
                       Tamanho do minimapa
