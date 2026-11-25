@@ -25,7 +25,7 @@ import {
 import {
   getUnlockedInventorySlots,
   INVENTORY_DEFAULT_UNLOCKED_SLOTS,
-  INVENTORY_MAX_SLOTS,
+  INVENTORY_TOTAL_SLOTS,
 } from '../../services/hudGameService';
 import type {
   InventoryCategory,
@@ -213,7 +213,7 @@ export function InventoryHudWindow({
     : safeUnlockedSlots;
   const lockedSlotsCount = isFiltering
     ? 0
-    : Math.max(0, INVENTORY_MAX_SLOTS - safeUnlockedSlots);
+    : Math.max(0, INVENTORY_TOTAL_SLOTS - safeUnlockedSlots);
 
   const toggleTrashMode = () => {
     setLockedHint(null);

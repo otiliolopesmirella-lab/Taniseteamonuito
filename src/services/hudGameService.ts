@@ -935,6 +935,7 @@ export function createDefaultAccountHudState(
     xpBoostUntilMs: null,
     autoFarmVipUnlocked: false,
     autoFarmVipUntilMs: null,
+    tutorialRewardsClaimed: { supplies: false, eggPack: false },
     defeatedEnemiesTotal: 0,
     updatedAt: new Date().toISOString(),
   };
@@ -962,16 +963,46 @@ function scoreHudProgressionCandidate(
   const kills = parseSafeNumericInt(candidate.defeatedEnemiesTotal, 0, 1_000_000_000, 0);
   const bits = parseSafeNumericInt(candidate.bits, 0, 1_000_000_000, 0);
   const dCoin = parseSafeNumericInt(candidate.dCoin, 0, 1_000_000_000, 0);
-  const invLen = Array.isArray(candidate.inventory) ? candidate.inventory.length : 0;
+  const invList = Array.isArray(candidate.inventory) ? candidate.inventory : [];
+  const invLen = invList.length;
+  const invQty = invList.reduce(
+    (sum, item) => sum + (item && typeof item.quantity === 'number' && Number.isFinite(item.quantity) ? Math.max(0, Math.floor(item.quantity)) : 0),
+    0
+  );
+  const equippedLen =
+    candidate.equippedItems && typeof candidate.equippedItems === 'object'
+      ? Object.values(candidate.equippedItems).filter(Boolean).length
+      : 0;
+  const partyLen = Array.isArray(candidate.partyDigimons) ? candidate.partyDigimons.length : 0;
+  const archiveLen = Array.isArray(candidate.digimonArchive) ? candidate.digimonArchive.length : 0;
+  const bagBonus = Math.max(
+    0,
+    getUnlockedInventorySlots(candidate.unlockedInventorySlots) - INVENTORY_DEFAULT_UNLOCKED_SLOTS
+  );
+  const archBonus = Math.max(
+    0,
+    getUnlockedArchiveSlots(candidate.unlockedArchiveSlots) - ARCHIVE_DEFAULT_UNLOCKED_SLOTS
+  );
   return (
     (tamerLevel - 1) * 1_000_000 +
     (digimonLevel - 1) * 1_000_000 +
     kills * 1_000 +
     Math.min(500, Math.floor((tamerExp + digimonExp) / 10)) +
-    invLen * 10 +
+    invLen * 25 +
+    Math.min(500, invQty) +
+    equippedLen * 40 +
+    (partyLen + archiveLen) * 60 +
+    bagBonus * 5 +
+    archBonus * 10 +
     (bits > 0 ? 50 : 0) +
     (dCoin > 0 ? 50 : 0)
   );
+}
+
+function parseTimestampMs(raw: unknown): number {
+  if (typeof raw !== 'string' || raw.trim().length < 10) return 0;
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 export function loadAccountHudState(
@@ -1007,9 +1038,24 @@ export function loadAccountHudState(
     if (localParsed && cloudCached) {
       const localScore = scoreHudProgressionCandidate(localParsed);
       const cloudScore = scoreHudProgressionCandidate(cloudCached);
-      // Prefer whichever snapshot has higher progression; on tie, prefer authoritative cloud cache
-      // while preserving local-only extras (party reserve, archive, unlocked slots).
-      if (cloudScore >= localScore) {
+      const localTs = parseTimestampMs(localParsed.updatedAt);
+      const cloudTs = parseTimestampMs(cloudCached.updatedAt);
+      const localTamerLv = parseSafeNumericInt(localParsed.tamer?.level, 1, MAX_GAME_LEVEL, 1);
+      const cloudTamerLv = parseSafeNumericInt(cloudCached.tamer?.level, 1, MAX_GAME_LEVEL, 1);
+      const localDigiLv = parseSafeNumericInt(localParsed.digimon?.level, 1, MAX_GAME_LEVEL, 1);
+      const cloudDigiLv = parseSafeNumericInt(cloudCached.digimon?.level, 1, MAX_GAME_LEVEL, 1);
+      const localKills = parseSafeNumericInt(localParsed.defeatedEnemiesTotal, 0, 1_000_000_000, 0);
+      const cloudKills = parseSafeNumericInt(cloudCached.defeatedEnemiesTotal, 0, 1_000_000_000, 0);
+      const localIsNewerAndNonRegressing =
+        localTs > cloudTs &&
+        localTamerLv >= cloudTamerLv &&
+        localDigiLv >= cloudDigiLv &&
+        localKills >= cloudKills;
+      const cloudShouldLead =
+        !localIsNewerAndNonRegressing &&
+        (cloudScore > localScore || (cloudScore === localScore && cloudTs >= localTs));
+
+      if (cloudShouldLead) {
         parsed = {
           ...localParsed,
           ...cloudCached,
@@ -1021,13 +1067,63 @@ export function loadAccountHudState(
             ...(localParsed.digimon ?? {}),
             ...(cloudCached.digimon ?? {}),
           } as DigimonRuntimeStats,
-          partyDigimons: localParsed.partyDigimons,
-          digimonArchive: localParsed.digimonArchive,
-          unlockedArchiveSlots: localParsed.unlockedArchiveSlots,
-          unlockedInventorySlots: localParsed.unlockedInventorySlots,
+          partyDigimons:
+            cloudCached.partyDigimons !== undefined
+              ? cloudCached.partyDigimons
+              : localParsed.partyDigimons,
+          digimonArchive:
+            cloudCached.digimonArchive !== undefined
+              ? cloudCached.digimonArchive
+              : localParsed.digimonArchive,
+          unlockedArchiveSlots:
+            cloudCached.unlockedArchiveSlots !== undefined
+              ? cloudCached.unlockedArchiveSlots
+              : localParsed.unlockedArchiveSlots,
+          unlockedInventorySlots:
+            cloudCached.unlockedInventorySlots !== undefined
+              ? cloudCached.unlockedInventorySlots
+              : localParsed.unlockedInventorySlots,
+          tutorialRewardsClaimed:
+            cloudCached.tutorialRewardsClaimed !== undefined
+              ? {
+                  supplies:
+                    cloudCached.tutorialRewardsClaimed.supplies === true ||
+                    localParsed.tutorialRewardsClaimed?.supplies === true,
+                  eggPack:
+                    cloudCached.tutorialRewardsClaimed.eggPack === true ||
+                    localParsed.tutorialRewardsClaimed?.eggPack === true,
+                }
+              : localParsed.tutorialRewardsClaimed,
         };
       } else {
-        parsed = localParsed;
+        parsed = {
+          ...localParsed,
+          dCoin:
+            typeof cloudCached.dCoin === 'number' && Number.isFinite(cloudCached.dCoin)
+              ? cloudCached.dCoin
+              : localParsed.dCoin,
+          autoFarmVipUnlocked:
+            localParsed.autoFarmVipUnlocked === true ||
+            cloudCached.autoFarmVipUnlocked === true,
+          autoFarmVipUntilMs:
+            Math.max(
+              typeof localParsed.autoFarmVipUntilMs === 'number'
+                ? localParsed.autoFarmVipUntilMs
+                : 0,
+              typeof cloudCached.autoFarmVipUntilMs === 'number'
+                ? cloudCached.autoFarmVipUntilMs
+                : 0
+            ) || null,
+          xpBoostUntilMs:
+            Math.max(
+              typeof localParsed.xpBoostUntilMs === 'number'
+                ? localParsed.xpBoostUntilMs
+                : 0,
+              typeof cloudCached.xpBoostUntilMs === 'number'
+                ? cloudCached.xpBoostUntilMs
+                : 0
+            ) || null,
+        };
       }
     } else {
       parsed = (cloudCached ?? localParsed) as Partial<AccountHudPersistence>;
@@ -1041,9 +1137,9 @@ export function loadAccountHudState(
           item &&
           typeof item === 'object' &&
           !isRemovedLegacyItemKey(item.itemKey) &&
-          item.category !== 'equip'
+          item.category === 'equip'
         ) {
-          equippedItems[slot as EquipmentSlotId] = item;
+          equippedItems[slot as EquipmentSlotId] = enrichInventoryItem(item);
         }
       }
     }
@@ -1217,6 +1313,12 @@ export function loadAccountHudState(
         parsed.autoFarmVipUntilMs > 0
           ? Math.round(parsed.autoFarmVipUntilMs)
           : null,
+      tutorialRewardsClaimed: parsed.tutorialRewardsClaimed
+        ? {
+            supplies: parsed.tutorialRewardsClaimed.supplies === true,
+            eggPack: parsed.tutorialRewardsClaimed.eggPack === true,
+          }
+        : undefined,
       defeatedEnemiesTotal: parseSafeNumericInt(
         parsed.defeatedEnemiesTotal,
         0,
@@ -1256,7 +1358,7 @@ export function saveAccountHudState(
   }
 
   if (!options?.skipCloudSync) {
-    scheduleHudStateSync(stamped, options?.syncDCoinToCloud === true);
+    scheduleHudStateSync(stamped, options?.syncDCoinToCloud === true, immediate);
   }
 }
 

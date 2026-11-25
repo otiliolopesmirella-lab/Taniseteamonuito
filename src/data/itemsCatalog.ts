@@ -972,6 +972,28 @@ for (const spec of XP_BOOST_ITEMS_SPEC) {
   });
 }
 
+CATALOG_REGISTRY.set('bag_expander_6', {
+  itemKey: 'bag_expander_6',
+  name: 'Expansor de Mochila (+6 Slots)',
+  category: 'other',
+  description:
+    'Chip de expansão permanente que libera +6 slots extras no Inventário do Tamer (até o máximo de 100 slots).',
+  rarity: 'epico',
+  usageInfo: 'Clique em "Usar Item" no Inventário para expandir permanentemente sua Mochila em +6 slots.',
+  accentColor: '#38bdf8',
+});
+
+CATALOG_REGISTRY.set('archive_expander_6', {
+  itemKey: 'archive_expander_6',
+  name: 'Expansor de Archive (+6 Slots)',
+  category: 'other',
+  description:
+    'Chip de armazenamento que libera +6 slots extras permanentes no Digimon Archive da DATS (até o máximo de 50 slots).',
+  rarity: 'epico',
+  usageInfo: 'Clique em "Usar Item" no Inventário para expandir permanentemente seu Digimon Archive em +6 slots.',
+  accentColor: '#a855f7',
+});
+
 export function getCatalogItemByKey(itemKey: string): CatalogItemDefinition | undefined {
   return CATALOG_REGISTRY.get(itemKey);
 }

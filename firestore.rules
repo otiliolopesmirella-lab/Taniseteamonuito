@@ -162,7 +162,7 @@ service cloud.firestore {
               oldData.hudState.autoFarmVipUnlocked == true &&
               (!('autoFarmVipUntilMs' in oldData.hudState) || oldData.hudState.autoFarmVipUntilMs == null) &&
               newData.hudState.autoFarmVipUntilMs is number &&
-              newData.hudState.autoFarmVipUntilMs <= request.time.toMillis() + 2678400000)
+              newData.hudState.autoFarmVipUntilMs <= request.time.toMillis() + 2851200000)
           )
         ) ||
         ('hudState' in oldData &&
@@ -252,7 +252,7 @@ service cloud.firestore {
     function isValidRuntimeStats(stats) {
       return stats is map &&
         stats.keys().hasAll(['level', 'exp', 'expToNext', 'hp', 'maxHp', 'ds', 'maxDs']) &&
-        stats.keys().hasOnly(['level', 'exp', 'expToNext', 'hp', 'maxHp', 'ds', 'maxDs', 'activeFormId', 'unlockedFormIds']) &&
+        stats.keys().hasOnly(['level', 'exp', 'expToNext', 'hp', 'maxHp', 'ds', 'maxDs', 'activeFormId', 'unlockedFormIds', 'hatchGrade', 'hatchSizePct', 'nickname']) &&
         stats.level is number && stats.level >= 1 && stats.level <= 200 &&
         stats.exp is number && stats.exp >= 0 && stats.exp <= 100000000 &&
         stats.expToNext is number && stats.expToNext >= 1 && stats.expToNext <= 100000000 &&
@@ -265,20 +265,58 @@ service cloud.firestore {
           stats.unlockedFormIds is list &&
           stats.unlockedFormIds.size() <= 24 &&
           (stats.unlockedFormIds.size() == 0 || stats.unlockedFormIds[0] is string)
-        ));
+        )) &&
+        (!('hatchGrade' in stats) || stats.hatchGrade == null || stats.hatchGrade in [3, 4, 5]) &&
+        (!('hatchSizePct' in stats) || stats.hatchSizePct == null || (stats.hatchSizePct is number && stats.hatchSizePct >= 80 && stats.hatchSizePct <= 140)) &&
+        (!('nickname' in stats) || stats.nickname == null || (stats.nickname is string && stats.nickname.size() >= 1 && stats.nickname.size() <= 24));
+    }
+
+    function isValidArchivedDigimonEntry(entry) {
+      return entry is map &&
+        entry.keys().hasAll(['id', 'slotIndex', 'starterId', 'activeFormId', 'level', 'exp', 'expToNext', 'hp', 'maxHp', 'ds', 'maxDs', 'unlockedFormIds', 'hatchGrade', 'hatchSizePct', 'archivedAt']) &&
+        entry.keys().hasOnly(['id', 'slotIndex', 'starterId', 'activeFormId', 'nickname', 'level', 'exp', 'expToNext', 'hp', 'maxHp', 'ds', 'maxDs', 'unlockedFormIds', 'hatchGrade', 'hatchSizePct', 'archivedAt']) &&
+        entry.id is string && entry.id.size() >= 1 && entry.id.size() <= 80 &&
+        entry.slotIndex is number && entry.slotIndex >= 0 && entry.slotIndex <= 49 &&
+        entry.starterId is string && entry.starterId.size() >= 1 && entry.starterId.size() <= 32 &&
+        entry.activeFormId is string && entry.activeFormId.size() >= 1 && entry.activeFormId.size() <= 32 &&
+        (!('nickname' in entry) || entry.nickname == null || (entry.nickname is string && entry.nickname.size() >= 1 && entry.nickname.size() <= 24)) &&
+        entry.level is number && entry.level >= 1 && entry.level <= 200 &&
+        entry.exp is number && entry.exp >= 0 && entry.exp <= 100000000 &&
+        entry.expToNext is number && entry.expToNext >= 1 && entry.expToNext <= 100000000 &&
+        entry.hp is number && entry.hp >= 0 && entry.hp <= 1000000 &&
+        entry.maxHp is number && entry.maxHp >= 1 && entry.maxHp <= 1000000 &&
+        entry.ds is number && entry.ds >= 0 && entry.ds <= 1000000 &&
+        entry.maxDs is number && entry.maxDs >= 1 && entry.maxDs <= 1000000 &&
+        entry.unlockedFormIds is list && entry.unlockedFormIds.size() <= 24 &&
+        (entry.unlockedFormIds.size() == 0 || entry.unlockedFormIds[0] is string) &&
+        entry.hatchGrade in [3, 4, 5] &&
+        entry.hatchSizePct is number && entry.hatchSizePct >= 80 && entry.hatchSizePct <= 140 &&
+        entry.archivedAt is string && entry.archivedAt.size() >= 10 && entry.archivedAt.size() <= 40;
     }
 
     function isValidHudState(hud) {
       return hud == null || (
         hud is map &&
         hud.keys().hasAll(['tamer', 'digimon', 'bits', 'dCoin', 'inventory', 'equippedItems', 'guildName', 'defeatedEnemiesTotal', 'updatedAt']) &&
-        hud.keys().hasOnly(['tamer', 'digimon', 'bits', 'dCoin', 'inventory', 'equippedItems', 'guildName', 'tamerPhotoUrl', 'tamerCoverUrl', 'xpBoostUntilMs', 'autoFarmVipUnlocked', 'autoFarmVipUntilMs', 'defeatedEnemiesTotal', 'updatedAt']) &&
+        hud.keys().hasOnly(['tamer', 'digimon', 'bits', 'dCoin', 'inventory', 'unlockedInventorySlots', 'partyDigimons', 'digimonArchive', 'unlockedArchiveSlots', 'equippedItems', 'guildName', 'tamerPhotoUrl', 'tamerCoverUrl', 'xpBoostUntilMs', 'autoFarmVipUnlocked', 'autoFarmVipUntilMs', 'tutorialRewardsClaimed', 'defeatedEnemiesTotal', 'updatedAt']) &&
         isValidRuntimeStats(hud.tamer) &&
         isValidRuntimeStats(hud.digimon) &&
         hud.bits is number && hud.bits >= 0 && hud.bits <= 1000000000 &&
         hud.dCoin is number && hud.dCoin >= 0 && hud.dCoin <= 1000000000 &&
-        hud.inventory is list && hud.inventory.size() <= 48 &&
+        hud.inventory is list && hud.inventory.size() <= 100 &&
         (hud.inventory.size() == 0 || hud.inventory[0] is map) &&
+        (!('unlockedInventorySlots' in hud) || hud.unlockedInventorySlots == null || (hud.unlockedInventorySlots is number && hud.unlockedInventorySlots >= 25 && hud.unlockedInventorySlots <= 100)) &&
+        (!('partyDigimons' in hud) || hud.partyDigimons == null || (
+          hud.partyDigimons is list &&
+          hud.partyDigimons.size() <= 2 &&
+          (hud.partyDigimons.size() == 0 || isValidArchivedDigimonEntry(hud.partyDigimons[0]))
+        )) &&
+        (!('digimonArchive' in hud) || hud.digimonArchive == null || (
+          hud.digimonArchive is list &&
+          hud.digimonArchive.size() <= 50 &&
+          (hud.digimonArchive.size() == 0 || isValidArchivedDigimonEntry(hud.digimonArchive[0]))
+        )) &&
+        (!('unlockedArchiveSlots' in hud) || hud.unlockedArchiveSlots == null || (hud.unlockedArchiveSlots is number && hud.unlockedArchiveSlots >= 4 && hud.unlockedArchiveSlots <= 50)) &&
         hud.equippedItems is map && hud.equippedItems.size() <= 16 &&
         (hud.guildName == null || (hud.guildName is string && hud.guildName.size() <= 32)) &&
         (!('tamerPhotoUrl' in hud) || hud.tamerPhotoUrl == null || isValidImageDataUrl(hud.tamerPhotoUrl, 44000)) &&
@@ -286,6 +324,13 @@ service cloud.firestore {
         (!('xpBoostUntilMs' in hud) || hud.xpBoostUntilMs == null || (hud.xpBoostUntilMs is number && hud.xpBoostUntilMs >= 0 && hud.xpBoostUntilMs <= 4000000000000)) &&
         (!('autoFarmVipUnlocked' in hud) || hud.autoFarmVipUnlocked == null || hud.autoFarmVipUnlocked is bool) &&
         (!('autoFarmVipUntilMs' in hud) || hud.autoFarmVipUntilMs == null || (hud.autoFarmVipUntilMs is number && hud.autoFarmVipUntilMs >= 0 && hud.autoFarmVipUntilMs <= 4000000000000)) &&
+        (!('tutorialRewardsClaimed' in hud) || hud.tutorialRewardsClaimed == null || (
+          hud.tutorialRewardsClaimed is map &&
+          hud.tutorialRewardsClaimed.keys().hasAll(['supplies', 'eggPack']) &&
+          hud.tutorialRewardsClaimed.keys().hasOnly(['supplies', 'eggPack']) &&
+          hud.tutorialRewardsClaimed.supplies is bool &&
+          hud.tutorialRewardsClaimed.eggPack is bool
+        )) &&
         hud.defeatedEnemiesTotal is number && hud.defeatedEnemiesTotal >= 0 && hud.defeatedEnemiesTotal <= 100000000 &&
         hud.updatedAt is string && hud.updatedAt.size() >= 10 && hud.updatedAt.size() <= 40
       );

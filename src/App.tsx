@@ -18,6 +18,7 @@ import {
   overrideStarterDigimonForGm,
 } from './services/authService';
 import { flushPendingCloudSaves } from './services/cloudSaveService';
+import { flushPendingLocalHudSave } from './services/hudGameService';
 import { isCurrentAuthUserBootstrappedGm } from './services/gmRoleService';
 import { captureReferralCodeFromUrl } from './services/referralService';
 import {
@@ -69,10 +70,12 @@ export default function App() {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
+        flushPendingLocalHudSave();
         void flushPendingCloudSaves();
       }
     };
     const handlePageHide = () => {
+      flushPendingLocalHudSave();
       void flushPendingCloudSaves();
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -325,6 +328,7 @@ export default function App() {
               }
               onExitToLogin={() => {
                 void (async () => {
+                  flushPendingLocalHudSave();
                   await flushPendingCloudSaves();
                   await handleBackToLogin();
                 })();

@@ -40,7 +40,7 @@
         },
         "hudState": {
           "type": "object",
-          "description": "Tamer & Digimon levels, EXP, HP, DS, active evolution, Bits, DWcoin, inventory, equipped items, optional custom Tamer portrait photo data URL (tamerPhotoUrl), optional custom Rank cover banner data URL (tamerCoverUrl), active XP boost expiration timestamp (xpBoostUntilMs), VIP Auto Farm unlock flag (autoFarmVipUnlocked), VIP Auto Farm 30-day expiration timestamp (autoFarmVipUntilMs), and battle counters."
+          "description": "Tamer & Digimon levels, EXP, HP, DS, active evolution, hatch quality/size/nickname, Bits, DWcoin, up to 100 inventory slots (unlockedInventorySlots), reserve partyDigimons (max 2), digimonArchive (max 50), unlockedArchiveSlots, equipped items, tutorialRewardsClaimed flags, optional custom Tamer portrait photo data URL (tamerPhotoUrl), optional custom Rank cover banner data URL (tamerCoverUrl), active XP boost expiration timestamp (xpBoostUntilMs), VIP Auto Farm unlock flag (autoFarmVipUnlocked), VIP Auto Farm 30-day expiration timestamp (autoFarmVipUntilMs), and battle counters."
         },
         "createdAt": {
           "type": "string",

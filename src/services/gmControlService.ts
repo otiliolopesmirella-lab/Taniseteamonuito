@@ -731,7 +731,7 @@ function buildValidHudStatePatch(
   );
 
   const inventory = Array.isArray(hud.inventory)
-    ? (hud.inventory as InventoryItem[]).slice(0, 48)
+    ? (hud.inventory as InventoryItem[]).slice(0, 100)
     : [];
   const equippedItems =
     hud.equippedItems && typeof hud.equippedItems === 'object'
@@ -754,6 +754,41 @@ function buildValidHudStatePatch(
     updatedAt: new Date().toISOString(),
   };
 
+  if (
+    typeof hud.unlockedInventorySlots === 'number' &&
+    Number.isFinite(hud.unlockedInventorySlots)
+  ) {
+    nextHudState.unlockedInventorySlots = Math.max(
+      25,
+      Math.min(100, Math.floor(hud.unlockedInventorySlots))
+    );
+  }
+  if (
+    typeof hud.unlockedArchiveSlots === 'number' &&
+    Number.isFinite(hud.unlockedArchiveSlots)
+  ) {
+    nextHudState.unlockedArchiveSlots = Math.max(
+      4,
+      Math.min(50, Math.floor(hud.unlockedArchiveSlots))
+    );
+  }
+  if (Array.isArray(hud.partyDigimons)) {
+    nextHudState.partyDigimons = hud.partyDigimons.slice(0, 2);
+  }
+  if (Array.isArray(hud.digimonArchive)) {
+    nextHudState.digimonArchive = hud.digimonArchive.slice(0, 50);
+  }
+  if (
+    hud.tutorialRewardsClaimed &&
+    typeof hud.tutorialRewardsClaimed === 'object' &&
+    !Array.isArray(hud.tutorialRewardsClaimed)
+  ) {
+    const tr = hud.tutorialRewardsClaimed as Record<string, unknown>;
+    nextHudState.tutorialRewardsClaimed = {
+      supplies: tr.supplies === true,
+      eggPack: tr.eggPack === true,
+    };
+  }
   if (typeof hud.tamerPhotoUrl === 'string' && hud.tamerPhotoUrl.length > 0) {
     nextHudState.tamerPhotoUrl = hud.tamerPhotoUrl;
   }
@@ -1005,7 +1040,7 @@ export async function setPlayerLevelsForGm(input: {
           )
         )
       );
-      const nextDigimon = {
+      const nextDigimon: Record<string, unknown> = {
         level: nextDigimonLevel,
         exp: 0,
         expToNext: Math.max(1, Math.min(100_000_000, Math.round(calcDigimonExpToNext(nextDigimonLevel)))),
@@ -1015,7 +1050,12 @@ export async function setPlayerLevelsForGm(input: {
         ds: nextDigiMaxDs,
         activeFormId: safeForm.id.slice(0, 32),
         unlockedFormIds: nextUnlockedFormIds,
+        hatchGrade: qualityProfile.grade,
+        hatchSizePct,
       };
+      if (typeof rawDigimon.nickname === 'string' && rawDigimon.nickname.trim().length > 0) {
+        nextDigimon.nickname = rawDigimon.nickname.trim().slice(0, 24);
+      }
 
       const nextHudState: Record<string, unknown> = {
         ...baseHud,

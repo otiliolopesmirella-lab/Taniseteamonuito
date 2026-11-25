@@ -246,6 +246,7 @@ import {
   EQUIPMENT_SLOT_LABELS,
   equipInventoryItem,
   evolveDigimonAccountState,
+  flushPendingLocalHudSave,
   getFormEvoluterCost,
   getNextEvolutionInfo,
   getOwnedEvoluterCount,
@@ -261,7 +262,10 @@ import {
   unequipSlotItem,
   unlockDigimonEvolutionWithEvoluters,
 } from '../services/hudGameService';
-import { recordObservedCloudHudProgress } from '../services/cloudSaveService';
+import {
+  flushPendingCloudSaves,
+  recordObservedCloudHudProgress,
+} from '../services/cloudSaveService';
 import {
   rollAndApplyDigimonDrops,
   type RolledDropReward,
@@ -1083,6 +1087,8 @@ export function TamerWorldCanvas({
     supplies: boolean;
     eggPack: boolean;
   }>(() => {
+    const fromHud = initialHudAccount.tutorialRewardsClaimed;
+    let fromStorage = { supplies: false, eggPack: false };
     try {
       const raw = window.localStorage.getItem(tutorialRewardsStorageKey);
       if (raw) {
@@ -1090,7 +1096,7 @@ export function TamerWorldCanvas({
           supplies: boolean;
           eggPack: boolean;
         }>;
-        return {
+        fromStorage = {
           supplies: parsed.supplies === true,
           eggPack: parsed.eggPack === true,
         };
@@ -1098,10 +1104,20 @@ export function TamerWorldCanvas({
     } catch {
       // Ignore storage access errors
     }
-    return { supplies: false, eggPack: false };
+    return {
+      supplies: fromHud?.supplies === true || fromStorage.supplies,
+      eggPack: fromHud?.eggPack === true || fromStorage.eggPack,
+    };
   });
   const tutorialRewardsClaimedRef = useRef(tutorialRewardsClaimed);
   tutorialRewardsClaimedRef.current = tutorialRewardsClaimed;
+
+  useEffect(() => {
+    return () => {
+      flushPendingLocalHudSave();
+      void flushPendingCloudSaves();
+    };
+  }, []);
   const [hoveredNpcId, setHoveredNpcId] = useState<string | null>(null);
   const hoveredNpcIdRef = useRef<string | null>(null);
   const pendingIncubatorWalkRef = useRef(false);
@@ -1903,6 +1919,10 @@ export function TamerWorldCanvas({
             hatchSizePct
           );
           const nextDigiExpToNext = calcDigimonExpToNext(nextDigiLevel);
+          const cloudNick =
+            typeof rawCloudDigi?.nickname === 'string' && rawCloudDigi.nickname.trim()
+              ? rawCloudDigi.nickname.trim().slice(0, 24)
+              : curBeforeLevels.digimon.nickname;
           const nextDigimon = {
             ...curBeforeLevels.digimon,
             level: nextDigiLevel,
@@ -1916,7 +1936,30 @@ export function TamerWorldCanvas({
             unlockedFormIds: nextUnlockedFormIds,
             hatchGrade: qualityProfile.grade,
             hatchSizePct,
+            ...(cloudNick ? { nickname: cloudNick } : {}),
           };
+
+          const rawCloudTutorial =
+            cloudHud.tutorialRewardsClaimed &&
+            typeof cloudHud.tutorialRewardsClaimed === 'object'
+              ? (cloudHud.tutorialRewardsClaimed as Record<string, unknown>)
+              : null;
+          const mergedTutorial = rawCloudTutorial
+            ? {
+                supplies:
+                  tutorialRewardsClaimedRef.current.supplies ||
+                  rawCloudTutorial.supplies === true,
+                eggPack:
+                  tutorialRewardsClaimedRef.current.eggPack ||
+                  rawCloudTutorial.eggPack === true,
+              }
+            : tutorialRewardsClaimedRef.current;
+          if (
+            mergedTutorial.supplies !== tutorialRewardsClaimedRef.current.supplies ||
+            mergedTutorial.eggPack !== tutorialRewardsClaimedRef.current.eggPack
+          ) {
+            persistTutorialRewardsState(mergedTutorial);
+          }
 
           const syncedProgressState: AccountHudPersistence = {
             ...curBeforeLevels,
@@ -1935,6 +1978,7 @@ export function TamerWorldCanvas({
                 curBeforeLevels.autoFarmVipUntilMs ?? 0,
                 cloudAutoFarmVipUntilMs ?? 0
               ) || null,
+            tutorialRewardsClaimed: mergedTutorial,
             updatedAt: new Date().toISOString(),
           };
           hudAccountRef.current = syncedProgressState;
@@ -1949,6 +1993,35 @@ export function TamerWorldCanvas({
             `[Sistema] Progresso sincronizado com o servidor: Tamer Lv.${nextTamerLevel} · Digimon Lv.${nextDigiLevel} (HP e DS restaurados).`,
             { tone: 'loot' }
           );
+        }
+
+        const rawCloudTutorialSnap =
+          cloudHud.tutorialRewardsClaimed &&
+          typeof cloudHud.tutorialRewardsClaimed === 'object'
+            ? (cloudHud.tutorialRewardsClaimed as Record<string, unknown>)
+            : null;
+        if (rawCloudTutorialSnap) {
+          const nextTutorial = {
+            supplies:
+              tutorialRewardsClaimedRef.current.supplies ||
+              rawCloudTutorialSnap.supplies === true,
+            eggPack:
+              tutorialRewardsClaimedRef.current.eggPack ||
+              rawCloudTutorialSnap.eggPack === true,
+          };
+          if (
+            nextTutorial.supplies !== tutorialRewardsClaimedRef.current.supplies ||
+            nextTutorial.eggPack !== tutorialRewardsClaimedRef.current.eggPack
+          ) {
+            persistTutorialRewardsState(nextTutorial);
+            const updatedHudTut: AccountHudPersistence = {
+              ...hudAccountRef.current,
+              tutorialRewardsClaimed: nextTutorial,
+            };
+            hudAccountRef.current = updatedHudTut;
+            setHudAccount(updatedHudTut);
+            saveAccountHudState(updatedHudTut, true, { skipCloudSync: true });
+          }
         }
 
         const curVipUntilMs = hudAccountRef.current.autoFarmVipUntilMs ?? 0;
@@ -3808,15 +3881,18 @@ export function TamerWorldCanvas({
               ? `Ranking #${myRaidRank}${myRaidRank <= 5 ? ' (Top 5 · chance de Evoluter 10%)' : ' (fora do Top 5)'}`
               : 'Participação registrada';
 
-          commitHudAccount({
-            ...prevAcc,
-            tamer: tamerRes.next,
-            digimon: digiRes.next,
-            bits: prevAcc.bits + bitsDrop,
-            inventory: nextInventory,
-            defeatedEnemiesTotal: prevAcc.defeatedEnemiesTotal + 1,
-            updatedAt: new Date().toISOString(),
-          });
+          commitHudAccount(
+            {
+              ...prevAcc,
+              tamer: tamerRes.next,
+              digimon: digiRes.next,
+              bits: prevAcc.bits + bitsDrop,
+              inventory: nextInventory,
+              defeatedEnemiesTotal: prevAcc.defeatedEnemiesTotal + 1,
+              updatedAt: new Date().toISOString(),
+            },
+            dropRes.grantedDrops.length > 0
+          );
 
           if (dropRes.grantedDrops.length > 0) {
             pushDropRewardToasts(dropRes.grantedDrops, 'Kuwagamon (Boss Raid)');
@@ -4035,17 +4111,19 @@ export function TamerWorldCanvas({
     const step1 = addInventoryItem(acc.inventory, breadPayload, safeSlotLimit);
     const step2 = addInventoryItem(step1.next, vitaminPayload, safeSlotLimit);
 
+    const nextRewards = {
+      ...tutorialRewardsClaimedRef.current,
+      supplies: true,
+    };
+    persistTutorialRewardsState(nextRewards);
     commitHudAccount(
       {
         ...acc,
         inventory: step2.next,
+        tutorialRewardsClaimed: nextRewards,
       },
       true
     );
-    persistTutorialRewardsState({
-      ...tutorialRewardsClaimedRef.current,
-      supplies: true,
-    });
     playDigitalTone('confirm', soundEnabled);
     pushChatMessage(
       'system',
@@ -4104,17 +4182,19 @@ export function TamerWorldCanvas({
     );
     const step2 = addInventoryItem(step1.next, fireDataPayload, safeSlotLimit);
 
+    const nextRewards = {
+      ...tutorialRewardsClaimedRef.current,
+      eggPack: true,
+    };
+    persistTutorialRewardsState(nextRewards);
     commitHudAccount(
       {
         ...acc,
         inventory: step2.next,
+        tutorialRewardsClaimed: nextRewards,
       },
       true
     );
-    persistTutorialRewardsState({
-      ...tutorialRewardsClaimedRef.current,
-      eggPack: true,
-    });
     playIncubatorSuccessSound(soundEnabled);
     pushChatMessage(
       'system',
@@ -5215,7 +5295,7 @@ export function TamerWorldCanvas({
         hudAccountRef.current,
         targetUnlockedSlots
       );
-      commitHudAccount(res.next);
+      commitHudAccount(res.next, true);
       playDigitalTone('confirm', soundEnabled);
       pushChatMessage(
         'system',
@@ -5236,11 +5316,14 @@ export function TamerWorldCanvas({
       const unlockedSlots = getUnlockedInventorySlots(prevAcc);
       const addRes = addInventoryItem(prevAcc.inventory, payload, unlockedSlots);
       if (addRes.added) {
-        commitHudAccount({
-          ...prevAcc,
-          inventory: addRes.next,
-          updatedAt: new Date().toISOString(),
-        });
+        commitHudAccount(
+          {
+            ...prevAcc,
+            inventory: addRes.next,
+            updatedAt: new Date().toISOString(),
+          },
+          true
+        );
       }
 
       const simulatedReward: RolledDropReward = {
@@ -5377,11 +5460,14 @@ export function TamerWorldCanvas({
         return;
       }
 
-      commitHudAccount({
-        ...prevAcc,
-        inventory: addRes.next,
-        updatedAt: new Date().toISOString(),
-      });
+      commitHudAccount(
+        {
+          ...prevAcc,
+          inventory: addRes.next,
+          updatedAt: new Date().toISOString(),
+        },
+        true
+      );
       playDigitalTone('confirm', soundEnabled);
       pushDropRewardToasts(
         [
@@ -5435,11 +5521,14 @@ export function TamerWorldCanvas({
         );
         return;
       }
-      commitHudAccount({
-        ...prevAcc,
-        inventory: inv,
-        updatedAt: new Date().toISOString(),
-      });
+      commitHudAccount(
+        {
+          ...prevAcc,
+          inventory: inv,
+          updatedAt: new Date().toISOString(),
+        },
+        true
+      );
       playDigitalTone('confirm', soundEnabled);
       pushChatMessage(
         'system',
@@ -5483,11 +5572,14 @@ export function TamerWorldCanvas({
         );
         return;
       }
-      commitHudAccount({
-        ...prevAcc,
-        inventory: inv,
-        updatedAt: new Date().toISOString(),
-      });
+      commitHudAccount(
+        {
+          ...prevAcc,
+          inventory: inv,
+          updatedAt: new Date().toISOString(),
+        },
+        true
+      );
       playDigitalTone('confirm', soundEnabled);
       pushChatMessage(
         'system',
@@ -5599,11 +5691,14 @@ export function TamerWorldCanvas({
   const handleAdminClearInventory = useCallback(() => {
     if (!isGM) return;
     const prevAcc = hudAccountRef.current;
-    commitHudAccount({
-      ...prevAcc,
-      inventory: [],
-      updatedAt: new Date().toISOString(),
-    });
+    commitHudAccount(
+      {
+        ...prevAcc,
+        inventory: [],
+        updatedAt: new Date().toISOString(),
+      },
+      true
+    );
     playDigitalTone('click', soundEnabled);
     pushChatMessage('system', '[GM] Mochila esvaziada para testes.', {
       tone: 'info',
@@ -7469,7 +7564,7 @@ export function TamerWorldCanvas({
               defeatedEnemiesTotal: prevAcc.defeatedEnemiesTotal + 1,
               updatedAt: new Date().toISOString(),
             };
-            commitHudAccount(nextAcc);
+            commitHudAccount(nextAcc, dropRes.grantedDrops.length > 0);
 
             if (playerGuildRef.current) {
               const gId = playerGuildRef.current.guildId;
@@ -9826,6 +9921,92 @@ export function TamerWorldCanvas({
       return;
     }
 
+    if (item.itemKey === 'bag_expander_6') {
+      const currentSlots = getUnlockedInventorySlots(cur);
+      if (currentSlots >= INVENTORY_TOTAL_SLOTS) {
+        playDigitalTone('error', soundEnabled);
+        pushChatMessage(
+          'system',
+          `Seu Inventário já está no máximo (${INVENTORY_TOTAL_SLOTS}/${INVENTORY_TOTAL_SLOTS} slots).`,
+          { tone: 'warning' }
+        );
+        return;
+      }
+      const nextSlots = Math.min(INVENTORY_TOTAL_SLOTS, currentSlots + 6);
+      const updatedInv = [...cur.inventory];
+      if (updatedInv[idx].quantity > 1) {
+        updatedInv[idx] = {
+          ...updatedInv[idx],
+          quantity: updatedInv[idx].quantity - 1,
+        };
+      } else {
+        updatedInv.splice(idx, 1);
+      }
+      commitHudAccount(
+        {
+          ...cur,
+          inventory: updatedInv,
+          unlockedInventorySlots: nextSlots,
+          updatedAt: new Date().toISOString(),
+        },
+        true
+      );
+      playDigitalTone('confirm', soundEnabled);
+      pushChatMessage(
+        'system',
+        `Mochila expandida! Agora você tem ${nextSlots}/${INVENTORY_TOTAL_SLOTS} slots liberados.`,
+        { tone: 'loot' }
+      );
+      pushNotification(
+        'Mochila Expandida!',
+        `Seu Inventário agora possui ${nextSlots} slots permanentes.`
+      );
+      return;
+    }
+
+    if (item.itemKey === 'archive_expander_6') {
+      const currentArch = getUnlockedArchiveSlots(cur);
+      if (currentArch >= ARCHIVE_TOTAL_SLOTS) {
+        playDigitalTone('error', soundEnabled);
+        pushChatMessage(
+          'system',
+          `Seu Digimon Archive já está no máximo (${ARCHIVE_TOTAL_SLOTS}/${ARCHIVE_TOTAL_SLOTS} slots).`,
+          { tone: 'warning' }
+        );
+        return;
+      }
+      const nextArch = Math.min(ARCHIVE_TOTAL_SLOTS, currentArch + 6);
+      const updatedInv = [...cur.inventory];
+      if (updatedInv[idx].quantity > 1) {
+        updatedInv[idx] = {
+          ...updatedInv[idx],
+          quantity: updatedInv[idx].quantity - 1,
+        };
+      } else {
+        updatedInv.splice(idx, 1);
+      }
+      commitHudAccount(
+        {
+          ...cur,
+          inventory: updatedInv,
+          unlockedArchiveSlots: nextArch,
+          updatedAt: new Date().toISOString(),
+        },
+        true
+      );
+      playDigitalTone('confirm', soundEnabled);
+      pushChatMessage(
+        'system',
+        `Digimon Archive expandido! Agora você tem ${nextArch}/${ARCHIVE_TOTAL_SLOTS} slots liberados.`,
+        { tone: 'loot' }
+      );
+      pushNotification(
+        'Archive Expandido!',
+        `Seu Digimon Archive agora possui ${nextArch} slots permanentes.`
+      );
+      return;
+    }
+
     const activeName = activeFormRef.current.name;
     let nextHp = cur.digimon.hp;
     let nextDs = cur.digimon.ds;
@@ -9864,11 +10045,14 @@ export function TamerWorldCanvas({
       updatedInv.splice(idx, 1);
     }
 
-    commitHudAccount({
-      ...cur,
-      digimon: { ...cur.digimon, hp: nextHp, ds: nextDs },
-      inventory: updatedInv,
-    });
+    commitHudAccount(
+      {
+        ...cur,
+        digimon: { ...cur.digimon, hp: nextHp, ds: nextDs },
+        inventory: updatedInv,
+      },
+      true
+    );
     playDigitalTone('confirm', soundEnabled);
 
     const sim = simRef.current;
@@ -9922,7 +10106,7 @@ export function TamerWorldCanvas({
     } else {
       updatedInv.splice(idx, 1);
     }
-    commitHudAccount({ ...cur, inventory: updatedInv });
+    commitHudAccount({ ...cur, inventory: updatedInv }, true);
     playDigitalTone('click', soundEnabled);
   }
 
@@ -9953,7 +10137,7 @@ export function TamerWorldCanvas({
       }
     }
     if (!changed) return;
-    commitHudAccount({ ...cur, inventory: updatedInv });
+    commitHudAccount({ ...cur, inventory: updatedInv }, true);
     playDigitalTone('click', soundEnabled);
   }
 
@@ -9987,7 +10171,7 @@ export function TamerWorldCanvas({
       if (rarDiff !== 0) return rarDiff;
       return a.name.localeCompare(b.name, 'pt-BR');
     });
-    commitHudAccount({ ...cur, inventory: sorted });
+    commitHudAccount({ ...cur, inventory: sorted }, true);
     playDigitalTone('confirm', soundEnabled);
   }
 
@@ -10009,7 +10193,7 @@ export function TamerWorldCanvas({
       }
       return;
     }
-    commitHudAccount(res.next);
+    commitHudAccount(res.next, true);
     playDigitalTone('confirm', soundEnabled);
     const slotLabel = res.equippedItem.equipSlot
       ? EQUIPMENT_SLOT_LABELS[res.equippedItem.equipSlot]
@@ -10029,7 +10213,7 @@ export function TamerWorldCanvas({
       return;
     }
     if (!res.unequippedItem) return;
-    commitHudAccount(res.next);
+    commitHudAccount(res.next, true);
     playDigitalTone('click', soundEnabled);
     pushChatMessage(
       'system',
@@ -10079,11 +10263,14 @@ export function TamerWorldCanvas({
       return;
     }
 
-    commitHudAccount({
-      ...cur,
-      bits: cur.bits - tpl.priceBits,
-      inventory: res.next,
-    });
+    commitHudAccount(
+      {
+        ...cur,
+        bits: cur.bits - tpl.priceBits,
+        inventory: res.next,
+      },
+      true
+    );
     playDigitalTone('confirm', soundEnabled);
     pushChatMessage(
       'system',
@@ -10138,11 +10325,14 @@ export function TamerWorldCanvas({
       return { ok: false, message: msg };
     }
 
-    commitHudAccount({
-      ...cur,
-      bits: cur.bits - totalPrice,
-      inventory: res.next,
-    });
+    commitHudAccount(
+      {
+        ...cur,
+        bits: cur.bits - totalPrice,
+        inventory: res.next,
+      },
+      true
+    );
     playDigitalTone('confirm', soundEnabled);
 
     const qtyLabel = safeQty > 1 ? ` x${safeQty}` : '';
@@ -10384,12 +10574,15 @@ export function TamerWorldCanvas({
       }
       const nextSlots = Math.min(INVENTORY_TOTAL_SLOTS, currentSlots + offer.reward.slots);
       const nextDCoin = cur.dCoin - offer.priceDwCoin;
-      commitHudAccount({
-        ...cur,
-        dCoin: nextDCoin,
-        unlockedInventorySlots: nextSlots,
-        updatedAt: new Date().toISOString(),
-      });
+      commitHudAccount(
+        {
+          ...cur,
+          dCoin: nextDCoin,
+          unlockedInventorySlots: nextSlots,
+          updatedAt: new Date().toISOString(),
+        },
+        true
+      );
       void recordDwCoinSpendTransaction({
         username: selection.accountUsername || actorUid,
         tamerName: selection.tamerName,
@@ -10414,12 +10607,15 @@ export function TamerWorldCanvas({
       }
       const nextArch = Math.min(ARCHIVE_TOTAL_SLOTS, currentArch + offer.reward.slots);
       const nextDCoin = cur.dCoin - offer.priceDwCoin;
-      commitHudAccount({
-        ...cur,
-        dCoin: nextDCoin,
-        unlockedArchiveSlots: nextArch,
-        updatedAt: new Date().toISOString(),
-      });
+      commitHudAccount(
+        {
+          ...cur,
+          dCoin: nextDCoin,
+          unlockedArchiveSlots: nextArch,
+          updatedAt: new Date().toISOString(),
+        },
+        true
+      );
       void recordDwCoinSpendTransaction({
         username: selection.accountUsername || actorUid,
         tamerName: selection.tamerName,
@@ -10541,7 +10737,7 @@ export function TamerWorldCanvas({
         message: res.message,
       };
     }
-    commitHudAccount(res.next);
+    commitHudAccount(res.next, true);
     if (res.outcome === 'success') {
       playIncubatorSuccessSound(soundEnabled);
       pushChatMessage('system', res.message, { tone: 'loot' });
@@ -10572,7 +10768,7 @@ export function TamerWorldCanvas({
       playDigitalTone('error', soundEnabled);
       return { ok: false, message: res.message };
     }
-    commitHudAccount(res.next);
+    commitHudAccount(res.next, true);
     pushChatMessage('system', res.message, { tone: 'loot' });
 
     if (res.hatchedFormId) {
@@ -10612,7 +10808,7 @@ export function TamerWorldCanvas({
         nickname
       );
       if (res.ok) {
-        commitHudAccount(res.next);
+        commitHudAccount(res.next, true);
         const clean = nickname.trim().slice(0, 16);
         pushChatMessage(
           'system',
@@ -10637,7 +10833,7 @@ export function TamerWorldCanvas({
       playDigitalTone('error', soundEnabled);
       return { ok: false, message: res.message };
     }
-    commitHudAccount(res.next);
+    commitHudAccount(res.next, true);
     playDigitalTone('confirm', soundEnabled);
     pushChatMessage('system', res.message, { tone: 'loot' });
     return {
@@ -10704,7 +10900,7 @@ export function TamerWorldCanvas({
       playDigitalTone('error', soundEnabled);
       return { ok: false, message: res.error ?? 'Não foi possível liberar este slot.' };
     }
-    commitHudAccount(res.next);
+    commitHudAccount(res.next, true);
     playDigitalTone('click', soundEnabled);
     const msg = `${res.releasedName ?? 'Digimon'} liberado do Slot #${slotIndex + 1} do Digimon Archive.`;
     pushChatMessage('system', `[Digimon Archive] ${msg}`, { tone: 'info' });
@@ -10755,7 +10951,7 @@ export function TamerWorldCanvas({
         message: res.error ?? 'Não foi possível enviar para a equipe.',
       };
     }
-    commitHudAccount(res.next);
+    commitHudAccount(res.next, true);
     playDigitalTone('confirm', soundEnabled);
     const msg = `${res.movedName} enviado para o Círculo Reserva ${res.partySlotNumber} abaixo da foto do Digimon!`;
     pushChatMessage('system', `[Equipe] ${msg}`, { tone: 'level' });
@@ -10771,7 +10967,7 @@ export function TamerWorldCanvas({
         message: res.error ?? 'Não foi possível guardar no Archive.',
       };
     }
-    commitHudAccount(res.next);
+    commitHudAccount(res.next, true);
     playDigitalTone('confirm', soundEnabled);
     const msg = `${res.movedName} guardado no Slot #${res.archiveSlotNumber} do Digimon Archive.`;
     pushChatMessage('system', `[Digimon Archive] ${msg}`, { tone: 'info' });
@@ -12063,8 +12259,14 @@ export function TamerWorldCanvas({
             // Ignore storage restrictions
           }
           const resetRewards = { supplies: false, eggPack: false };
-          tutorialRewardsClaimedRef.current = resetRewards;
-          setTutorialRewardsClaimed(resetRewards);
+          persistTutorialRewardsState(resetRewards);
+          commitHudAccount(
+            {
+              ...hudAccountRef.current,
+              tutorialRewardsClaimed: resetRewards,
+            },
+            true
+          );
           tutorialAutoTriggeredRef.current = false;
           playDigitalTone('confirm', soundEnabled);
           pushChatMessage(

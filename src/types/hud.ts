@@ -226,6 +226,10 @@ export interface AccountHudPersistence {
   autoFarmVipUnlocked?: boolean;
   /** Timestamp (ms) até quando o VIP Auto Farm (30 dias) está ativo. */
   autoFarmVipUntilMs?: number | null;
+  tutorialRewardsClaimed?: {
+    supplies: boolean;
+    eggPack: boolean;
+  };
   defeatedEnemiesTotal: number;
   updatedAt: string;
 }

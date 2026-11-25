@@ -19,6 +19,7 @@ import {
   calcDigimonMaxDs,
   calcDigimonMaxHp,
   DIGIMON_EVOLUTION_CHAINS,
+  MAX_GAME_LEVEL,
   sanitizeUnlockedFormIdsForDigimon,
 } from './hudGameService';
 
@@ -65,7 +66,7 @@ function sanitizeDigimonEntryList(
     );
     const level =
       typeof raw.level === 'number' && Number.isFinite(raw.level)
-        ? Math.max(1, Math.min(99, Math.floor(raw.level)))
+        ? Math.max(1, Math.min(MAX_GAME_LEVEL, Math.floor(raw.level)))
         : 1;
     const qualityProfile = getHatchQualityProfile(raw.hatchGrade);
     const sizePct = clampHatchSizePct(qualityProfile.grade, raw.hatchSizePct);
@@ -176,7 +177,7 @@ function buildNewDigimonEntry(
   const safeSizePct = clampHatchSizePct(qualityProfile.grade, sizePct);
   const level = Math.max(
     1,
-    Math.min(99, Math.floor(levelOverride ?? Math.max(1, form.unlockLevel)))
+    Math.min(MAX_GAME_LEVEL, Math.floor(levelOverride ?? Math.max(1, form.unlockLevel)))
   );
   const maxHp = calcDigimonMaxHp(level, form.id, qualityProfile.grade, safeSizePct);
   const maxDs = calcDigimonMaxDs(level, form.id, qualityProfile.grade, safeSizePct);

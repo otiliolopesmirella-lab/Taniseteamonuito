@@ -168,11 +168,11 @@ export const DIRTY_DOZEN_PAYLOADS: readonly DirtyDozenCase[] = [
     path: '/players/userA',
     payload: {
       hudState: {
-        inventory: Array.from({ length: 30 }, (_, i) => ({ id: `poison_${i}` })),
+        inventory: Array.from({ length: 110 }, (_, i) => ({ id: `poison_${i}` })),
       },
     },
     expected: 'PERMISSION_DENIED',
-    enforcedBy: 'isValidHudState() inventory.size() <= 24',
+    enforcedBy: 'isValidHudState() inventory.size() <= 100',
   },
   {
     id: 13,
