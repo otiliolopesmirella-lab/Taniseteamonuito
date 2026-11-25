@@ -317,8 +317,12 @@
         },
         "mapId": {
           "type": "string",
-          "enum": ["dats-center", "hunting-plains", "data-forest", "digi-mountain", "digital-desert", "data-sea", "digimon-island", "dark-area", "virtual-world"],
+          "enum": ["dats-center", "d-terminal", "hunting-plains", "data-forest", "digi-mountain", "digital-desert", "data-sea", "digimon-island", "dark-area", "virtual-world"],
           "description": "Current world map where the player is located."
+        },
+        "channelId": {
+          "type": "number",
+          "description": "Active map channel number (1..5) enabling DMO-style multi-channel instances per map."
         },
         "worldX": {
           "type": "number",
@@ -992,7 +996,7 @@
         },
         "members": {
           "type": "object",
-          "description": "Map of member UID to zero-PII Party member snapshot (Tamer photo, Digimon form/name, level, HP/maxHp, mapId)."
+          "description": "Map of member UID to zero-PII Party member snapshot (Tamer photo, Digimon form/name, level, HP/maxHp, mapId, channelId)."
         },
         "createdAt": {
           "type": "string",
@@ -1233,7 +1237,7 @@
         },
         "type": {
           "type": "string",
-          "enum": ["spend", "recharge", "gm_grant", "gm_deduct"],
+          "enum": ["spend", "recharge", "gm_grant", "gm_deduct", "referral_bonus"],
           "description": "Ledger movement direction/origin."
         },
         "dwCoinAmount": {
@@ -1706,6 +1710,195 @@
         "soldAt",
         "updatedAt"
       ]
+    },
+    "ReferralCode": {
+      "title": "ReferralCode",
+      "description": "Immutable zero-PII unique invite code mapping (code -> ownerUid) generated once per verified player account.",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 12,
+          "pattern": "^[A-Z0-9]+$",
+          "description": "Normalized uppercase alphanumeric invite code."
+        },
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the player owning this invite code."
+        },
+        "tamerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24,
+          "description": "Public Tamer display name of the invite code owner."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the invite code was provisioned."
+        }
+      },
+      "required": ["code", "ownerUid", "tamerName", "createdAt"]
+    },
+    "ReferralProfile": {
+      "title": "ReferralProfile",
+      "description": "Public zero-PII inviter summary and monthly/all-time leaderboard counters per player account.",
+      "type": "object",
+      "properties": {
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the inviter."
+        },
+        "inviteCode": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 12,
+          "pattern": "^[A-Z0-9]+$",
+          "description": "Immutable unique invite code owned by this player."
+        },
+        "tamerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24,
+          "description": "Public Tamer display name."
+        },
+        "characterId": {
+          "type": "string",
+          "enum": ["kai", "ren", "hina", "yuna"],
+          "description": "Selected Tamer avatar ID."
+        },
+        "tamerPhotoUrl": {
+          "type": "string",
+          "maxLength": 48000,
+          "description": "Optional compressed square Tamer portrait photo data URL (or null)."
+        },
+        "tamerCoverUrl": {
+          "type": "string",
+          "maxLength": 48000,
+          "description": "Optional compressed 3:1 Rank cover banner data URL (or null)."
+        },
+        "isGm": {
+          "type": "boolean",
+          "description": "Server-verified GM badge flag."
+        },
+        "totalInvites": {
+          "type": "number",
+          "description": "Cumulative all-time count of accounts that used this player's invite code or link."
+        },
+        "monthKey": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 7,
+          "pattern": "^[0-9]{4}-[0-9]{2}$",
+          "description": "Active ranking month key (YYYY-MM, America/Sao_Paulo) for monthlyInvites and monthlyCommissionEarned."
+        },
+        "monthlyInvites": {
+          "type": "number",
+          "description": "Count of invited accounts registered during monthKey."
+        },
+        "totalCommissionEarned": {
+          "type": "number",
+          "description": "Cumulative 10% DL Din commission earned from referred players' recharges."
+        },
+        "monthlyCommissionEarned": {
+          "type": "number",
+          "description": "10% DL Din commission earned during monthKey."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the referral profile was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest referral profile update."
+        }
+      },
+      "required": [
+        "ownerUid",
+        "inviteCode",
+        "tamerName",
+        "characterId",
+        "tamerPhotoUrl",
+        "tamerCoverUrl",
+        "isGm",
+        "totalInvites",
+        "monthKey",
+        "monthlyInvites",
+        "totalCommissionEarned",
+        "monthlyCommissionEarned",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ReferralClaim": {
+      "title": "ReferralClaim",
+      "description": "Immutable one-time referral link binding a referred account (docId = referredUid) to its inviter (referrerUid) so every DL Din recharge awards 10% to the inviter.",
+      "type": "object",
+      "properties": {
+        "referredUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the invited player."
+        },
+        "referredName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24,
+          "description": "Display Tamer name of the invited player."
+        },
+        "referrerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the inviting player (strictly != referredUid)."
+        },
+        "referrerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24,
+          "description": "Display Tamer name of the inviting player."
+        },
+        "inviteCode": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 12,
+          "pattern": "^[A-Z0-9]+$",
+          "description": "Invite code redeemed by the invited player."
+        },
+        "monthKey": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 7,
+          "pattern": "^[0-9]{4}-[0-9]{2}$",
+          "description": "Month key (YYYY-MM) when the invite code was redeemed."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the invite code was claimed."
+        }
+      },
+      "required": [
+        "referredUid",
+        "referredName",
+        "referrerUid",
+        "referrerName",
+        "inviteCode",
+        "monthKey",
+        "createdAt"
+      ]
     }
   },
   "firestore": {
@@ -1796,6 +1989,18 @@
     "/playerMarketListings/{listingId}": {
       "schema": { "$ref": "#/entities/PlayerMarketListing" },
       "description": "Global player-to-player marketplace listings in DATS Center with a server-enforced 2-minute public pre-listing window before purchase unlocks."
+    },
+    "/referralCodes/{code}": {
+      "schema": { "$ref": "#/entities/ReferralCode" },
+      "description": "Unique zero-PII invite code registry mapping uppercase invite codes to their owning player UID."
+    },
+    "/referralProfiles/{userId}": {
+      "schema": { "$ref": "#/entities/ReferralProfile" },
+      "description": "Public zero-PII inviter profiles powering the monthly and all-time Invites ranking and player referral dashboard."
+    },
+    "/referralClaims/{referredUid}": {
+      "schema": { "$ref": "#/entities/ReferralClaim" },
+      "description": "Immutable one-time referral claims linking each invited account to its inviter for instant counting and 10% DL Din recharge commissions."
     }
   }
 }

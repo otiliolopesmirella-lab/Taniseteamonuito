@@ -18,6 +18,7 @@ export interface RegisterCredentials {
   email: string;
   password: string;
   confirmPassword: string;
+  referralCode?: string;
 }
 
 export interface AuthUserSummary {

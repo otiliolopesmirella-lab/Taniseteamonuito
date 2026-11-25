@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Crown,
+  Gift,
   ImagePlus,
   Loader2,
   RefreshCw,
@@ -17,6 +18,12 @@ import {
   type GuildRankingRecord,
   type PlayerRankingRecord,
 } from '../../services/rankingsService';
+import {
+  fetchReferralRankings,
+  formatReferralMonthLabel,
+  getCurrentReferralMonthKey,
+  type ReferralProfileRecord,
+} from '../../services/referralService';
 import type { RemoteWorldPlayer } from '../../services/worldPresenceService';
 import { getDigimonFormProfile } from '../../types/digimon';
 import {
@@ -28,9 +35,10 @@ import { TamerPortraitAvatar } from './TamerPortraitAvatar';
 const RANKS_ICON_SRC =
   '/assets/aistudio/file_000000003018820e80f1f96c3e36d9ef_597f2c97.png';
 
-type RankCategoryTab = 'tamers' | 'digimons' | 'guilds';
+type RankCategoryTab = 'tamers' | 'digimons' | 'guilds' | 'invites';
 type DigimonSortMode = 'cp' | 'level';
 type GuildSortMode = 'level' | 'totalKills' | 'dailyKills';
+type InviteRankMode = 'monthly' | 'total';
 
 interface RanksModalProps {
   selfPlayer: PlayerRankingRecord;
@@ -89,9 +97,19 @@ export function RanksModal({
   const [activeTab, setActiveTab] = useState<RankCategoryTab>('tamers');
   const [digimonSort, setDigimonSort] = useState<DigimonSortMode>('cp');
   const [guildSort, setGuildSort] = useState<GuildSortMode>('level');
+  const [inviteSort, setInviteSort] = useState<InviteRankMode>('monthly');
   const [loading, setLoading] = useState(true);
   const [players, setPlayers] = useState<PlayerRankingRecord[]>([]);
   const [guilds, setGuilds] = useState<GuildRankingRecord[]>([]);
+  const [monthlyInviters, setMonthlyInviters] = useState<ReferralProfileRecord[]>(
+    []
+  );
+  const [totalInviters, setTotalInviters] = useState<ReferralProfileRecord[]>(
+    []
+  );
+  const [inviteMonthLabel, setInviteMonthLabel] = useState<string>(() =>
+    formatReferralMonthLabel(getCurrentReferralMonthKey())
+  );
   const [uploadingCover, setUploadingCover] = useState(false);
   const [coverFeedback, setCoverFeedback] = useState<{
     type: 'ok' | 'err';
@@ -145,13 +163,25 @@ export function RanksModal({
   const loadRankings = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchServerRankings({
-        currentSelfPlayer: selfPlayer,
-        currentPlayerGuild: playerGuild,
-        remotePlayers,
-      });
+      const [data, refRank] = await Promise.all([
+        fetchServerRankings({
+          currentSelfPlayer: selfPlayer,
+          currentPlayerGuild: playerGuild,
+          remotePlayers,
+        }),
+        fetchReferralRankings({
+          tamerName: selfPlayer.tamerName,
+          characterId: selfPlayer.characterId,
+          tamerPhotoUrl: selfPlayer.tamerPhotoUrl ?? null,
+          tamerCoverUrl: selfPlayer.tamerCoverUrl ?? null,
+          isGm: selfPlayer.isGm,
+        }),
+      ]);
       setPlayers(data.players);
       setGuilds(data.guilds);
+      setMonthlyInviters(refRank.monthlyRanking);
+      setTotalInviters(refRank.totalRanking);
+      setInviteMonthLabel(refRank.monthLabel);
     } finally {
       setLoading(false);
     }
@@ -210,6 +240,13 @@ export function RanksModal({
   const myGuildRankIdx = playerGuild
     ? sortedGuilds.findIndex((g) => g.guildId === playerGuild.guildId)
     : -1;
+  const displayedInviters =
+    inviteSort === 'monthly' ? monthlyInviters : totalInviters;
+  const myInviteRankIdx = displayedInviters.findIndex(
+    (entry) => entry.ownerUid === selfPlayer.userId
+  );
+  const myInviteEntry =
+    myInviteRankIdx >= 0 ? displayedInviters[myInviteRankIdx] : null;
 
   return (
     <div
@@ -238,7 +275,7 @@ export function RanksModal({
                 HALL DOS RANKS
               </h2>
               <p className="text-[10.5px] font-bold text-amber-200/90">
-                Classificação Oficial · Tamers, Digimons e Guildas
+                Classificação Oficial · Tamers, Digimons, Guildas e Convites
               </p>
             </div>
           </div>
@@ -269,12 +306,13 @@ export function RanksModal({
           </div>
         </div>
 
-        {/* Primary 3-Tab Navigation: Tamers | Digimons | Guilds */}
-        <div className="grid shrink-0 grid-cols-3 gap-1.5 border-b border-cyan-400/25 bg-[#041438] p-2.5">
+        {/* Primary 4-Tab Navigation: Tamers | Digimons | Guilds | Convites */}
+        <div className="grid shrink-0 grid-cols-4 gap-1.5 border-b border-cyan-400/25 bg-[#041438] p-2.5">
           {[
             { id: 'tamers' as const, label: 'Tamers', icon: Users },
             { id: 'digimons' as const, label: 'Digimons', icon: Sparkles },
             { id: 'guilds' as const, label: 'Guildas', icon: Shield },
+            { id: 'invites' as const, label: 'Convites', icon: Gift },
           ].map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -286,14 +324,14 @@ export function RanksModal({
                   onPlayTone('click');
                   setActiveTab(tab.id);
                 }}
-                className={`flex min-h-[38px] items-center justify-center gap-1.5 rounded-xl border text-xs font-black transition ${
+                className={`flex min-h-[38px] items-center justify-center gap-1 rounded-xl border px-1 text-[11px] font-black transition sm:gap-1.5 sm:text-xs ${
                   active
                     ? 'border-amber-300 bg-gradient-to-b from-[#1758cb] to-[#0a2b73] text-amber-100 shadow-[0_0_12px_rgba(251,191,36,0.3)]'
                     : 'border-cyan-400/25 bg-[#061c4b] text-cyan-200/80 hover:border-cyan-300/60'
                 }`}
               >
-                <Icon className="h-3.5 w-3.5" />
-                <span>{tab.label}</span>
+                <Icon className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{tab.label}</span>
               </button>
             );
           })}
@@ -395,6 +433,51 @@ export function RanksModal({
                     {opt.label}
                   </button>
                 ))}
+              </div>
+            </>
+          )}
+
+          {activeTab === 'invites' && (
+            <>
+              <span className="font-bold text-cyan-100">
+                Sua posição:{' '}
+                <strong className="font-black tabular-nums text-amber-300">
+                  {myInviteRankIdx >= 0 ? `#${myInviteRankIdx + 1}` : '—'}
+                </strong>{' '}
+                ·{' '}
+                {inviteSort === 'monthly'
+                  ? `${myInviteEntry?.effectiveMonthlyInvites ?? 0} no mês`
+                  : `${myInviteEntry?.totalInvites ?? 0} total`}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onPlayTone('click');
+                    setInviteSort('monthly');
+                  }}
+                  className={`rounded-lg border px-2 py-1 text-[10px] font-black ${
+                    inviteSort === 'monthly'
+                      ? 'border-amber-300 bg-amber-500/25 text-amber-100'
+                      : 'border-cyan-400/30 bg-[#041130] text-slate-300'
+                  }`}
+                >
+                  Mensal ({inviteMonthLabel})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onPlayTone('click');
+                    setInviteSort('total');
+                  }}
+                  className={`rounded-lg border px-2 py-1 text-[10px] font-black ${
+                    inviteSort === 'total'
+                      ? 'border-amber-300 bg-amber-500/25 text-amber-100'
+                      : 'border-cyan-400/30 bg-[#041130] text-slate-300'
+                  }`}
+                >
+                  Geral (Total)
+                </button>
               </div>
             </>
           )}
@@ -711,6 +794,119 @@ export function RanksModal({
                 );
               })
             ))}
+
+          {/* INVITES TAB (Mensal & Geral) */}
+          {activeTab === 'invites' && (
+            <>
+              <div className="rounded-xl border border-amber-300/45 bg-gradient-to-r from-[#241604]/85 via-[#071e52]/95 to-[#041336]/95 px-3 py-2 text-[10.5px] text-sky-100">
+                <span className="font-black text-amber-200">
+                  {inviteSort === 'monthly'
+                    ? `Rank Mensal de Convites — ${inviteMonthLabel}`
+                    : 'Rank Geral de Convites (Todos os Tempos)'}
+                </span>
+                <p className="mt-0.5 text-[10px] text-sky-200/85">
+                  Compartilhe seu link na aba <strong>Convites</strong> em{' '}
+                  <strong>Amigos</strong>. Cada conta indicada conta na hora e
+                  rende <strong>10% em DL Din</strong> nas recargas do amigo!
+                </p>
+              </div>
+
+              {displayedInviters.length === 0 ? (
+                <div className="rounded-xl border border-cyan-400/30 bg-[#041335] p-6 text-center">
+                  <Gift className="mx-auto h-8 w-8 text-amber-300" />
+                  <p className="mt-2 text-sm font-black text-white">
+                    Nenhum convite registrado neste período ainda
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-300">
+                    Seja o primeiro a aparecer no topo compartilhando seu link
+                    de convite em Amigos → Convites!
+                  </p>
+                </div>
+              ) : (
+                displayedInviters.map((entry, idx) => {
+                  const rank = idx + 1;
+                  const isSelf = entry.ownerUid === selfPlayer.userId;
+                  const coverUrl = isValidCoverPhotoDataUrl(entry.tamerCoverUrl)
+                    ? entry.tamerCoverUrl
+                    : null;
+                  const primaryCount =
+                    inviteSort === 'monthly'
+                      ? entry.effectiveMonthlyInvites
+                      : entry.totalInvites;
+                  return (
+                    <div
+                      key={`inv-${entry.ownerUid}`}
+                      className={`relative flex items-center gap-2.5 overflow-hidden rounded-xl border p-2.5 transition ${
+                        isSelf
+                          ? 'border-amber-300/80 bg-gradient-to-r from-[#133f94] to-[#082258] shadow-[0_0_14px_rgba(251,191,36,0.2)]'
+                          : 'border-cyan-400/25 bg-[#041335]/90'
+                      }`}
+                    >
+                      {coverUrl && (
+                        <>
+                          <img
+                            src={coverUrl}
+                            alt=""
+                            aria-hidden="true"
+                            className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-55"
+                          />
+                          <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#030d27]/88 via-[#041335]/72 to-[#030d27]/90" />
+                        </>
+                      )}
+
+                      <div className="relative z-10">
+                        <RankMedalBadge rank={rank} />
+                      </div>
+
+                      <div className="relative z-10 shrink-0 rounded-full border border-cyan-300/60 bg-[#030e27] p-0.5">
+                        <TamerPortraitAvatar
+                          tamerId={entry.characterId}
+                          tamerName={entry.tamerName}
+                          customPhotoUrl={entry.tamerPhotoUrl}
+                          sizeClass="h-10 w-10"
+                        />
+                      </div>
+
+                      <div className="relative z-10 min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="truncate font-black text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
+                            {entry.tamerName}
+                          </span>
+                          {entry.isGm && (
+                            <span className="rounded border border-amber-300/70 bg-amber-500/25 px-1.5 py-0.5 text-[9px] font-black text-amber-200">
+                              GM
+                            </span>
+                          )}
+                          {isSelf && (
+                            <span className="rounded bg-cyan-400/25 px-1.5 py-0.5 text-[9px] font-black text-cyan-200">
+                              VOCÊ
+                            </span>
+                          )}
+                        </div>
+                        <p className="truncate text-[10px] font-semibold text-cyan-100/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
+                          {inviteSort === 'monthly'
+                            ? `Total geral: ${entry.totalInvites.toLocaleString('pt-BR')} convidado(s)`
+                            : `Neste mês: ${entry.effectiveMonthlyInvites.toLocaleString('pt-BR')} convidado(s)`}
+                        </p>
+                      </div>
+
+                      <div className="relative z-10 shrink-0 text-right">
+                        <p className="text-xs font-black tabular-nums text-amber-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
+                          {primaryCount.toLocaleString('pt-BR')}{' '}
+                          {primaryCount === 1 ? 'convidado' : 'convidados'}
+                        </p>
+                        {entry.totalCommissionEarned > 0 && (
+                          <p className="text-[9.5px] font-bold tabular-nums text-emerald-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
+                            +{entry.totalCommissionEarned.toLocaleString('pt-BR')} DL Din
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>

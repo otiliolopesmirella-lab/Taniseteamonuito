@@ -16,7 +16,8 @@ export type DwCoinTransactionType =
   | 'spend'
   | 'recharge'
   | 'gm_grant'
-  | 'gm_deduct';
+  | 'gm_deduct'
+  | 'referral_bonus';
 
 export interface DwCoinTransactionRecord {
   txId: string;
@@ -131,7 +132,7 @@ export async function recordDwCoinAdminTransaction(input: {
   targetUid: string;
   username: string;
   tamerName: string;
-  type: 'recharge' | 'gm_grant' | 'gm_deduct';
+  type: 'recharge' | 'gm_grant' | 'gm_deduct' | 'referral_bonus';
   dwCoinAmount: number;
   itemKey: string;
   itemName: string;
@@ -189,7 +190,8 @@ export async function listDwCoinTransactionsForGm(
       const type: DwCoinTransactionType =
         rawType === 'recharge' ||
         rawType === 'gm_grant' ||
-        rawType === 'gm_deduct'
+        rawType === 'gm_deduct' ||
+        rawType === 'referral_bonus'
           ? rawType
           : 'spend';
 

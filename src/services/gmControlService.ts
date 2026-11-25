@@ -31,6 +31,7 @@ import {
 import type { DwCoinOrderStatus, DwCoinPaymentMethod } from './dwCoinOrderService';
 import type { AlphaFeedbackCategory, AlphaFeedbackItem } from './feedbackService';
 import { isCurrentAuthUserBootstrappedGm } from './gmRoleService';
+import { getCurrentReferralMonthKey } from './referralService';
 import type { ServerAnnouncementState, ServerExpRateState } from './serverConfigService';
 import { KUWAGAMON_BOSS_ID, KUWAGAMON_MAX_HP, type WorldBossLiveState } from './worldBossService';
 import { PRESENCE_STALE_MS, type SharedWorldMapId } from './worldPresenceService';
@@ -504,7 +505,8 @@ export async function fetchServerSnapshotForGm(): Promise<GmServerSnapshot> {
       const type =
         rawType === 'recharge' ||
         rawType === 'gm_grant' ||
-        rawType === 'gm_deduct'
+        rawType === 'gm_deduct' ||
+        rawType === 'referral_bonus'
           ? rawType
           : 'spend';
       transactions.push({
@@ -911,9 +913,18 @@ export async function approveDwCoinOrderForGm(input: {
   let username = 'Tamer';
   let tamerName = 'Tamer';
   let nextDCoin = 0;
+  type ReferralBonusInfo = {
+    referrerUid: string;
+    referrerName: string;
+    commission: number;
+  };
+  let referralBonusInfo: ReferralBonusInfo | null = null;
 
   try {
-    await runTransaction(db, async (tx) => {
+    referralBonusInfo = await runTransaction<ReferralBonusInfo | null>(
+      db,
+      async (tx) => {
+        let txReferralBonus: ReferralBonusInfo | null = null;
       const orderSnap = await tx.get(orderRef);
       if (!orderSnap.exists()) {
         throw new Error('Pedido não encontrado.');
@@ -928,7 +939,11 @@ export async function approveDwCoinOrderForGm(input: {
       priceBrlLabel = String(d.priceBrlLabel ?? '');
 
       const playerRef = doc(db, 'players', ownerUid);
-      const playerSnap = await tx.get(playerRef);
+      const claimRef = doc(db, 'referralClaims', ownerUid);
+      const [playerSnap, claimSnap] = await Promise.all([
+        tx.get(playerRef),
+        tx.get(claimRef),
+      ]);
       if (!playerSnap.exists()) {
         throw new Error('A conta do jogador não foi encontrada no Firestore.');
       }
@@ -944,6 +959,116 @@ export async function approveDwCoinOrderForGm(input: {
       const built = buildValidHudStatePatch(playerData.hudState, 0, dwCoinAmount);
       nextDCoin = built.nextDCoin;
 
+      // Optional 10% referral bonus to inviter inside the same atomic transaction
+      const commission = Math.floor(dwCoinAmount * 0.1);
+      const claimData = claimSnap.exists() ? (claimSnap.data() ?? {}) : null;
+      const referrerUid = claimData ? String(claimData.referrerUid ?? '') : '';
+
+      let refPlayerRef: ReturnType<typeof doc> | null = null;
+      let refProfileRef: ReturnType<typeof doc> | null = null;
+      let refTxRef: ReturnType<typeof doc> | null = null;
+      let refHudPatch: Record<string, unknown> | null = null;
+      let refProfileUpdate: Record<string, unknown> | null = null;
+      let refTxPayload: Record<string, unknown> | null = null;
+
+      if (referrerUid && referrerUid !== ownerUid && commission >= 1) {
+        refPlayerRef = doc(db, 'players', referrerUid);
+        refProfileRef = doc(db, 'referralProfiles', referrerUid);
+        const safeRefTxId = `ref_ord_${input.orderId}`
+          .replace(/[^a-zA-Z0-9_-]/g, '')
+          .slice(0, 128);
+        refTxRef = doc(db, 'dwCoinTransactions', safeRefTxId);
+
+        const [refPlayerSnap, refProfileSnap, existingRefTxSnap] =
+          await Promise.all([
+            tx.get(refPlayerRef),
+            tx.get(refProfileRef),
+            tx.get(refTxRef),
+          ]);
+
+        if (refPlayerSnap.exists() && !existingRefTxSnap.exists()) {
+          const refPData = refPlayerSnap.data() ?? {};
+          const refUsername = String(refPData.username ?? 'Tamer');
+          const refTam =
+            refPData.tamerSelection &&
+            typeof refPData.tamerSelection === 'object'
+              ? (refPData.tamerSelection as Record<string, unknown>)
+              : null;
+          const refTamerName =
+            String(refTam?.tamerName ?? refUsername).trim().slice(0, 24) ||
+            'Tamer';
+
+          const refBuilt = buildValidHudStatePatch(
+            refPData.hudState,
+            0,
+            commission
+          );
+          refHudPatch = refBuilt.nextHudState;
+          txReferralBonus = {
+            referrerUid,
+            referrerName: refTamerName,
+            commission,
+          };
+
+          const cleanRefUsername =
+            refUsername.replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 24) ||
+            'Tamer001';
+          refTxPayload = {
+            txId: safeRefTxId,
+            ownerUid: referrerUid,
+            username:
+              cleanRefUsername.length >= 3 ? cleanRefUsername : 'Tamer001',
+            tamerName: refTamerName,
+            type: 'referral_bonus',
+            dwCoinAmount: commission,
+            itemKey: 'referral_10pct',
+            itemName: `Bônus 10% Convite (${tamerName})`.slice(0, 64),
+            category: 'convite',
+            balanceAfter: refBuilt.nextDCoin,
+            createdAt: serverTimestamp(),
+          };
+
+          if (refProfileSnap.exists()) {
+            const rp = refProfileSnap.data() ?? {};
+            const curMonth = getCurrentReferralMonthKey();
+            const prevMonth =
+              typeof rp.monthKey === 'string' && /^[0-9]{4}-[0-9]{2}$/.test(rp.monthKey)
+                ? rp.monthKey
+                : curMonth;
+            const prevTotalComm =
+              typeof rp.totalCommissionEarned === 'number' &&
+              Number.isFinite(rp.totalCommissionEarned)
+                ? Math.max(0, Math.round(rp.totalCommissionEarned))
+                : 0;
+            const prevMonthlyComm =
+              typeof rp.monthlyCommissionEarned === 'number' &&
+              Number.isFinite(rp.monthlyCommissionEarned)
+                ? Math.max(0, Math.round(rp.monthlyCommissionEarned))
+                : 0;
+            const prevMonthlyInvites =
+              typeof rp.monthlyInvites === 'number' &&
+              Number.isFinite(rp.monthlyInvites)
+                ? Math.max(0, Math.round(rp.monthlyInvites))
+                : 0;
+
+            const nextMonth = curMonth >= prevMonth ? curMonth : prevMonth;
+            const isNewMonth = nextMonth > prevMonth;
+            refProfileUpdate = {
+              monthKey: nextMonth,
+              monthlyInvites: isNewMonth ? 0 : prevMonthlyInvites,
+              totalCommissionEarned: Math.min(
+                1_000_000_000,
+                prevTotalComm + commission
+              ),
+              monthlyCommissionEarned: isNewMonth
+                ? commission
+                : Math.min(1_000_000_000, prevMonthlyComm + commission),
+              updatedAt: serverTimestamp(),
+            };
+          }
+        }
+      }
+
       tx.update(orderRef, {
         status: 'approved',
         updatedAt: serverTimestamp(),
@@ -952,6 +1077,20 @@ export async function approveDwCoinOrderForGm(input: {
         hudState: built.nextHudState,
         updatedAt: serverTimestamp(),
       });
+
+      if (refPlayerRef && refHudPatch) {
+        tx.update(refPlayerRef, {
+          hudState: refHudPatch,
+          updatedAt: serverTimestamp(),
+        });
+      }
+      if (refTxRef && refTxPayload) {
+        tx.set(refTxRef, refTxPayload);
+      }
+      if (refProfileRef && refProfileUpdate) {
+        tx.update(refProfileRef, refProfileUpdate);
+      }
+      return txReferralBonus;
     });
   } catch (error) {
     if (
@@ -977,11 +1116,18 @@ export async function approveDwCoinOrderForGm(input: {
     balanceAfter: nextDCoin,
   });
 
+  const bonusSummary = referralBonusInfo
+    ? ` · Bônus 10% (+${referralBonusInfo.commission} DL Din) para ${referralBonusInfo.referrerName}`
+    : '';
+
   await logGmAction({
     action: 'order_approve',
     targetUid: ownerUid,
     targetName: tamerName,
-    summary: `Aprovou pedido ${input.orderId} (+${dwCoinAmount} DL Din · ${priceBrlLabel}).`,
+    summary: `Aprovou pedido ${input.orderId} (+${dwCoinAmount} DL Din · ${priceBrlLabel})${bonusSummary}.`.slice(
+      0,
+      240
+    ),
     gmName: input.gmName,
   });
 

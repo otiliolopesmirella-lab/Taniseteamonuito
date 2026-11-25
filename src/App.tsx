@@ -19,6 +19,7 @@ import {
 } from './services/authService';
 import { flushPendingCloudSaves } from './services/cloudSaveService';
 import { isCurrentAuthUserBootstrappedGm } from './services/gmRoleService';
+import { captureReferralCodeFromUrl } from './services/referralService';
 import {
   loadAppPreferences,
   saveAppPreferences,
@@ -49,6 +50,14 @@ export default function App() {
   useEffect(() => {
     saveAppPreferences(preferences);
   }, [preferences]);
+
+  // Capture ?ref=CODE invite links on arrival so new accounts automatically bind to their inviter
+  useEffect(() => {
+    const captured = captureReferralCodeFromUrl();
+    if (captured) {
+      setActiveModal((prev) => prev ?? 'register');
+    }
+  }, []);
 
   const showMotion =
     preferences.animationsEnabled && preferences.graphicsQuality === 'alta';

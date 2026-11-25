@@ -384,6 +384,26 @@ export async function creditApprovedMercadoPagoPayment(
   const playerDocName = `${docRoot}/players/${ownerUid}`;
   const txId = `mp_${mpPaymentId}`;
   const txDocName = `${docRoot}/dwCoinTransactions/${txId}`;
+  const referralClaimDocName = `${docRoot}/referralClaims/${ownerUid}`;
+
+  const getCurrentReferralMonthKeyServer = (): string => {
+    try {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Sao_Paulo',
+        year: 'numeric',
+        month: '2-digit',
+      }).formatToParts(new Date());
+      const y = parts.find((p) => p.type === 'year')?.value;
+      const m = parts.find((p) => p.type === 'month')?.value;
+      if (y && m && /^[0-9]{4}-[0-9]{2}$/.test(`${y}-${m}`)) {
+        return `${y}-${m}`;
+      }
+    } catch {
+      // Fallback to UTC below
+    }
+    const now = new Date();
+    return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  };
 
   const accessToken = await getGoogleDatastoreAccessToken(creds);
 
@@ -418,7 +438,7 @@ export async function creditApprovedMercadoPagoPayment(
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          documents: [orderDocName, playerDocName, txDocName],
+          documents: [orderDocName, playerDocName, txDocName, referralClaimDocName],
           transaction,
         }),
       });
@@ -443,6 +463,7 @@ export async function creditApprovedMercadoPagoPayment(
       const orderDoc = foundByName.get(orderDocName) ?? null;
       const playerDoc = foundByName.get(playerDocName) ?? null;
       const existingTxDoc = foundByName.get(txDocName) ?? null;
+      const referralClaimDoc = foundByName.get(referralClaimDocName) ?? null;
 
       // Strict idempotency: if ledger tx already exists OR order is already approved, never double-credit
       const existingOrderStatus = readStringField(orderDoc?.fields, 'status');
@@ -626,6 +647,218 @@ export async function creditApprovedMercadoPagoPayment(
         ],
         currentDocument: { exists: false },
       });
+
+      // 4. Atomic 10% DL Din referral commission for the player's inviter (if referred)
+      const referrerUid = readStringField(referralClaimDoc?.fields, 'referrerUid')?.trim();
+      const referralCommission = Math.floor(officialPack.dwCoinAmount * 0.1);
+      if (
+        referrerUid &&
+        isValidUid(referrerUid) &&
+        referrerUid !== ownerUid &&
+        referralCommission >= 1
+      ) {
+        const referrerPlayerDocName = `${docRoot}/players/${referrerUid}`;
+        const referrerProfileDocName = `${docRoot}/referralProfiles/${referrerUid}`;
+        const refTxId = `ref_mp_${mpPaymentId}`;
+        const refTxDocName = `${docRoot}/dwCoinTransactions/${refTxId}`;
+
+        const refBatchGetRes = await fetch(`${baseDbUrl}/documents:batchGet`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            documents: [referrerPlayerDocName, referrerProfileDocName, refTxDocName],
+            transaction,
+          }),
+        });
+
+        if (refBatchGetRes.ok) {
+          const refRows = (await refBatchGetRes.json()) as Array<{
+            found?: FirestoreRestDoc;
+            missing?: string;
+          }>;
+          const refFound = new Map<string, FirestoreRestDoc>();
+          for (const row of refRows) {
+            if (row.found?.name) {
+              refFound.set(row.found.name, row.found);
+            }
+          }
+
+          const referrerPlayerDoc = refFound.get(referrerPlayerDocName) ?? null;
+          const referrerProfileDoc = refFound.get(referrerProfileDocName) ?? null;
+          const existingRefTxDoc = refFound.get(refTxDocName) ?? null;
+
+          if (referrerPlayerDoc && !existingRefTxDoc) {
+            const refHudFields = readMapFields(referrerPlayerDoc.fields, 'hudState');
+            const refPrevDCoin = Math.max(
+              0,
+              Math.round(readNumberField(refHudFields ?? undefined, 'dCoin') ?? 0)
+            );
+            const refNextDCoin = Math.min(
+              1_000_000_000,
+              refPrevDCoin + referralCommission
+            );
+
+            const refUsername = sanitizeUsername(
+              readStringField(referrerPlayerDoc.fields, 'username'),
+              referrerUid
+            );
+            const refTamerSel = readMapFields(
+              referrerPlayerDoc.fields,
+              'tamerSelection'
+            );
+            const refTamerName =
+              (
+                readStringField(refTamerSel ?? undefined, 'tamerName') ??
+                refUsername
+              )
+                .trim()
+                .slice(0, 24) || refUsername;
+
+            // Credit inviter's DL Din without overwriting other HUD fields
+            if (refHudFields) {
+              writes.push({
+                update: {
+                  name: referrerPlayerDocName,
+                  fields: {
+                    hudState: {
+                      mapValue: {
+                        fields: {
+                          dCoin: { integerValue: String(refNextDCoin) },
+                          updatedAt: { stringValue: nowIso },
+                        },
+                      },
+                    },
+                  },
+                },
+                updateMask: {
+                  fieldPaths: ['hudState.dCoin', 'hudState.updatedAt'],
+                },
+                updateTransforms: [
+                  { fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' },
+                ],
+                currentDocument: { exists: true },
+              });
+            } else {
+              writes.push({
+                update: {
+                  name: referrerPlayerDocName,
+                  fields: {
+                    hudState: buildDefaultHudStateRestValue(refNextDCoin, nowIso),
+                  },
+                },
+                updateMask: {
+                  fieldPaths: ['hudState'],
+                },
+                updateTransforms: [
+                  { fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' },
+                ],
+                currentDocument: { exists: true },
+              });
+            }
+
+            // Record immutable 10% referral bonus ledger entry (idempotency guard via exists:false)
+            const refItemLabel = `Bônus 10% Convite (${tamerName})`.slice(0, 64);
+            writes.push({
+              update: {
+                name: refTxDocName,
+                fields: {
+                  txId: { stringValue: refTxId },
+                  ownerUid: { stringValue: referrerUid },
+                  username: { stringValue: refUsername },
+                  tamerName: { stringValue: refTamerName },
+                  type: { stringValue: 'referral_bonus' },
+                  dwCoinAmount: { integerValue: String(referralCommission) },
+                  itemKey: { stringValue: 'referral_10pct' },
+                  itemName: { stringValue: refItemLabel },
+                  category: { stringValue: 'convite' },
+                  balanceAfter: { integerValue: String(refNextDCoin) },
+                },
+              },
+              updateTransforms: [
+                { fieldPath: 'createdAt', setToServerValue: 'REQUEST_TIME' },
+              ],
+              currentDocument: { exists: false },
+            });
+
+            // Update inviter's referral profile commission totals (with clean month rollover)
+            if (referrerProfileDoc) {
+              const curMonth = getCurrentReferralMonthKeyServer();
+              const prevMonth =
+                readStringField(referrerProfileDoc.fields, 'monthKey') ??
+                curMonth;
+              const prevTotalComm = Math.max(
+                0,
+                Math.round(
+                  readNumberField(
+                    referrerProfileDoc.fields,
+                    'totalCommissionEarned'
+                  ) ?? 0
+                )
+              );
+              const prevMonthlyComm = Math.max(
+                0,
+                Math.round(
+                  readNumberField(
+                    referrerProfileDoc.fields,
+                    'monthlyCommissionEarned'
+                  ) ?? 0
+                )
+              );
+              const prevMonthlyInvites = Math.max(
+                0,
+                Math.round(
+                  readNumberField(
+                    referrerProfileDoc.fields,
+                    'monthlyInvites'
+                  ) ?? 0
+                )
+              );
+
+              const nextMonthKey = curMonth >= prevMonth ? curMonth : prevMonth;
+              const isNewMonth = nextMonthKey > prevMonth;
+              const nextTotalComm = Math.min(
+                1_000_000_000,
+                prevTotalComm + referralCommission
+              );
+              const nextMonthlyComm = isNewMonth
+                ? referralCommission
+                : Math.min(1_000_000_000, prevMonthlyComm + referralCommission);
+              const nextMonthlyInvites = isNewMonth ? 0 : prevMonthlyInvites;
+
+              writes.push({
+                update: {
+                  name: referrerProfileDocName,
+                  fields: {
+                    monthKey: { stringValue: nextMonthKey },
+                    monthlyInvites: { integerValue: String(nextMonthlyInvites) },
+                    totalCommissionEarned: {
+                      integerValue: String(nextTotalComm),
+                    },
+                    monthlyCommissionEarned: {
+                      integerValue: String(nextMonthlyComm),
+                    },
+                  },
+                },
+                updateMask: {
+                  fieldPaths: [
+                    'monthKey',
+                    'monthlyInvites',
+                    'totalCommissionEarned',
+                    'monthlyCommissionEarned',
+                  ],
+                },
+                updateTransforms: [
+                  { fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' },
+                ],
+                currentDocument: { exists: true },
+              });
+            }
+          }
+        }
+      }
 
       const commitRes = await fetch(`${baseDbUrl}/documents:commit`, {
         method: 'POST',

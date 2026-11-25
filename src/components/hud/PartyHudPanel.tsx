@@ -15,6 +15,7 @@ import {
   type PartyInviteRecord,
   type PartyRecord,
 } from '../../services/partyService';
+import type { WorldChannelId } from '../../services/worldPresenceService';
 import { getDigimonFormProfile } from '../../types/digimon';
 import { TamerPortraitAvatar } from './TamerPortraitAvatar';
 
@@ -24,6 +25,8 @@ interface PartyHudPanelProps {
   incomingGuildInvites?: readonly GuildInviteRecord[];
   actorUid: string;
   currentMapId: string;
+  currentChannelId?: WorldChannelId;
+  onSwitchChannel?: (channelId: WorldChannelId) => void;
   onAcceptInvite: (invite: PartyInviteRecord) => void;
   onDeclineInvite: (inviteId: string) => void;
   onAcceptGuildInvite?: (invite: GuildInviteRecord) => void;
@@ -38,6 +41,8 @@ export const PartyHudPanel = memo(function PartyHudPanel({
   incomingGuildInvites = [],
   actorUid,
   currentMapId,
+  currentChannelId = 1,
+  onSwitchChannel,
   onAcceptInvite,
   onDeclineInvite,
   onAcceptGuildInvite,
@@ -289,13 +294,28 @@ export const PartyHudPanel = memo(function PartyHudPanel({
                             style={{ width: `${hpPct}%` }}
                           />
                         </div>
-                        <span
-                          className={`shrink-0 text-[7.5px] font-bold ${
-                            isSameMap ? 'text-emerald-300' : 'text-slate-400'
-                          }`}
-                        >
-                          {isSameMap ? 'Mapa' : 'Longe'}
-                        </span>
+                        {isSameMap ? (
+                          !isSelf &&
+                          m.channelId !== currentChannelId &&
+                          onSwitchChannel ? (
+                            <button
+                              type="button"
+                              onClick={() => onSwitchChannel(m.channelId)}
+                              title={`Ir para o Canal ${m.channelId} com ${m.tamerName}`}
+                              className="shrink-0 rounded border border-amber-300/75 bg-amber-500/25 px-1 py-[0.5px] text-[7.5px] font-black leading-none text-amber-200 transition hover:bg-amber-400/35 active:scale-95"
+                            >
+                              Ir CH{m.channelId}
+                            </button>
+                          ) : (
+                            <span className="shrink-0 text-[7.5px] font-extrabold text-emerald-300">
+                              CH{m.channelId}
+                            </span>
+                          )
+                        ) : (
+                          <span className="shrink-0 text-[7.5px] font-bold text-slate-400">
+                            Longe
+                          </span>
+                        )}
                       </div>
                     </div>
 

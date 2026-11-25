@@ -16,6 +16,13 @@ import {
 } from 'lucide-react';
 import { authService } from '../services/authService';
 import {
+  clearPendingReferralCode,
+  formatReferralCodeDisplay,
+  getPendingReferralCode,
+  normalizeReferralCode,
+  savePendingReferralCode,
+} from '../services/referralService';
+import {
   DEFAULT_APP_PREFERENCES,
   type AppPreferences,
   type AuthUserSummary,
@@ -67,6 +74,10 @@ export function UtilityModal({
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regConfirm, setRegConfirm] = useState('');
+  const [regReferralCode, setRegReferralCode] = useState(() => {
+    const pending = getPendingReferralCode();
+    return pending ? formatReferralCodeDisplay(pending) : '';
+  });
   const [resetIdentifier, setResetIdentifier] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
@@ -80,6 +91,12 @@ export function UtilityModal({
     setFeedback(null);
     setSubmitting(false);
     setAwaitingVerification(false);
+    if (section === 'register') {
+      const pending = getPendingReferralCode();
+      if (pending) {
+        setRegReferralCode(formatReferralCodeDisplay(pending));
+      }
+    }
   }, [section]);
 
   useEffect(() => {
@@ -97,11 +114,18 @@ export function UtilityModal({
     e.preventDefault();
     setSubmitting(true);
     setFeedback(null);
+    const cleanedRef = normalizeReferralCode(regReferralCode);
+    if (cleanedRef) {
+      savePendingReferralCode(cleanedRef);
+    } else {
+      clearPendingReferralCode();
+    }
     const res = await authService.createAccount({
       username: regUsername,
       email: regEmail,
       password: regPassword,
       confirmPassword: regConfirm,
+      referralCode: cleanedRef || undefined,
     });
     setSubmitting(false);
     playDigitalTone(
@@ -325,6 +349,32 @@ export function UtilityModal({
                         className="h-11 w-full rounded-lg border border-sky-400/35 bg-[#040e24] px-3 text-sm text-white placeholder:text-slate-400 focus:border-cyan-300 focus:outline-none"
                       />
                     </div>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="reg-referral"
+                      className="mb-1 flex items-center justify-between text-xs font-semibold text-amber-200"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Gift className="h-3.5 w-3.5 text-amber-300" aria-hidden="true" />
+                        <span>Código de Convite (opcional)</span>
+                      </span>
+                      {normalizeReferralCode(regReferralCode).length >= 6 && (
+                        <span className="text-[10px] font-bold text-emerald-300">
+                          Convite detectado
+                        </span>
+                      )}
+                    </label>
+                    <input
+                      id="reg-referral"
+                      type="text"
+                      maxLength={24}
+                      value={regReferralCode}
+                      onChange={(e) => setRegReferralCode(e.target.value.toUpperCase())}
+                      placeholder="Ex.: DL-7X9K2P"
+                      className="h-11 w-full rounded-lg border border-amber-400/40 bg-[#040e24] px-3 text-sm font-bold tracking-wider text-amber-100 uppercase placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-400 focus:border-amber-300 focus:outline-none"
+                    />
                   </div>
                 </>
               ) : (

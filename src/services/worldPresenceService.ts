@@ -36,6 +36,30 @@ export type SharedWorldMapId =
   | 'dark-area'
   | 'virtual-world';
 
+export type WorldChannelId = 1 | 2 | 3 | 4 | 5;
+
+export const WORLD_CHANNEL_IDS: readonly WorldChannelId[] = [1, 2, 3, 4, 5];
+export const CHANNEL_SOFT_CAPACITY = 18;
+export const CHANNEL_HARD_CAPACITY = 25;
+
+export type ChannelLoadStatus = 'free' | 'normal' | 'busy' | 'full';
+
+export function safeChannelId(raw: unknown): WorldChannelId {
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (n === 2) return 2;
+  if (n === 3) return 3;
+  if (n === 4) return 4;
+  if (n === 5) return 5;
+  return 1;
+}
+
+export function getChannelLoadStatus(playerCount: number): ChannelLoadStatus {
+  if (playerCount >= CHANNEL_HARD_CAPACITY) return 'full';
+  if (playerCount >= CHANNEL_SOFT_CAPACITY) return 'busy';
+  if (playerCount >= 9) return 'normal';
+  return 'free';
+}
+
 export type WorldSyncStatus = 'connecting' | 'connected' | 'error';
 
 export interface RemoteWorldPlayer {
@@ -46,6 +70,7 @@ export interface RemoteWorldPlayer {
   digimonFormId: DigimonFormId;
   digimonLevel: number;
   mapId: SharedWorldMapId;
+  channelId: WorldChannelId;
   worldX: number;
   worldY: number;
   facingDir: CardinalDirection;
@@ -68,6 +93,7 @@ export interface LocalPresenceState {
   digimonFormId: DigimonFormId;
   digimonLevel: number;
   mapId: SharedWorldMapId;
+  channelId: WorldChannelId;
   worldX: number;
   worldY: number;
   facingDir: CardinalDirection;
@@ -330,6 +356,7 @@ export async function publishLocalWorldPresence(
     digimonFormId: safeFormId(state.digimonFormId),
     digimonLevel: safeLevel(state.digimonLevel),
     mapId: safeMapId(state.mapId),
+    channelId: safeChannelId(state.channelId),
     worldX: safeCoord(state.worldX),
     worldY: safeCoord(state.worldY),
     facingDir: safeDir(state.facingDir),
@@ -581,7 +608,7 @@ export function subscribeOnlineWorldPlayers(
   const q = query(
     collection(db, 'worldPresence'),
     where('online', '==', true),
-    limit(50)
+    limit(120)
   );
 
   const unsubscribe = onSnapshot(
@@ -617,6 +644,7 @@ export function subscribeOnlineWorldPlayers(
           digimonFormId: safeFormId(d.digimonFormId),
           digimonLevel: safeLevel(d.digimonLevel),
           mapId: safeMapId(d.mapId),
+          channelId: safeChannelId(d.channelId),
           worldX: safeCoord(d.worldX),
           worldY: safeCoord(d.worldY),
           facingDir: safeDir(d.facingDir),

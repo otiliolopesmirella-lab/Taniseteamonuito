@@ -330,6 +330,11 @@ import {
   syncPlayerRankingSnapshot,
 } from '../services/rankingsService';
 import {
+  applyPendingReferralCodeIfAny,
+  ensureOwnReferralProfile,
+  formatReferralCodeDisplay,
+} from '../services/referralService';
+import {
   acceptPartyInvite,
   calcPartyShareFactor,
   declinePartyInvite,
@@ -380,11 +385,14 @@ import { TAMER_CHARACTERS } from '../sprites/tamerSprites';
 import {
   broadcastWorldChatBubble,
   bumpPresenceSessionEpoch,
+  CHANNEL_HARD_CAPACITY,
   markLocalWorldPresenceOffline,
   publishLocalWorldPresence,
+  safeChannelId,
   subscribeOnlineWorldPlayers,
   type LocalPresenceState,
   type RemoteWorldPlayer,
+  type WorldChannelId,
 } from '../services/worldPresenceService';
 import type { AppPreferences } from '../types/auth';
 import type { SavedCharacterSelection, TamerId } from '../types/character';
@@ -811,8 +819,19 @@ interface SmoothedRemotePlayer {
   player: RemoteWorldPlayer;
   renderX: number;
   renderY: number;
+  targetX: number;
+  targetY: number;
+  vx: number;
+  vy: number;
+  visualDir: CardinalDirection;
   partnerRenderX: number;
   partnerRenderY: number;
+  partnerTargetX: number;
+  partnerTargetY: number;
+  partnerVx: number;
+  partnerVy: number;
+  partnerVisualDir: CardinalDirection;
+  lastPacketAtMs: number;
   frameTime: number;
   frameIndex: number;
   partnerFrameTime: number;
@@ -1271,6 +1290,56 @@ export function TamerWorldCanvas({
     [autoHuntStorageKey, isGM]
   );
 
+  const [activeChannelId, setActiveChannelId] = useState<WorldChannelId>(() => {
+    try {
+      const saved = localStorage.getItem('dw_active_channel_v1');
+      if (saved) return safeChannelId(Number(saved));
+    } catch {
+      // Ignore storage error
+    }
+    return 1;
+  });
+  const currentChannelRef = useRef<WorldChannelId>(activeChannelId);
+  currentChannelRef.current = activeChannelId;
+  const [channelSwitching, setChannelSwitching] = useState(false);
+  const lastChannelSwitchMsRef = useRef<number>(0);
+
+  const quickSlotsStorageKey = `dw_manual_quickslots_v1_${autoHuntStorageKey}`;
+  const [quickSlots, setQuickSlots] = useState<{
+    foodItemKey: string | null;
+    vitaminItemKey: string | null;
+  }>(() => {
+    try {
+      const raw = localStorage.getItem(quickSlotsStorageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as {
+          foodItemKey?: unknown;
+          vitaminItemKey?: unknown;
+        };
+        return {
+          foodItemKey:
+            typeof parsed.foodItemKey === 'string' && parsed.foodItemKey.trim()
+              ? parsed.foodItemKey.trim()
+              : null,
+          vitaminItemKey:
+            typeof parsed.vitaminItemKey === 'string' &&
+            parsed.vitaminItemKey.trim()
+              ? parsed.vitaminItemKey.trim()
+              : null,
+        };
+      }
+    } catch {
+      // Ignore malformed storage
+    }
+    return { foodItemKey: null, vitaminItemKey: null };
+  });
+  const quickSlotsRef = useRef(quickSlots);
+  quickSlotsRef.current = quickSlots;
+  const lastQuickSlotUseMsRef = useRef<number>(0);
+  const handleUseQuickSlotRef = useRef<(slot: 'food' | 'vitamin') => void>(
+    () => {}
+  );
+
   const [remotePlayers, setRemotePlayers] = useState<RemoteWorldPlayer[]>([]);
   const [selectedRemotePlayer, setSelectedRemotePlayer] =
     useState<RemoteWorldPlayer | null>(null);
@@ -1286,6 +1355,7 @@ export function TamerWorldCanvas({
   const lastBossDefeatCountRef = useRef<number>(-1);
   const bossBannerTimerRef = useRef<number | null>(null);
   const remoteSmoothRef = useRef<Map<string, SmoothedRemotePlayer>>(new Map());
+  const preloadedRemoteAssetsRef = useRef<Set<string>>(new Set());
   const lastRemoteRosterSigRef = useRef<string>('');
   const localBubbleRef = useRef<{ text: string; expiresAt: number } | null>(null);
   const seenRemoteChatSeqRef = useRef<Map<string, number>>(new Map());
@@ -1297,6 +1367,7 @@ export function TamerWorldCanvas({
     dir: CardinalDirection;
     state: TamerMovementState;
     mapId: ActiveWorldMapId;
+    channelId: WorldChannelId;
     formId: DigimonFormId;
     tamerLevel: number;
     digimonLevel: number;
@@ -1308,6 +1379,7 @@ export function TamerWorldCanvas({
     dir: 'S',
     state: 'idle',
     mapId: initialSpawn.mapId,
+    channelId: activeChannelId,
     formId: activeFormProfile.id,
     tamerLevel: initialHudAccount.tamer.level,
     digimonLevel: initialHudAccount.digimon.level,
@@ -2069,13 +2141,18 @@ export function TamerWorldCanvas({
         if (evt.mapId !== sim.mapId) return;
 
         const activeParty = playerPartyRef.current;
+        const myCh = currentChannelRef.current;
+        const killerCh = activeParty?.members[evt.killerUid]?.channelId;
+        if (killerCh && killerCh !== myCh) return;
+
         const sameMapCount = activeParty
           ? Math.max(
               2,
               activeParty.memberUids.filter(
                 (uid) =>
                   uid === actorUid ||
-                  activeParty.members[uid]?.mapId === sim.mapId
+                  (activeParty.members[uid]?.mapId === sim.mapId &&
+                    (activeParty.members[uid]?.channelId ?? 1) === myCh)
               ).length
             )
           : 2;
@@ -2220,6 +2297,7 @@ export function TamerWorldCanvas({
         hp: acc.digimon.hp,
         maxHp: acc.digimon.maxHp,
         mapId: simRef.current.mapId,
+        channelId: currentChannelRef.current,
       };
       void syncLocalMemberInParty(activePartyId, profile);
     };
@@ -2229,6 +2307,7 @@ export function TamerWorldCanvas({
     return () => window.clearInterval(timer);
   }, [
     activePartyId,
+    activeChannelId,
     actorUid,
     selection.characterId,
     hudAccount.tamer.level,
@@ -2294,6 +2373,44 @@ export function TamerWorldCanvas({
     selection.characterId,
     selection.tamerName,
   ]);
+
+  // Keep this account's Referral / Invite Code profile synced (avatar, cover, Tamer name)
+  // and redeem any pending ?ref= invite code captured during sign-up
+  useEffect(() => {
+    void ensureOwnReferralProfile({
+      tamerName: selection.tamerName,
+      characterId: selection.characterId,
+      tamerPhotoUrl: hudAccount.tamerPhotoUrl ?? null,
+      tamerCoverUrl: hudAccount.tamerCoverUrl ?? null,
+      isGm: isServerGm,
+    });
+  }, [
+    actorUid,
+    hudAccount.tamerCoverUrl,
+    hudAccount.tamerPhotoUrl,
+    isServerGm,
+    selection.characterId,
+    selection.tamerName,
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void applyPendingReferralCodeIfAny(selection.tamerName).then((res) => {
+      if (cancelled || !res?.ok || !res.claim) return;
+      pushNotification(
+        'Código de Convite Ativado',
+        `Você foi vinculado ao código de ${res.claim.referrerName} (${formatReferralCodeDisplay(res.claim.inviteCode)}).`
+      );
+      pushChatMessage(
+        'system',
+        `[Convite] Código de ${res.claim.referrerName} aplicado com sucesso!`,
+        { tone: 'loot' }
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [actorUid, pushChatMessage, pushNotification, selection.tamerName]);
 
   const [liveSnapshot, setLiveSnapshot] = useState<LiveWorldHudSnapshot>(() => ({
     mapId: initialSpawn.mapId,
@@ -2445,6 +2562,7 @@ export function TamerWorldCanvas({
       digimonFormId: activeFormRef.current.id,
       digimonLevel: hud.digimon.level,
       mapId: sim.mapId,
+      channelId: currentChannelRef.current,
       worldX: sim.x,
       worldY: sim.y,
       facingDir: sim.dir,
@@ -2457,6 +2575,193 @@ export function TamerWorldCanvas({
       guildName: hud.guildName,
     };
   }
+
+  // Live player count per channel on the current map (for DMO-style 5-Channel Selector)
+  const channelCounts = useMemo<Record<WorldChannelId, number>>(() => {
+    const counts: Record<WorldChannelId, number> = {
+      1: 0,
+      2: 0,
+      3: 0,
+      4: 0,
+      5: 0,
+    };
+    const activeMap = liveSnapshot.mapId;
+    counts[activeChannelId] = 1;
+    for (const p of remotePlayers) {
+      if (p.mapId === activeMap) {
+        counts[p.channelId] = (counts[p.channelId] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }, [remotePlayers, liveSnapshot.mapId, activeChannelId]);
+
+  const partyChannelCounts = useMemo<Partial<Record<WorldChannelId, number>>>(
+    () => {
+      const map: Partial<Record<WorldChannelId, number>> = {};
+      if (!playerParty) return map;
+      for (const uid of playerParty.memberUids) {
+        if (uid === actorUid) continue;
+        const member = playerParty.members[uid];
+        if (member && member.mapId === liveSnapshot.mapId) {
+          map[member.channelId] = (map[member.channelId] ?? 0) + 1;
+        }
+      }
+      return map;
+    },
+    [playerParty, actorUid, liveSnapshot.mapId]
+  );
+
+  const partyLeaderChannelId = useMemo<WorldChannelId | null>(() => {
+    if (!playerParty || playerParty.leaderUid === actorUid) return null;
+    const leader = playerParty.members[playerParty.leaderUid];
+    if (!leader || leader.mapId !== liveSnapshot.mapId) return null;
+    return leader.channelId;
+  }, [playerParty, actorUid, liveSnapshot.mapId]);
+
+  const handleSwitchChannel = useCallback(
+    (
+      rawTargetChannel: WorldChannelId,
+      opts?: { silent?: boolean; force?: boolean }
+    ) => {
+      const targetCh = safeChannelId(rawTargetChannel);
+      if (targetCh === currentChannelRef.current) return;
+
+      const nowMs = Date.now();
+      if (!opts?.force && nowMs - lastChannelSwitchMsRef.current < 1000) {
+        if (!opts?.silent) {
+          pushChatMessage(
+            'system',
+            'Aguarde 1 segundo antes de trocar de canal novamente.',
+            { tone: 'info' }
+          );
+        }
+        return;
+      }
+
+      const sim = simRef.current;
+      let countInTarget = 0;
+      for (const s of remoteSmoothRef.current.values()) {
+        if (s.player.mapId === sim.mapId && s.player.channelId === targetCh) {
+          countInTarget++;
+        }
+      }
+
+      const party = playerPartyRef.current;
+      const partyHasMemberInTarget = Boolean(
+        party &&
+          party.memberUids.some((uid) => {
+            if (uid === actorUid) return false;
+            const m = party.members[uid];
+            return Boolean(m && m.mapId === sim.mapId && m.channelId === targetCh);
+          })
+      );
+
+      if (
+        countInTarget >= CHANNEL_HARD_CAPACITY &&
+        !isGM &&
+        !opts?.force &&
+        !partyHasMemberInTarget
+      ) {
+        playDigitalTone('error', soundEnabledRef.current);
+        pushChatMessage(
+          'system',
+          `O Canal CH ${targetCh} está cheio (${countInTarget}/${CHANNEL_HARD_CAPACITY}). Escolha outro canal livre!`,
+          { tone: 'warning' }
+        );
+        return;
+      }
+
+      lastChannelSwitchMsRef.current = nowMs;
+      setChannelSwitching(true);
+      currentChannelRef.current = targetCh;
+      setActiveChannelId(targetCh);
+      try {
+        localStorage.setItem('dw_active_channel_v1', String(targetCh));
+      } catch {
+        // Ignore storage error
+      }
+
+      // Cleanly disengage active mob aggro & reset remote inspector on channel hop
+      sim.partner.targetEnemyId = null;
+      sim.partner.aiState = 'FOLLOW';
+      for (const enemy of sim.enemies) {
+        enemy.aggroed = false;
+        enemy.aggroTimer = 0;
+      }
+      setSelectedRemotePlayer(null);
+
+      // Snap remote positions for players waiting in the destination channel so they don't slide across the map
+      for (const smooth of remoteSmoothRef.current.values()) {
+        if (
+          smooth.player.mapId === sim.mapId &&
+          smooth.player.channelId === targetCh
+        ) {
+          smooth.renderX = smooth.player.worldX;
+          smooth.renderY = smooth.player.worldY;
+          smooth.targetX = smooth.player.worldX;
+          smooth.targetY = smooth.player.worldY;
+          smooth.vx = 0;
+          smooth.vy = 0;
+          smooth.partnerRenderX = smooth.player.partnerX;
+          smooth.partnerRenderY = smooth.player.partnerY;
+          smooth.partnerTargetX = smooth.player.partnerX;
+          smooth.partnerTargetY = smooth.player.partnerY;
+          smooth.partnerVx = 0;
+          smooth.partnerVy = 0;
+        }
+      }
+
+      const snap = buildLocalPresenceSnapshot();
+      lastPresenceSyncRef.current.x = snap.worldX;
+      lastPresenceSyncRef.current.y = snap.worldY;
+      lastPresenceSyncRef.current.dir = snap.facingDir;
+      lastPresenceSyncRef.current.state = snap.moveState;
+      lastPresenceSyncRef.current.mapId = snap.mapId;
+      lastPresenceSyncRef.current.channelId = snap.channelId;
+      lastPresenceSyncRef.current.formId = snap.digimonFormId;
+      lastPresenceSyncRef.current.tamerLevel = snap.tamerLevel;
+      lastPresenceSyncRef.current.digimonLevel = snap.digimonLevel;
+      lastPresenceSyncRef.current.sentAtMs = nowMs;
+      lastPresenceSyncRef.current.inFlight = true;
+
+      void publishLocalWorldPresence(snap, { forceFullWrite: true }).finally(
+        () => {
+          lastPresenceSyncRef.current.inFlight = false;
+          setChannelSwitching(false);
+        }
+      );
+
+      if (party) {
+        const acc = hudAccountRef.current;
+        const form = activeFormRef.current;
+        void syncLocalMemberInParty(party.partyId, {
+          uid: actorUid,
+          tamerName: runtimeMetaRef.current.tamerName,
+          characterId: selection.characterId,
+          tamerLevel: acc.tamer.level,
+          tamerPhotoUrl: acc.tamerPhotoUrl ?? null,
+          digimonFormId: form.id,
+          digimonName: acc.digimon.nickname?.trim() || form.name,
+          digimonLevel: acc.digimon.level,
+          hp: acc.digimon.hp,
+          maxHp: acc.digimon.maxHp,
+          mapId: sim.mapId,
+          channelId: targetCh,
+        });
+      }
+
+      if (!opts?.silent) {
+        playDigitalTone('confirm', soundEnabledRef.current);
+        pushChatMessage(
+          'system',
+          `Canal alterado para CH ${targetCh} (${getMapDisplayLabel(sim.mapId)}).`,
+          { tone: 'info' }
+        );
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [actorUid, isGM, pushChatMessage, selection.characterId]
+  );
 
   // Subscribe to all live online players in Firestore & publish our own real-time presence
   useEffect(() => {
@@ -2471,6 +2776,7 @@ export function TamerWorldCanvas({
       lastPresenceSyncRef.current.dir = snap.facingDir;
       lastPresenceSyncRef.current.state = snap.moveState;
       lastPresenceSyncRef.current.mapId = snap.mapId;
+      lastPresenceSyncRef.current.channelId = snap.channelId;
       lastPresenceSyncRef.current.formId = snap.digimonFormId;
       lastPresenceSyncRef.current.tamerLevel = snap.tamerLevel;
       lastPresenceSyncRef.current.digimonLevel = snap.digimonLevel;
@@ -2489,39 +2795,55 @@ export function TamerWorldCanvas({
       if (!active) return;
 
       const smoothMap = remoteSmoothRef.current;
+      const preloaded = preloadedRemoteAssetsRef.current;
       const activeUids = new Set<string>();
       const now = Date.now();
+      const myMapId = simRef.current.mapId;
+      const myChannelId = currentChannelRef.current;
 
       for (const p of players) {
         activeUids.add(p.uid);
 
-        // Lazily preload remote Tamer & Digimon evolution assets so every player renders with real sprites
-        void preloadTamerSheets(p.characterId);
-        void preloadDigimonPartnerAssets(p.digimonFormId);
+        const isSameMapAndChannel =
+          p.mapId === myMapId && p.channelId === myChannelId;
+
+        // Lazily preload remote Tamer & Digimon assets ONLY once per unique asset and only for players in our map+channel
+        if (isSameMapAndChannel) {
+          const tamerAssetKey = `t:${p.characterId}`;
+          if (!preloaded.has(tamerAssetKey)) {
+            preloaded.add(tamerAssetKey);
+            void preloadTamerSheets(p.characterId);
+          }
+          const digiAssetKey = `d:${p.digimonFormId}`;
+          if (!preloaded.has(digiAssetKey)) {
+            preloaded.add(digiAssetKey);
+            void preloadDigimonPartnerAssets(p.digimonFormId);
+          }
+        }
 
         // Announce newly arrived players after initial world hydration
         if (initialPresenceLoadedRef.current && !knownOnlineUidsRef.current.has(p.uid)) {
           const mapLabel = getMapDisplayLabel(p.mapId);
           pushChatMessage(
             'system',
-            `${p.isGm ? '[GM] ' : ''}${p.tamerName} entrou no Mundo Digital (${mapLabel})!`,
+            `${p.isGm ? '[GM] ' : ''}${p.tamerName} entrou no Mundo Digital (${mapLabel} · CH ${p.channelId})!`,
             { tone: 'info' }
           );
         }
         knownOnlineUidsRef.current.add(p.uid);
 
-        // Process live local proximity chat broadcasts (strictly same map & nearby players only!)
+        // Process live local proximity chat broadcasts (strictly same map, same channel & nearby players only!)
         const prevSeq = seenRemoteChatSeqRef.current.get(p.uid);
         let bubbleText = smoothMap.get(p.uid)?.bubbleText ?? '';
         let bubbleExpiresAt = smoothMap.get(p.uid)?.bubbleExpiresAt ?? 0;
         const isSameMapNearby =
-          p.mapId === simRef.current.mapId &&
+          isSameMapAndChannel &&
           Math.hypot(p.worldX - simRef.current.x, p.worldY - simRef.current.y) <=
             680;
 
         if (prevSeq === undefined) {
           seenRemoteChatSeqRef.current.set(p.uid, p.chatSeq);
-          // Only show speech bubble on initial sync if on same map, nearby, and recent
+          // Only show speech bubble on initial sync if on same map+channel, nearby, and recent
           if (isSameMapNearby && p.chatText && Math.abs(now - p.updatedAtMs) <= 7000) {
             bubbleText = p.chatText;
             bubbleExpiresAt = now + 5500;
@@ -2539,13 +2861,28 @@ export function TamerWorldCanvas({
         }
 
         const existingSmooth = smoothMap.get(p.uid);
-        if (!existingSmooth || existingSmooth.player.mapId !== p.mapId) {
+        if (
+          !existingSmooth ||
+          existingSmooth.player.mapId !== p.mapId ||
+          existingSmooth.player.channelId !== p.channelId
+        ) {
           smoothMap.set(p.uid, {
             player: p,
             renderX: p.worldX,
             renderY: p.worldY,
+            targetX: p.worldX,
+            targetY: p.worldY,
+            vx: 0,
+            vy: 0,
+            visualDir: p.facingDir,
             partnerRenderX: p.partnerX,
             partnerRenderY: p.partnerY,
+            partnerTargetX: p.partnerX,
+            partnerTargetY: p.partnerY,
+            partnerVx: 0,
+            partnerVy: 0,
+            partnerVisualDir: p.partnerDir,
+            lastPacketAtMs: now,
             frameTime: 0,
             frameIndex: 0,
             partnerFrameTime: 0,
@@ -2554,6 +2891,62 @@ export function TamerWorldCanvas({
             bubbleExpiresAt,
           });
         } else {
+          const dtPacket = Math.max(
+            0.08,
+            Math.min(1.0, (now - existingSmooth.lastPacketAtMs) / 1000)
+          );
+          const dx = p.worldX - existingSmooth.targetX;
+          const dy = p.worldY - existingSmooth.targetY;
+          const dist = Math.hypot(dx, dy);
+
+          if (dist >= 360) {
+            existingSmooth.renderX = p.worldX;
+            existingSmooth.renderY = p.worldY;
+            existingSmooth.targetX = p.worldX;
+            existingSmooth.targetY = p.worldY;
+            existingSmooth.vx = 0;
+            existingSmooth.vy = 0;
+            existingSmooth.lastPacketAtMs = now;
+          } else if (dist > 1.5) {
+            const rawSpeed = dist / dtPacket;
+            const clampedSpeed = Math.min(235, rawSpeed);
+            existingSmooth.vx = (dx / dist) * clampedSpeed;
+            existingSmooth.vy = (dy / dist) * clampedSpeed;
+            existingSmooth.targetX = p.worldX;
+            existingSmooth.targetY = p.worldY;
+            existingSmooth.lastPacketAtMs = now;
+          } else if (p.moveState === 'idle') {
+            existingSmooth.vx = 0;
+            existingSmooth.vy = 0;
+            existingSmooth.targetX = p.worldX;
+            existingSmooth.targetY = p.worldY;
+            existingSmooth.lastPacketAtMs = now;
+          }
+
+          const pdx = p.partnerX - existingSmooth.partnerTargetX;
+          const pdy = p.partnerY - existingSmooth.partnerTargetY;
+          const pdist = Math.hypot(pdx, pdy);
+
+          if (pdist >= 360) {
+            existingSmooth.partnerRenderX = p.partnerX;
+            existingSmooth.partnerRenderY = p.partnerY;
+            existingSmooth.partnerTargetX = p.partnerX;
+            existingSmooth.partnerTargetY = p.partnerY;
+            existingSmooth.partnerVx = 0;
+            existingSmooth.partnerVy = 0;
+          } else if (pdist > 1.5) {
+            const pSpeed = Math.min(280, pdist / dtPacket);
+            existingSmooth.partnerVx = (pdx / pdist) * pSpeed;
+            existingSmooth.partnerVy = (pdy / pdist) * pSpeed;
+            existingSmooth.partnerTargetX = p.partnerX;
+            existingSmooth.partnerTargetY = p.partnerY;
+          } else if (!p.partnerMoving) {
+            existingSmooth.partnerVx = 0;
+            existingSmooth.partnerVy = 0;
+            existingSmooth.partnerTargetX = p.partnerX;
+            existingSmooth.partnerTargetY = p.partnerY;
+          }
+
           existingSmooth.player = p;
           existingSmooth.bubbleText = bubbleText;
           existingSmooth.bubbleExpiresAt = bubbleExpiresAt;
@@ -2569,19 +2962,37 @@ export function TamerWorldCanvas({
       }
 
       initialPresenceLoadedRef.current = true;
-      // Only trigger React state re-render when the online roster or any player's displayed Digimon/name changes
+      // Only trigger React state re-render when the online roster or any player's displayed Digimon/name/map/channel changes
       // (Live 60fps movement interpolation reads remoteSmoothRef directly without re-rendering React!)
       const nextRosterSig = players
-        .map((p) => `${p.uid}:${p.digimonFormId}:${p.tamerName}:${p.mapId}`)
+        .map(
+          (p) =>
+            `${p.uid}:${p.digimonFormId}:${p.tamerName}:${p.mapId}:${p.channelId}`
+        )
         .sort()
         .join('|');
       if (nextRosterSig !== lastRemoteRosterSigRef.current) {
         lastRemoteRosterSigRef.current = nextRosterSig;
         setRemotePlayers(players);
       }
-      setSelectedRemotePlayer((curr) =>
-        curr ? players.find((p) => p.uid === curr.uid) ?? null : null
-      );
+      // Avoid triggering React re-renders on every walking coordinate update when inspector card is open
+      setSelectedRemotePlayer((curr) => {
+        if (!curr) return null;
+        const found = players.find((p) => p.uid === curr.uid) ?? null;
+        if (!found) return null;
+        if (
+          found.tamerName === curr.tamerName &&
+          found.tamerLevel === curr.tamerLevel &&
+          found.digimonFormId === curr.digimonFormId &&
+          found.digimonLevel === curr.digimonLevel &&
+          found.mapId === curr.mapId &&
+          found.channelId === curr.channelId &&
+          found.guildName === curr.guildName
+        ) {
+          return curr;
+        }
+        return found;
+      });
     });
 
     const handleOfflineSignal = () => {
@@ -3208,6 +3619,7 @@ export function TamerWorldCanvas({
       hp: acc.digimon.hp,
       maxHp: acc.digimon.maxHp,
       mapId: simRef.current.mapId,
+      channelId: currentChannelRef.current,
     };
   }, [actorUid, selection.characterId]);
 
@@ -3612,6 +4024,16 @@ export function TamerWorldCanvas({
       travelToMap(target.mapId);
     }
 
+    if (currentChannelRef.current !== target.channelId) {
+      currentChannelRef.current = target.channelId;
+      setActiveChannelId(target.channelId);
+      try {
+        localStorage.setItem('dw_active_channel_v1', String(target.channelId));
+      } catch {
+        // Ignore storage error
+      }
+    }
+
     // Place smoothly right next to the target player (offset by 52px horizontally so sprites never overlap)
     const desiredX = Math.max(64, Math.min(worldW - 64, target.worldX + 52));
     const desiredY = Math.max(minY, Math.min(worldH - 64, target.worldY));
@@ -3625,11 +4047,13 @@ export function TamerWorldCanvas({
 
     pushChatMessage(
       'system',
-      `Você se encontrou com ${target.isGm ? '[GM] ' : ''}${target.tamerName}!`,
+      `Você se encontrou com ${target.isGm ? '[GM] ' : ''}${target.tamerName} (CH ${target.channelId})!`,
       { tone: 'info' }
     );
     persistProgress();
-    void publishLocalWorldPresence(buildLocalPresenceSnapshot());
+    void publishLocalWorldPresence(buildLocalPresenceSnapshot(), {
+      forceFullWrite: true,
+    });
     playDigitalTone('confirm', soundEnabled);
   }
 
@@ -4636,6 +5060,16 @@ export function TamerWorldCanvas({
         handleTriggerManualSkill('special2');
         return;
       }
+      if (e.key === '1') {
+        e.preventDefault();
+        handleUseQuickSlotRef.current('food');
+        return;
+      }
+      if (e.key === '2') {
+        e.preventDefault();
+        handleUseQuickSlotRef.current('vitamin');
+        return;
+      }
       if (e.key === 'F9') {
         if (!isGM) return;
         e.preventDefault();
@@ -5494,7 +5928,11 @@ export function TamerWorldCanvas({
             const contributorsMap = worldBossRef.current?.contributors ?? {};
             for (const [remoteUid, smooth] of remoteSmoothRef.current.entries()) {
               const rp = smooth.player;
-              if (rp.mapId !== sim.mapId) continue;
+              if (
+                rp.mapId !== sim.mapId ||
+                rp.channelId !== currentChannelRef.current
+              )
+                continue;
               const rx = smooth.partnerRenderX;
               const ry = smooth.partnerRenderY;
               if (isPointInMapSafeZone(sim.mapId, rx, ry)) continue;
@@ -6230,7 +6668,9 @@ export function TamerWorldCanvas({
                   activeParty.memberUids.filter(
                     (uid) =>
                       uid === actorUid ||
-                      activeParty.members[uid]?.mapId === sim.mapId
+                      (activeParty.members[uid]?.mapId === sim.mapId &&
+                        (activeParty.members[uid]?.channelId ?? 1) ===
+                          currentChannelRef.current)
                   ).length
                 )
               : 1;
@@ -7167,36 +7607,63 @@ export function TamerWorldCanvas({
         },
       });
 
-      // Other Live Online Players & Their Partner Digimons on the SAME Map
+      // Other Live Online Players & Their Partner Digimons on the SAME Map & SAME Channel
       const nowFrameMs = Date.now();
-      const lerpAlpha = Math.min(1, dt * 8.5);
+      const activeChNow = currentChannelRef.current;
       for (const smooth of remoteSmoothRef.current.values()) {
         const rp = smooth.player;
-        if (rp.mapId !== sim.mapId) continue;
+        if (rp.mapId !== sim.mapId || rp.channelId !== activeChNow) continue;
 
-        // Smoothly interpolate position (snap if teleported > 360px)
-        const tDx = rp.worldX - smooth.renderX;
-        const tDy = rp.worldY - smooth.renderY;
+        // Bounded dead-reckoning + constant-velocity steering (eliminates stop-start stuttering)
+        const packetAgeSec = Math.max(
+          0,
+          (nowFrameMs - smooth.lastPacketAtMs) / 1000
+        );
+        const predictSec =
+          rp.moveState === 'walk' ? Math.min(0.24, packetAgeSec) : 0;
+        const predX = smooth.targetX + smooth.vx * predictSec;
+        const predY = smooth.targetY + smooth.vy * predictSec;
+        const tDx = predX - smooth.renderX;
+        const tDy = predY - smooth.renderY;
         const tDist = Math.hypot(tDx, tDy);
         if (tDist > 360) {
           smooth.renderX = rp.worldX;
           smooth.renderY = rp.worldY;
+        } else if (tDist > 0.6) {
+          const moveSpeed = Math.max(135, Math.min(340, tDist * 7.2));
+          const step = Math.min(tDist, moveSpeed * dt);
+          smooth.renderX += (tDx / tDist) * step;
+          smooth.renderY += (tDy / tDist) * step;
+        }
+        if (tDist > 4) {
+          smooth.visualDir = snapToCardinalVector(tDx, tDy).dir;
         } else {
-          smooth.renderX += tDx * lerpAlpha;
-          smooth.renderY += tDy * lerpAlpha;
+          smooth.visualDir = rp.facingDir;
         }
 
-        const pDx = rp.partnerX - smooth.partnerRenderX;
-        const pDy = rp.partnerY - smooth.partnerRenderY;
-        if (Math.hypot(pDx, pDy) > 360) {
+        const pPredictSec = rp.partnerMoving ? Math.min(0.24, packetAgeSec) : 0;
+        const predPX = smooth.partnerTargetX + smooth.partnerVx * pPredictSec;
+        const predPY = smooth.partnerTargetY + smooth.partnerVy * pPredictSec;
+        const pDx = predPX - smooth.partnerRenderX;
+        const pDy = predPY - smooth.partnerRenderY;
+        const pDist = Math.hypot(pDx, pDy);
+        if (pDist > 360) {
           smooth.partnerRenderX = rp.partnerX;
           smooth.partnerRenderY = rp.partnerY;
+        } else if (pDist > 0.6) {
+          const pMoveSpeed = Math.max(150, Math.min(390, pDist * 7.5));
+          const pStep = Math.min(pDist, pMoveSpeed * dt);
+          smooth.partnerRenderX += (pDx / pDist) * pStep;
+          smooth.partnerRenderY += (pDy / pDist) * pStep;
+        }
+        if (pDist > 4) {
+          smooth.partnerVisualDir = snapToCardinalVector(pDx, pDy).dir;
         } else {
-          smooth.partnerRenderX += pDx * lerpAlpha;
-          smooth.partnerRenderY += pDy * lerpAlpha;
+          smooth.partnerVisualDir = rp.partnerDir;
         }
 
-        const isRemoteWalking = rp.moveState === 'walk' || tDist > 6;
+        const isRemoteWalking =
+          tDist > 2.5 || (rp.moveState === 'walk' && packetAgeSec < 0.65);
         if (isRemoteWalking) {
           smooth.frameTime += dt;
           if (smooth.frameTime >= 0.095) {
@@ -7208,7 +7675,8 @@ export function TamerWorldCanvas({
           smooth.frameIndex = 0;
         }
 
-        const isRemotePartnerMoving = rp.partnerMoving || Math.hypot(pDx, pDy) > 6;
+        const isRemotePartnerMoving =
+          pDist > 2.5 || (rp.partnerMoving && packetAgeSec < 0.65);
         if (isRemotePartnerMoving) {
           smooth.partnerFrameTime += dt;
           if (smooth.partnerFrameTime >= 0.14) {
@@ -7223,8 +7691,10 @@ export function TamerWorldCanvas({
 
         const rX = smooth.renderX;
         const rY = smooth.renderY;
+        const rDir = smooth.visualDir;
         const rpX = smooth.partnerRenderX;
         const rpY = smooth.partnerRenderY;
+        const rpDir = smooth.partnerVisualDir;
         const rFrame = smooth.frameIndex;
         const rpFrame = smooth.partnerFrameIndex;
         const rCharMeta =
@@ -7268,7 +7738,7 @@ export function TamerWorldCanvas({
               ctx!,
               rp.characterId,
               isRemoteWalking ? 'walk' : 'idle',
-              rp.facingDir,
+              rDir,
               rFrame,
               elapsed,
               rX,
@@ -7381,11 +7851,11 @@ export function TamerWorldCanvas({
 
             if (isRemotePartnerMoving && !rAerial.isAerial) {
               const stepVector =
-                rp.partnerDir === 'W'
+                rpDir === 'W'
                   ? { vx: 1, vy: 0.1 }
-                  : rp.partnerDir === 'E'
+                  : rpDir === 'E'
                     ? { vx: -1, vy: 0.1 }
-                    : rp.partnerDir === 'N'
+                    : rpDir === 'N'
                       ? { vx: 0, vy: 1 }
                       : { vx: 0, vy: -0.6 };
               ctx!.save();
@@ -7406,7 +7876,7 @@ export function TamerWorldCanvas({
               ctx!,
               rForm.id,
               isRemotePartnerMoving ? 'walk' : 'idle',
-              rp.partnerDir,
+              rpDir,
               rpFrame,
               elapsed,
               rpX,
@@ -7831,11 +8301,12 @@ export function TamerWorldCanvas({
         });
       }
 
-      // Off-screen directional pointers for online players on the SAME map outside the camera viewport
+      // Off-screen directional pointers for online players on the SAME map & channel outside the camera viewport
       if (runtimeMetaRef.current.showOffscreenPointers) {
       for (const smooth of remoteSmoothRef.current.values()) {
         const rp = smooth.player;
-        if (rp.mapId !== sim.mapId) continue;
+        if (rp.mapId !== sim.mapId || rp.channelId !== currentChannelRef.current)
+          continue;
         const screenX = (smooth.renderX - sim.camX) * cameraZoom + viewW / 2;
         const screenY = (smooth.renderY - sim.camY) * cameraZoom + viewH / 2;
         const marginX = 36;
@@ -7921,14 +8392,16 @@ export function TamerWorldCanvas({
             }
           }
           let remoteSig = '';
+          const myChForHud = currentChannelRef.current;
           for (const s of remoteSmoothRef.current.values()) {
-            if (s.player.mapId === sim.mapId) {
-              remoteSig += `${s.player.uid}:${Math.round(s.renderX / 24)},${Math.round(s.renderY / 24)};`;
+            if (s.player.mapId === sim.mapId && s.player.channelId === myChForHud) {
+              remoteSig += `${s.player.uid}:${Math.round(s.renderX / 48)},${Math.round(s.renderY / 48)};`;
             }
           }
 
           const hudSignature = [
             sim.mapId,
+            myChForHud,
             Math.round(sim.x / 8),
             Math.round(sim.y / 8),
             sim.dir,
@@ -7990,7 +8463,11 @@ export function TamerWorldCanvas({
                   }))
                 : [],
               minimapPlayers: Array.from(remoteSmoothRef.current.values())
-                .filter((s) => s.player.mapId === sim.mapId)
+                .filter(
+                  (s) =>
+                    s.player.mapId === sim.mapId &&
+                    s.player.channelId === myChForHud
+                )
                 .map((s) => ({
                   uid: s.player.uid,
                   tamerName: s.player.tamerName,
@@ -8002,22 +8479,30 @@ export function TamerWorldCanvas({
           }
         }
 
-        // Throttled real-time multiplayer presence broadcast (delta + 15s keepalive heartbeat)
+        // Responsive real-time multiplayer presence broadcast (200ms walking cadence + safety timeout + 12s keepalive)
         const syncMeta = lastPresenceSyncRef.current;
         const nowMs = Date.now();
         const elapsedSinceSync = nowMs - syncMeta.sentAtMs;
+        if (syncMeta.inFlight && elapsedSinceSync >= 1800) {
+          syncMeta.inFlight = false;
+        }
         const movedDist = Math.hypot(sim.x - syncMeta.x, sim.y - syncMeta.y);
         const mapOrFormChanged =
           sim.mapId !== syncMeta.mapId ||
+          currentChannelRef.current !== syncMeta.channelId ||
           renderForm.id !== syncMeta.formId ||
           hudAccountRef.current.tamer.level !== syncMeta.tamerLevel ||
           hudAccountRef.current.digimon.level !== syncMeta.digimonLevel;
         const stoppedMoving =
-          syncMeta.state === 'walk' && sim.state === 'idle' && elapsedSinceSync >= 160;
+          syncMeta.state === 'walk' &&
+          sim.state === 'idle' &&
+          elapsedSinceSync >= 100;
         const movedEnough =
-          (movedDist >= 12 || sim.dir !== syncMeta.dir || sim.state !== syncMeta.state) &&
-          elapsedSinceSync >= 450;
-        const heartbeatDue = elapsedSinceSync >= 10_000;
+          (movedDist >= 8 ||
+            sim.dir !== syncMeta.dir ||
+            sim.state !== syncMeta.state) &&
+          elapsedSinceSync >= 200;
+        const heartbeatDue = elapsedSinceSync >= 12_000;
 
         if (
           document.visibilityState === 'visible' &&
@@ -8030,6 +8515,7 @@ export function TamerWorldCanvas({
           syncMeta.dir = sim.dir;
           syncMeta.state = sim.state;
           syncMeta.mapId = sim.mapId;
+          syncMeta.channelId = currentChannelRef.current;
           syncMeta.formId = renderForm.id;
           syncMeta.tamerLevel = hudAccountRef.current.tamer.level;
           syncMeta.digimonLevel = hudAccountRef.current.digimon.level;
@@ -8353,9 +8839,13 @@ export function TamerWorldCanvas({
       }
     }
 
-    // Check if the player tapped another online Tamer on this map
+    // Check if the player tapped another online Tamer on this map & channel
     for (const smooth of remoteSmoothRef.current.values()) {
-      if (smooth.player.mapId !== sim.mapId) continue;
+      if (
+        smooth.player.mapId !== sim.mapId ||
+        smooth.player.channelId !== currentChannelRef.current
+      )
+        continue;
       if (
         Math.abs(worldX - smooth.renderX) <= 30 &&
         worldY >= smooth.renderY - 94 &&
@@ -8535,6 +9025,64 @@ export function TamerWorldCanvas({
       joystickKnobElRef.current.style.transform = 'translate3d(0px, 0px, 0)';
     }
   }
+
+  const handleAssignQuickSlot = useCallback(
+    (slot: 'food' | 'vitamin', itemKey: string | null) => {
+      const next =
+        slot === 'food'
+          ? { ...quickSlotsRef.current, foodItemKey: itemKey }
+          : { ...quickSlotsRef.current, vitaminItemKey: itemKey };
+      quickSlotsRef.current = next;
+      setQuickSlots(next);
+      try {
+        localStorage.setItem(quickSlotsStorageKey, JSON.stringify(next));
+      } catch {
+        // Ignore storage error
+      }
+      playDigitalTone('click', soundEnabledRef.current);
+    },
+    [quickSlotsStorageKey]
+  );
+
+  function handleUseQuickSlot(slot: 'food' | 'vitamin') {
+    const nowMs = Date.now();
+    if (nowMs - lastQuickSlotUseMsRef.current < 380) return;
+    lastQuickSlotUseMsRef.current = nowMs;
+
+    const itemKey =
+      slot === 'food'
+        ? quickSlotsRef.current.foodItemKey
+        : quickSlotsRef.current.vitaminItemKey;
+    if (!itemKey) {
+      playDigitalTone('error', soundEnabledRef.current);
+      pushChatMessage(
+        'system',
+        slot === 'food'
+          ? 'Clique no quadrado de Comida (HP) acima do Ultimate para escolher uma comida!'
+          : 'Clique no quadrado de Vitamina (DS) acima do Mega para escolher uma vitamina!',
+        { tone: 'info' }
+      );
+      return;
+    }
+
+    const invItem = hudAccountRef.current.inventory.find(
+      (i) => i.itemKey === itemKey && i.quantity > 0
+    );
+    if (!invItem) {
+      playDigitalTone('error', soundEnabledRef.current);
+      pushChatMessage(
+        'system',
+        slot === 'food'
+          ? 'Sem estoque da Comida equipada! Compre na Loja da MudFrigimon ou escolha outra.'
+          : 'Sem estoque da Vitamina equipada! Compre na Loja da MudFrigimon ou escolha outra.',
+        { tone: 'warning' }
+      );
+      return;
+    }
+
+    handleUseInventoryItem(invItem);
+  }
+  handleUseQuickSlotRef.current = handleUseQuickSlot;
 
   function handleUseInventoryItem(item: InventoryItem) {
     const cur = hudAccountRef.current;
@@ -9662,6 +10210,8 @@ export function TamerWorldCanvas({
             incomingGuildInvites={incomingGuildInvites}
             actorUid={actorUid}
             currentMapId={liveSnapshot.mapId}
+            currentChannelId={activeChannelId}
+            onSwitchChannel={(ch) => handleSwitchChannel(ch)}
             onAcceptInvite={(invite) => void handleAcceptPartyInvite(invite)}
             onDeclineInvite={(inviteId) => void handleDeclinePartyInvite(inviteId)}
             onAcceptGuildInvite={(invite) =>
@@ -10056,6 +10606,11 @@ export function TamerWorldCanvas({
           onDiscardItem={handleDiscardInventoryItem}
           onDiscardItems={handleDiscardInventoryItems}
           onSortInventory={handleSortInventory}
+          foodSlotItemKey={quickSlots.foodItemKey}
+          vitaminSlotItemKey={quickSlots.vitaminItemKey}
+          onAssignQuickSlot={(slot, itemKey) =>
+            handleAssignQuickSlot(slot, itemKey)
+          }
         />
       )}
 
@@ -10302,23 +10857,28 @@ export function TamerWorldCanvas({
         </div>
       </div>
 
-      {/* BOTTOM-CENTER DIGIMON ACTION DOCK: F1 & F2 centered above Champion & Ultimate, cleanly between Joystick and MENU */}
+      {/* BOTTOM-CENTER DIGIMON ACTION DOCK: [F1] above Rookie · [F2] above Champion · [Food] above Ultimate · [Vitamin] above Mega */}
       <div className="pointer-events-none absolute bottom-2 left-1/2 z-[28] -translate-x-1/2 sm:bottom-3 md:left-[calc(50%+86px)] xl:left-1/2">
         <DigimonBottomActionDock
           digimon={activeFormProfile}
           stats={hudAccount.digimon}
           snapshot={liveSnapshot}
           ownedEvoluters={getOwnedEvoluterCount(hudAccount.inventory)}
+          inventory={hudAccount.inventory}
+          foodSlotItemKey={quickSlots.foodItemKey}
+          vitaminSlotItemKey={quickSlots.vitaminItemKey}
           onTriggerSkill={handleTriggerManualSkill}
           onEvolveForm={handleTriggerEvolution}
           onRequestUnlockForm={(formId) => {
             playDigitalTone('click', soundEnabled);
             setEvoluterUnlockFormId(formId);
           }}
+          onUseQuickSlot={(slot) => handleUseQuickSlot(slot)}
+          onAssignQuickSlot={handleAssignQuickSlot}
         />
       </div>
 
-      {/* COMPACT PROFESSIONAL "MENU" BASE BUTTON + SERVER EXP BADGE + 2-ROW ICON PANEL */}
+      {/* COMPACT PROFESSIONAL "MENU" BASE BUTTON + SERVER EXP BADGE + DMO 5-CHANNEL SELECTOR */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30">
         <BottomHudDock
           activeWindow={activeHudWindow}
@@ -10331,6 +10891,13 @@ export function TamerWorldCanvas({
           guildExpBonusPct={guildDailyEventXpPct}
           xpBoostUntilMs={hudAccount.xpBoostUntilMs ?? null}
           isGM={isGM}
+          currentMapId={liveSnapshot.mapId}
+          currentChannelId={activeChannelId}
+          channelCounts={channelCounts}
+          partyChannelCounts={partyChannelCounts}
+          partyLeaderChannelId={partyLeaderChannelId}
+          channelSwitching={channelSwitching}
+          onSelectChannel={(ch) => handleSwitchChannel(ch)}
           onAdminChangeExpRate={isGM ? handleAdminSetServerExpRate : undefined}
           onToggleInventory={() => {
             playDigitalTone('click', soundEnabled);

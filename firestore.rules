@@ -298,7 +298,7 @@ service cloud.firestore {
         ]) &&
         data.keys().hasOnly([
           'ownerUid', 'tamerName', 'characterId', 'tamerLevel', 'digimonFormId', 'digimonLevel',
-          'mapId', 'worldX', 'worldY', 'facingDir', 'moveState',
+          'mapId', 'channelId', 'worldX', 'worldY', 'facingDir', 'moveState',
           'partnerX', 'partnerY', 'partnerDir', 'partnerMoving',
           'isGm', 'guildName', 'chatText', 'chatSeq', 'online', 'updatedAt'
         ]) &&
@@ -330,6 +330,7 @@ service cloud.firestore {
         ] &&
         data.digimonLevel is number && data.digimonLevel >= 1 && data.digimonLevel <= 200 &&
         data.mapId in ['dats-center', 'd-terminal', 'hunting-plains', 'data-forest', 'digi-mountain', 'digital-desert', 'data-sea', 'digimon-island', 'dark-area', 'virtual-world'] &&
+        (!('channelId' in data) || (data.channelId is number && data.channelId >= 1 && data.channelId <= 5)) &&
         data.worldX is number && data.worldX >= 0 && data.worldX <= 20000 &&
         data.worldY is number && data.worldY >= 0 && data.worldY <= 20000 &&
         data.facingDir in ['N', 'S', 'E', 'W'] &&
@@ -536,7 +537,7 @@ service cloud.firestore {
     function isValidPartyMember(m) {
       return m is map &&
         m.keys().hasAll(['uid', 'tamerName', 'characterId', 'tamerLevel', 'tamerPhotoUrl', 'digimonFormId', 'digimonName', 'digimonLevel', 'hp', 'maxHp', 'mapId']) &&
-        m.keys().hasOnly(['uid', 'tamerName', 'characterId', 'tamerLevel', 'tamerPhotoUrl', 'digimonFormId', 'digimonName', 'digimonLevel', 'hp', 'maxHp', 'mapId']) &&
+        m.keys().hasOnly(['uid', 'tamerName', 'characterId', 'tamerLevel', 'tamerPhotoUrl', 'digimonFormId', 'digimonName', 'digimonLevel', 'hp', 'maxHp', 'mapId', 'channelId']) &&
         m.uid is string && isValidId(m.uid) &&
         m.tamerName is string && m.tamerName.size() >= 1 && m.tamerName.size() <= 24 &&
         m.characterId in ['kai', 'ren', 'hina', 'yuna'] &&
@@ -547,7 +548,8 @@ service cloud.firestore {
         m.digimonLevel is number && m.digimonLevel >= 1 && m.digimonLevel <= 200 &&
         m.maxHp is number && m.maxHp >= 1 && m.maxHp <= 1000000 &&
         m.hp is number && m.hp >= 0 && m.hp <= m.maxHp &&
-        m.mapId in ['dats-center', 'd-terminal', 'hunting-plains', 'data-forest', 'digi-mountain', 'digital-desert', 'data-sea', 'digimon-island', 'dark-area', 'virtual-world'];
+        m.mapId in ['dats-center', 'd-terminal', 'hunting-plains', 'data-forest', 'digi-mountain', 'digital-desert', 'data-sea', 'digimon-island', 'dark-area', 'virtual-world'] &&
+        (!('channelId' in m) || (m.channelId is number && m.channelId >= 1 && m.channelId <= 5));
     }
 
     function isValidPartyRecord(data, partyId) {
@@ -628,7 +630,7 @@ service cloud.firestore {
         data.ownerUid is string && isValidId(data.ownerUid) &&
         data.username is string && data.username.size() >= 3 && data.username.size() <= 24 &&
         data.tamerName is string && data.tamerName.size() <= 24 &&
-        data.type in ['spend', 'recharge', 'gm_grant', 'gm_deduct'] &&
+        data.type in ['spend', 'recharge', 'gm_grant', 'gm_deduct', 'referral_bonus'] &&
         data.dwCoinAmount is number && data.dwCoinAmount >= 1 && data.dwCoinAmount <= 100000000 &&
         data.itemKey is string && data.itemKey.size() >= 1 && data.itemKey.size() <= 64 &&
         data.itemName is string && data.itemName.size() >= 1 && data.itemName.size() <= 64 &&
@@ -752,6 +754,83 @@ service cloud.firestore {
         data.createdAt is timestamp &&
         (data.soldAt == null || data.soldAt is timestamp) &&
         data.updatedAt is timestamp;
+    }
+
+    function isValidReferralCodeKey(code) {
+      return code is string &&
+        code.size() >= 6 &&
+        code.size() <= 12 &&
+        code.matches('^[A-Z0-9]+$');
+    }
+
+    function isValidReferralMonthKey(monthKey) {
+      return monthKey is string &&
+        monthKey.size() == 7 &&
+        monthKey.matches('^[0-9]{4}-[0-9]{2}$');
+    }
+
+    function isValidReferralCodeDoc(data, code) {
+      return data.keys().hasAll(['code', 'ownerUid', 'tamerName', 'createdAt']) &&
+        data.keys().hasOnly(['code', 'ownerUid', 'tamerName', 'createdAt']) &&
+        data.code is string && isValidReferralCodeKey(data.code) && data.code == code &&
+        data.ownerUid is string && isValidId(data.ownerUid) &&
+        data.tamerName is string && data.tamerName.size() >= 1 && data.tamerName.size() <= 24 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidReferralProfile(data, userId) {
+      return data.keys().hasAll([
+          'ownerUid', 'inviteCode', 'tamerName', 'characterId',
+          'tamerPhotoUrl', 'tamerCoverUrl', 'isGm',
+          'totalInvites', 'monthKey', 'monthlyInvites',
+          'totalCommissionEarned', 'monthlyCommissionEarned',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'ownerUid', 'inviteCode', 'tamerName', 'characterId',
+          'tamerPhotoUrl', 'tamerCoverUrl', 'isGm',
+          'totalInvites', 'monthKey', 'monthlyInvites',
+          'totalCommissionEarned', 'monthlyCommissionEarned',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.ownerUid is string && isValidId(data.ownerUid) && data.ownerUid == userId &&
+        data.inviteCode is string && isValidReferralCodeKey(data.inviteCode) &&
+        data.tamerName is string && data.tamerName.size() >= 1 && data.tamerName.size() <= 24 &&
+        data.characterId in ['kai', 'ren', 'hina', 'yuna'] &&
+        (data.tamerPhotoUrl == null ||
+          (data.tamerPhotoUrl is string &&
+            data.tamerPhotoUrl.size() <= 48000 &&
+            data.tamerPhotoUrl.matches('^data:image/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$'))) &&
+        (data.tamerCoverUrl == null ||
+          (data.tamerCoverUrl is string &&
+            data.tamerCoverUrl.size() <= 48000 &&
+            data.tamerCoverUrl.matches('^data:image/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$'))) &&
+        data.isGm is bool &&
+        data.totalInvites is int && data.totalInvites >= 0 && data.totalInvites <= 1000000 &&
+        isValidReferralMonthKey(data.monthKey) &&
+        data.monthlyInvites is int && data.monthlyInvites >= 0 && data.monthlyInvites <= 1000000 &&
+        data.totalCommissionEarned is int && data.totalCommissionEarned >= 0 && data.totalCommissionEarned <= 1000000000 &&
+        data.monthlyCommissionEarned is int && data.monthlyCommissionEarned >= 0 && data.monthlyCommissionEarned <= 1000000000 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidReferralClaim(data, referredUid) {
+      return data.keys().hasAll([
+          'referredUid', 'referredName', 'referrerUid', 'referrerName',
+          'inviteCode', 'monthKey', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'referredUid', 'referredName', 'referrerUid', 'referrerName',
+          'inviteCode', 'monthKey', 'createdAt'
+        ]) &&
+        data.referredUid is string && isValidId(data.referredUid) && data.referredUid == referredUid &&
+        data.referredName is string && data.referredName.size() >= 1 && data.referredName.size() <= 24 &&
+        data.referrerUid is string && isValidId(data.referrerUid) && data.referrerUid != referredUid &&
+        data.referrerName is string && data.referrerName.size() >= 1 && data.referrerName.size() <= 24 &&
+        data.inviteCode is string && isValidReferralCodeKey(data.inviteCode) &&
+        isValidReferralMonthKey(data.monthKey) &&
+        data.createdAt is timestamp;
     }
 
     // =========================================================================
@@ -924,10 +1003,10 @@ service cloud.firestore {
         incoming().updatedAt == request.time &&
         (!incoming().isGm || isAdmin()) &&
         (isNotBanned() || (incoming().online == false && incoming().diff(existing()).affectedKeys().hasOnly(['online', 'updatedAt']))) && (
-          // Action 1: Live avatar position, animation, map, level, evolution & heartbeat sync
+          // Action 1: Live avatar position, animation, map, channel, level, evolution & heartbeat sync
           (incoming().diff(existing()).affectedKeys().hasOnly([
             'tamerName', 'characterId', 'tamerLevel', 'digimonFormId', 'digimonLevel',
-            'mapId', 'worldX', 'worldY', 'facingDir', 'moveState',
+            'mapId', 'channelId', 'worldX', 'worldY', 'facingDir', 'moveState',
             'partnerX', 'partnerY', 'partnerDir', 'partnerMoving',
             'isGm', 'guildName', 'online', 'updatedAt'
           ])) ||
@@ -938,13 +1017,13 @@ service cloud.firestore {
           // Action 4: Combined live movement + chat broadcast / legacy schema self-heal
           (incoming().diff(existing()).addedKeys().hasOnly([
             'ownerUid', 'tamerName', 'characterId', 'tamerLevel', 'digimonFormId', 'digimonLevel',
-            'mapId', 'worldX', 'worldY', 'facingDir', 'moveState',
+            'mapId', 'channelId', 'worldX', 'worldY', 'facingDir', 'moveState',
             'partnerX', 'partnerY', 'partnerDir', 'partnerMoving',
             'isGm', 'guildName', 'chatText', 'chatSeq', 'online', 'updatedAt'
           ]) &&
           incoming().diff(existing()).changedKeys().hasOnly([
             'ownerUid', 'tamerName', 'characterId', 'tamerLevel', 'digimonFormId', 'digimonLevel',
-            'mapId', 'worldX', 'worldY', 'facingDir', 'moveState',
+            'mapId', 'channelId', 'worldX', 'worldY', 'facingDir', 'moveState',
             'partnerX', 'partnerY', 'partnerDir', 'partnerMoving',
             'isGm', 'guildName', 'chatText', 'chatSeq', 'online', 'updatedAt'
           ])) ||
@@ -1673,6 +1752,122 @@ service cloud.firestore {
         );
 
       allow delete: if isAdmin() && isValidId(listingId);
+    }
+
+    // =========================================================================
+    // Collection: /referralCodes/{code} — Unique Zero-PII Invite Code Registry
+    // =========================================================================
+    match /referralCodes/{code} {
+      allow get: if isVerified() && isValidReferralCodeKey(code);
+      allow list: if false;
+
+      allow create: if isVerified() &&
+        isValidReferralCodeKey(code) &&
+        isValidReferralCodeDoc(incoming(), code) &&
+        incoming().ownerUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        exists(/databases/$(database)/documents/players/$(request.auth.uid)) &&
+        existsAfter(/databases/$(database)/documents/referralProfiles/$(request.auth.uid)) &&
+        getAfter(/databases/$(database)/documents/referralProfiles/$(request.auth.uid)).data.inviteCode == code &&
+        isNotBanned();
+
+      allow update: if false;
+      allow delete: if isAdmin() && isValidReferralCodeKey(code);
+    }
+
+    // =========================================================================
+    // Collection: /referralProfiles/{userId} — Public Zero-PII Inviter Leaderboard
+    // =========================================================================
+    match /referralProfiles/{userId} {
+      allow get: if isVerified() && isValidId(userId);
+      allow list: if isVerified() &&
+        existing().totalInvites >= 0 &&
+        request.query.limit <= 100;
+
+      allow create: if isVerifiedOwner(userId) &&
+        isValidId(userId) &&
+        isValidReferralProfile(incoming(), userId) &&
+        incoming().ownerUid == request.auth.uid &&
+        (!incoming().isGm || isAdmin()) &&
+        incoming().totalInvites == 0 &&
+        incoming().monthlyInvites == 0 &&
+        incoming().totalCommissionEarned == 0 &&
+        incoming().monthlyCommissionEarned == 0 &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/players/$(userId)) &&
+        existsAfter(/databases/$(database)/documents/referralCodes/$(incoming().inviteCode)) &&
+        getAfter(/databases/$(database)/documents/referralCodes/$(incoming().inviteCode)).data.ownerUid == userId &&
+        isNotBanned();
+
+      allow update: if isVerified() &&
+        isValidId(userId) &&
+        isValidReferralProfile(incoming(), userId) &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().inviteCode == existing().inviteCode &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (!incoming().isGm || isAdmin()) &&
+        isNotBanned() && (
+          // Action 1: Owner updates display metadata only (cannot self-inflate invites or commissions)
+          (request.auth.uid == userId &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'tamerName', 'characterId', 'tamerPhotoUrl', 'tamerCoverUrl', 'isGm', 'updatedAt'
+            ])) ||
+          // Action 2: Atomic +1 invite increment strictly coupled with a NEW referralClaims/{uid} creation
+          (request.auth.uid != userId &&
+            !exists(/databases/$(database)/documents/referralClaims/$(request.auth.uid)) &&
+            existsAfter(/databases/$(database)/documents/referralClaims/$(request.auth.uid)) &&
+            getAfter(/databases/$(database)/documents/referralClaims/$(request.auth.uid)).data.referrerUid == userId &&
+            incoming().totalInvites == existing().totalInvites + 1 &&
+            incoming().totalCommissionEarned == existing().totalCommissionEarned &&
+            ((incoming().monthKey == existing().monthKey &&
+                incoming().monthlyInvites == existing().monthlyInvites + 1 &&
+                incoming().monthlyCommissionEarned == existing().monthlyCommissionEarned) ||
+              (incoming().monthKey > existing().monthKey &&
+                incoming().monthlyInvites == 1 &&
+                incoming().monthlyCommissionEarned == 0)) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'totalInvites', 'monthKey', 'monthlyInvites', 'monthlyCommissionEarned', 'updatedAt'
+            ])) ||
+          // Action 3: GM / Admin commission sync on manual recharge approval
+          isAdmin()
+        );
+
+      allow delete: if isAdmin() && isValidId(userId);
+    }
+
+    // =========================================================================
+    // Collection: /referralClaims/{referredUid} — Immutable One-Time Invite Claims
+    // =========================================================================
+    match /referralClaims/{referredUid} {
+      allow get: if isVerified() &&
+        isValidId(referredUid) &&
+        (request.auth.uid == referredUid ||
+          existing().referrerUid == request.auth.uid ||
+          isAdmin());
+      allow list: if (isVerified() &&
+        (existing().referrerUid == request.auth.uid ||
+          existing().referredUid == request.auth.uid)) ||
+        isBootstrappedGm();
+
+      allow create: if isVerifiedOwner(referredUid) &&
+        isValidId(referredUid) &&
+        isValidReferralClaim(incoming(), referredUid) &&
+        incoming().referredUid == request.auth.uid &&
+        incoming().referrerUid != request.auth.uid &&
+        incoming().createdAt == request.time &&
+        exists(/databases/$(database)/documents/players/$(request.auth.uid)) &&
+        exists(/databases/$(database)/documents/referralCodes/$(incoming().inviteCode)) &&
+        get(/databases/$(database)/documents/referralCodes/$(incoming().inviteCode)).data.ownerUid == incoming().referrerUid &&
+        exists(/databases/$(database)/documents/referralProfiles/$(incoming().referrerUid)) &&
+        existsAfter(/databases/$(database)/documents/referralProfiles/$(incoming().referrerUid)) &&
+        getAfter(/databases/$(database)/documents/referralProfiles/$(incoming().referrerUid)).data.totalInvites ==
+          get(/databases/$(database)/documents/referralProfiles/$(incoming().referrerUid)).data.totalInvites + 1 &&
+        isNotBanned();
+
+      allow update: if false;
+      allow delete: if isAdmin() && isValidId(referredUid);
     }
   }
 }

@@ -452,11 +452,16 @@ export function HudWindowsOverlay({
       <FriendsModal
         accountKey={accountKey || actorUid || tamerName}
         selfTamerName={tamerName}
+        selfCharacterId={character.id}
+        selfTamerPhotoUrl={hudAccount.tamerPhotoUrl ?? null}
+        selfTamerCoverUrl={hudAccount.tamerCoverUrl ?? null}
+        selfIsGm={Boolean(cloudIsGm)}
         remotePlayers={remotePlayers}
         onStartWhisper={(friendName) => {
           onStartWhisper?.(friendName);
           onClose();
         }}
+        onNotifyImportantEvent={onNotifyImportantEvent}
         onPlayTone={onPlayTone}
         onClose={onClose}
       />

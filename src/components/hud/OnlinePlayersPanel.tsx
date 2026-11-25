@@ -13,6 +13,7 @@ import {
 import type {
   RemoteWorldPlayer,
   SharedWorldMapId,
+  WorldChannelId,
   WorldSyncStatus,
 } from '../../services/worldPresenceService';
 import { getDigimonFormProfile } from '../../types/digimon';
@@ -20,6 +21,7 @@ import { TAMER_CHARACTERS } from '../../sprites/tamerSprites';
 
 interface OnlinePlayersBadgeProps {
   currentMapId: SharedWorldMapId;
+  currentChannelId?: WorldChannelId;
   localTamerName: string;
   localIsGm: boolean;
   localLevel: number;
@@ -46,6 +48,7 @@ const MAP_LABELS: Record<SharedWorldMapId, string> = {
 
 export const OnlinePlayersBadge = memo(function OnlinePlayersBadge({
   currentMapId,
+  currentChannelId = 1,
   localTamerName,
   localIsGm,
   localLevel,
@@ -128,7 +131,7 @@ export const OnlinePlayersBadge = memo(function OnlinePlayersBadge({
                         {localTamerName}
                       </span>
                       <span className="rounded bg-cyan-500/25 px-1 text-[8.5px] font-bold text-cyan-200">
-                        Você
+                        Você · CH{currentChannelId}
                       </span>
                     </div>
                     <p className="truncate text-[9.5px] text-sky-200/80">
@@ -162,6 +165,15 @@ export const OnlinePlayersBadge = memo(function OnlinePlayersBadge({
                             }`}
                           >
                             {p.tamerName}
+                          </span>
+                          <span
+                            className={`shrink-0 rounded px-1 text-[8px] font-black ${
+                              p.channelId === currentChannelId
+                                ? 'bg-emerald-500/25 text-emerald-200'
+                                : 'bg-amber-500/25 text-amber-200'
+                            }`}
+                          >
+                            CH{p.channelId}
                           </span>
                         </div>
                         <p className="truncate text-[9.5px] text-emerald-200/85">
@@ -218,7 +230,7 @@ export const OnlinePlayersBadge = memo(function OnlinePlayersBadge({
                             </span>
                           </div>
                           <p className="truncate text-[9.5px] text-sky-200/75">
-                            {MAP_LABELS[p.mapId]} · {form.name}
+                            {MAP_LABELS[p.mapId]} · CH{p.channelId} · {form.name}
                           </p>
                         </button>
                         <button
@@ -316,7 +328,8 @@ export const RemotePlayerInspectorCard = memo(function RemotePlayerInspectorCard
               </h3>
             </div>
             <p className="truncate text-[10.5px] font-semibold text-cyan-200">
-              {tamerMeta.shortLabel} · Tamer Lv.{player.tamerLevel}
+              {tamerMeta.shortLabel} · Tamer Lv.{player.tamerLevel} ·{' '}
+              <span className="text-emerald-300">CH {player.channelId}</span>
               {player.guildName ? ` · [${player.guildName}]` : ''}
             </p>
             <p className="truncate text-[10.5px] font-bold text-amber-200">

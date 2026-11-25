@@ -47,6 +47,9 @@ interface InventoryHudWindowProps {
   onDiscardItem: (item: InventoryItem, quantity?: number) => void;
   onDiscardItems?: (requests: Array<{ itemId: string; quantity: number }>) => void;
   onSortInventory: () => void;
+  foodSlotItemKey?: string | null;
+  vitaminSlotItemKey?: string | null;
+  onAssignQuickSlot?: (slot: 'food' | 'vitamin', itemKey: string) => void;
 }
 
 const FILTER_TABS: Array<{ id: InventoryCategory; label: string }> = [
@@ -144,6 +147,9 @@ export function InventoryHudWindow({
   onDiscardItem,
   onDiscardItems,
   onSortInventory,
+  foodSlotItemKey = null,
+  vitaminSlotItemKey = null,
+  onAssignQuickSlot,
 }: InventoryHudWindowProps) {
   const safeUnlockedSlots = getUnlockedInventorySlots(unlockedSlots);
   const [filter, setFilter] = useState<InventoryCategory>('all');
@@ -751,7 +757,7 @@ export function InventoryHudWindow({
               </div>
 
               {/* Clean Action Footer */}
-              <div className="flex items-center gap-2 border-t border-cyan-400/25 bg-[#041230] p-3.5">
+              <div className="flex flex-wrap items-center gap-2 border-t border-cyan-400/25 bg-[#041230] p-3.5">
                 {canUse && (
                   <button
                     type="button"
@@ -766,6 +772,43 @@ export function InventoryHudWindow({
                     <span>Usar Item</span>
                   </button>
                 )}
+
+                {onAssignQuickSlot &&
+                  inspectedItem.category === 'consumable' &&
+                  ((inspectedItem.hpRestore ?? 0) > 0 ||
+                    (inspectedItem.dsRestore ?? 0) > 0) &&
+                  (() => {
+                    const targetSlot: 'food' | 'vitamin' =
+                      (inspectedItem.hpRestore ?? 0) > 0 ? 'food' : 'vitamin';
+                    const isPinned =
+                      targetSlot === 'food'
+                        ? foodSlotItemKey === inspectedItem.itemKey
+                        : vitaminSlotItemKey === inspectedItem.itemKey;
+                    return (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onAssignQuickSlot(targetSlot, inspectedItem.itemKey)
+                        }
+                        className={`flex min-h-[46px] shrink-0 items-center justify-center gap-1.5 rounded-xl border px-3 text-xs font-black transition active:scale-95 ${
+                          isPinned
+                            ? 'border-amber-300/85 bg-amber-500/25 text-amber-100'
+                            : targetSlot === 'food'
+                              ? 'border-emerald-300/75 bg-emerald-950/75 text-emerald-200 hover:bg-emerald-900/80'
+                              : 'border-cyan-300/75 bg-cyan-950/75 text-cyan-200 hover:bg-cyan-900/80'
+                        }`}
+                      >
+                        {isPinned ? (
+                          <Check className="h-3.5 w-3.5" />
+                        ) : targetSlot === 'food' ? (
+                          <Heart className="h-3.5 w-3.5" />
+                        ) : (
+                          <Zap className="h-3.5 w-3.5" />
+                        )}
+                        <span>{isPinned ? 'Na Barra' : 'Colocar na Barra'}</span>
+                      </button>
+                    );
+                  })()}
 
                 {canEquip && (
                   <button

@@ -1,5 +1,5 @@
 import { memo, useEffect, useState, type CSSProperties } from 'react';
-import { Crown, LayoutGrid, X } from 'lucide-react';
+import { Crown, Layers, LayoutGrid, Users, X } from 'lucide-react';
 import {
   formatXpBoostRemainingLabel,
   getActiveXpBoostBonusPct,
@@ -8,7 +8,27 @@ import {
   ALLOWED_SERVER_EXP_RATES,
   type ServerExpRatePct,
 } from '../../services/serverConfigService';
+import {
+  CHANNEL_HARD_CAPACITY,
+  WORLD_CHANNEL_IDS,
+  getChannelLoadStatus,
+  type SharedWorldMapId,
+  type WorldChannelId,
+} from '../../services/worldPresenceService';
 import type { HudWindowId } from '../../types/hud';
+
+const CHANNEL_MAP_LABELS: Record<SharedWorldMapId, string> = {
+  'dats-center': 'DATS Center',
+  'd-terminal': 'D-Terminal',
+  'hunting-plains': 'Planície Digital',
+  'data-forest': 'Floresta de Dados',
+  'digi-mountain': 'Montanha Digi',
+  'digital-desert': 'Deserto Digital',
+  'data-sea': 'Mar de Dados',
+  'digimon-island': 'Ilha dos Digimons',
+  'dark-area': 'Área Sombria',
+  'virtual-world': 'Mundo Virtual',
+};
 
 interface BottomHudDockProps {
   activeWindow: HudWindowId;
@@ -21,6 +41,13 @@ interface BottomHudDockProps {
   guildExpBonusPct?: number;
   xpBoostUntilMs?: number | null;
   isGM?: boolean;
+  currentMapId?: SharedWorldMapId;
+  currentChannelId?: WorldChannelId;
+  channelCounts?: Record<WorldChannelId, number>;
+  partyChannelCounts?: Partial<Record<WorldChannelId, number>>;
+  partyLeaderChannelId?: WorldChannelId | null;
+  channelSwitching?: boolean;
+  onSelectChannel?: (channelId: WorldChannelId) => void;
   onAdminChangeExpRate?: (rate: ServerExpRatePct) => void;
   onToggleInventory: () => void;
   onOpenWindow: (win: Exclude<HudWindowId, null>) => void;
@@ -196,18 +223,57 @@ export const BottomHudDock = memo(function BottomHudDock({
   guildExpBonusPct = 0,
   xpBoostUntilMs = null,
   isGM = false,
+  currentMapId = 'dats-center',
+  currentChannelId = 1,
+  channelCounts,
+  partyChannelCounts,
+  partyLeaderChannelId = null,
+  channelSwitching = false,
+  onSelectChannel,
   onAdminChangeExpRate,
   onToggleInventory,
   onOpenWindow,
 }: BottomHudDockProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [expPopoverOpen, setExpPopoverOpen] = useState(false);
+  const [channelPopoverOpen, setChannelPopoverOpen] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   const xpBoostActivePct = getActiveXpBoostBonusPct(xpBoostUntilMs, nowMs);
   const xpBoostRemainingLabel = formatXpBoostRemainingLabel(xpBoostUntilMs, nowMs);
   const totalBattleExpPct =
     serverExpRatePct + guildExpBonusPct + xpBoostActivePct;
+
+  const activeChannelCount = channelCounts?.[currentChannelId] ?? 1;
+  const activeChannelStatus = getChannelLoadStatus(activeChannelCount);
+  const activeChannelStatusStyle =
+    activeChannelStatus === 'full'
+      ? {
+          dot: 'bg-rose-400 shadow-[0_0_8px_rgba(251,113,133,0.95)]',
+          label: 'Cheio',
+          text: 'text-rose-200',
+          border: 'border-rose-300/85',
+        }
+      : activeChannelStatus === 'busy'
+        ? {
+            dot: 'bg-orange-400 shadow-[0_0_8px_rgba(251,146,60,0.9)]',
+            label: 'Lotando',
+            text: 'text-orange-200',
+            border: 'border-orange-300/85',
+          }
+        : activeChannelStatus === 'normal'
+          ? {
+              dot: 'bg-amber-300 shadow-[0_0_8px_rgba(252,211,77,0.85)]',
+              label: 'Normal',
+              text: 'text-amber-200',
+              border: 'border-amber-300/80',
+            }
+          : {
+              dot: 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]',
+              label: 'Livre',
+              text: 'text-emerald-200',
+              border: 'border-cyan-300/80',
+            };
 
   useEffect(() => {
     if (!xpBoostUntilMs || xpBoostUntilMs <= Date.now()) return;
@@ -218,18 +284,19 @@ export const BottomHudDock = memo(function BottomHudDock({
     return () => window.clearInterval(id);
   }, [xpBoostUntilMs]);
 
-  // Close menu or EXP popover cleanly with Escape
+  // Close menu, channel or EXP popover cleanly with Escape
   useEffect(() => {
-    if (!menuOpen && !expPopoverOpen) return;
+    if (!menuOpen && !expPopoverOpen && !channelPopoverOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setMenuOpen(false);
         setExpPopoverOpen(false);
+        setChannelPopoverOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [menuOpen, expPopoverOpen]);
+  }, [menuOpen, expPopoverOpen, channelPopoverOpen]);
 
   // Row 1 (7 core adventure, combat & shop items)
   const topRowMenus: MenuButtonConfig[] = [
@@ -450,6 +517,7 @@ export const BottomHudDock = memo(function BottomHudDock({
             onClick={() => {
               setMenuOpen(false);
               setExpPopoverOpen(false);
+              setChannelPopoverOpen(false);
               onOpenWindow('auto');
             }}
             aria-label="Configurar Auto-Ataque"
@@ -463,6 +531,181 @@ export const BottomHudDock = memo(function BottomHudDock({
             <span>AUTO ON ({autoHuntTargetsCount}) · +50% EXP</span>
           </button>
         )}
+
+        {/* DMO-Style 5-Channel Selector Widget (directly ABOVE Server EXP badge) */}
+        {onSelectChannel && (
+          <div className="pointer-events-auto relative flex flex-col items-end">
+            {channelPopoverOpen && (
+              <div
+                role="dialog"
+                aria-label="Seletor de Canais do Mapa"
+                className="animate-dmo-window mb-1.5 w-[248px] rounded-2xl border border-cyan-300/75 bg-gradient-to-b from-[#0b3994]/96 via-[#061e56]/96 to-[#030e2c]/98 p-2.5 text-left shadow-[0_10px_30px_rgba(0,12,48,0.9),0_0_20px_rgba(56,214,255,0.35)]"
+              >
+                <div className="flex items-center justify-between border-b border-cyan-400/25 pb-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-cyan-300/60 bg-[#07276b] text-cyan-200">
+                      <Layers className="h-3.5 w-3.5" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-[11px] font-black tracking-wide text-white">
+                        CANAIS (CH 1–5)
+                      </p>
+                      <p className="truncate text-[9.5px] font-bold text-cyan-200/85">
+                        {CHANNEL_MAP_LABELS[currentMapId]}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setChannelPopoverOpen(false)}
+                    aria-label="Fechar painel de canais"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-cyan-400/35 bg-[#051a48] text-cyan-200 hover:bg-sky-800"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+
+                {partyLeaderChannelId &&
+                  partyLeaderChannelId !== currentChannelId && (
+                    <button
+                      type="button"
+                      disabled={channelSwitching}
+                      onClick={() => {
+                        onSelectChannel(partyLeaderChannelId);
+                        setChannelPopoverOpen(false);
+                      }}
+                      className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-amber-300/85 bg-gradient-to-r from-amber-500/30 to-cyan-500/25 px-2.5 py-1.5 text-[10.5px] font-black text-amber-100 transition hover:brightness-115 active:scale-95 disabled:opacity-50"
+                    >
+                      <Users className="h-3.5 w-3.5 text-amber-300" />
+                      <span>Ir com a Party (CH {partyLeaderChannelId})</span>
+                    </button>
+                  )}
+
+                <div className="mt-2 space-y-1">
+                  {WORLD_CHANNEL_IDS.map((ch) => {
+                    const count = channelCounts?.[ch] ?? 0;
+                    const partyInCh = partyChannelCounts?.[ch] ?? 0;
+                    const status = getChannelLoadStatus(count);
+                    const isCurrent = ch === currentChannelId;
+                    const isBlockedFull =
+                      status === 'full' && !isCurrent && !isGM && partyInCh === 0;
+                    const dotClass =
+                      status === 'full'
+                        ? 'bg-rose-400'
+                        : status === 'busy'
+                          ? 'bg-orange-400'
+                          : status === 'normal'
+                            ? 'bg-amber-300'
+                            : 'bg-emerald-400';
+                    const statusLabel =
+                      status === 'full'
+                        ? 'Cheio'
+                        : status === 'busy'
+                          ? 'Lotando'
+                          : status === 'normal'
+                            ? 'Normal'
+                            : 'Livre';
+                    const statusTextClass =
+                      status === 'full'
+                        ? 'text-rose-300'
+                        : status === 'busy'
+                          ? 'text-orange-300'
+                          : status === 'normal'
+                            ? 'text-amber-200'
+                            : 'text-emerald-300';
+
+                    return (
+                      <button
+                        key={ch}
+                        type="button"
+                        disabled={isCurrent || isBlockedFull || channelSwitching}
+                        onClick={() => {
+                          onSelectChannel(ch);
+                          setChannelPopoverOpen(false);
+                        }}
+                        className={`flex w-full items-center justify-between gap-2 rounded-xl border px-2.5 py-1.5 text-left transition active:scale-[0.98] ${
+                          isCurrent
+                            ? 'border-amber-300/90 bg-gradient-to-r from-[#1248ad]/95 to-[#082665]/95 shadow-[0_0_12px_rgba(251,191,36,0.28)]'
+                            : isBlockedFull
+                              ? 'cursor-not-allowed border-rose-500/35 bg-[#1b0816]/80 opacity-65'
+                              : 'border-cyan-400/30 bg-[#041438]/90 hover:border-cyan-200/80 hover:bg-[#082461]/95'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span
+                            className={`h-2 w-2 shrink-0 rounded-full ${dotClass}`}
+                          />
+                          <span className="font-[family-name:var(--font-display)] text-[11px] font-black tracking-wide text-white">
+                            CH {ch}
+                          </span>
+                          {isCurrent && (
+                            <span className="rounded bg-amber-400/25 px-1 py-[1px] text-[8.5px] font-black uppercase text-amber-200">
+                              Atual
+                            </span>
+                          )}
+                          {partyInCh > 0 && (
+                            <span className="inline-flex items-center gap-0.5 rounded bg-cyan-400/25 px-1 py-[1px] text-[8.5px] font-black text-cyan-100">
+                              <Users className="h-2.5 w-2.5" />
+                              Party
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex shrink-0 items-center gap-1.5 text-[9.5px] font-extrabold tabular-nums">
+                          <span className={statusTextClass}>{statusLabel}</span>
+                          <span className="text-sky-200/80">
+                            {count}/{CHANNEL_HARD_CAPACITY}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <p className="mt-2 text-[9px] font-semibold leading-snug text-sky-200/75">
+                  Troque de canal se o mapa estiver lotado. Todos os mapas possuem 5 canais.
+                </p>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                setMenuOpen(false);
+                setExpPopoverOpen(false);
+                setChannelPopoverOpen((v) => !v);
+              }}
+              aria-expanded={channelPopoverOpen}
+              aria-label={`Canal atual: CH ${currentChannelId} (${activeChannelCount} jogadores)`}
+              title={`Canal atual: CH ${currentChannelId} — Clique para trocar de canal`}
+              className={`group relative flex min-h-[32px] items-center gap-1.5 rounded-xl border-2 px-2 py-1 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 sm:min-h-[36px] sm:gap-2 sm:rounded-2xl sm:px-2.5 ${
+                channelPopoverOpen
+                  ? 'border-amber-300 bg-gradient-to-b from-[#134ec2]/95 via-[#082a75]/95 to-[#031238]/95 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.45)]'
+                  : `${activeChannelStatusStyle.border} bg-gradient-to-b from-[#0b388f]/95 via-[#061d52]/95 to-[#030e2c]/95 text-cyan-100 shadow-[0_4px_14px_rgba(0,12,48,0.8),0_0_10px_rgba(56,214,255,0.28)] hover:border-cyan-200`
+              }`}
+            >
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-cyan-300/45 bg-[#04143a]/85 text-cyan-200 sm:h-6 sm:w-6">
+                <Layers className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+              </span>
+              <div className="flex flex-col items-start leading-none">
+                <span className="flex items-center gap-1 font-[family-name:var(--font-display)] text-[10.5px] font-black tracking-wide text-white drop-shadow sm:text-[12px]">
+                  <span>CH {currentChannelId}</span>
+                  <span
+                    className={`inline-block h-1.5 w-1.5 rounded-full ${activeChannelStatusStyle.dot}`}
+                  />
+                </span>
+                <span
+                  className={`mt-0.5 text-[8px] font-extrabold uppercase tracking-wider tabular-nums ${activeChannelStatusStyle.text}`}
+                >
+                  {channelSwitching
+                    ? 'Trocando...'
+                    : `${activeChannelStatusStyle.label} · ${activeChannelCount}/${CHANNEL_HARD_CAPACITY}`}
+                </span>
+              </div>
+            </button>
+          </div>
+        )}
+
         {/* Server EXP Booster Widget (100% / 150% / 200% / 250%) + GM Quick Popover */}
         <div className="pointer-events-auto relative flex flex-col items-end">
           {expPopoverOpen && (
@@ -564,6 +807,7 @@ export const BottomHudDock = memo(function BottomHudDock({
             type="button"
             onClick={() => {
               setMenuOpen(false);
+              setChannelPopoverOpen(false);
               setExpPopoverOpen((v) => !v);
             }}
             aria-expanded={expPopoverOpen}
@@ -608,6 +852,7 @@ export const BottomHudDock = memo(function BottomHudDock({
           type="button"
           onClick={() => {
             setExpPopoverOpen(false);
+            setChannelPopoverOpen(false);
             setMenuOpen((prev) => !prev);
           }}
           aria-expanded={menuOpen}

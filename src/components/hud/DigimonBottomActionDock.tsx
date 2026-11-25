@@ -1,7 +1,10 @@
-import { memo } from 'react';
-import { Lock } from 'lucide-react';
+import { memo, useEffect, useMemo, useState } from 'react';
+import { Heart, Lock, Plus, RefreshCw, Trash2, X, Zap } from 'lucide-react';
 import { getDmoSkillSpec } from '../../data/dmoSkillCatalog';
-import { EVOLUTER_ICON_URL } from '../../data/itemsCatalog';
+import {
+  EVOLUTER_ICON_URL,
+  getCatalogItemByKey,
+} from '../../data/itemsCatalog';
 import {
   DIGIMON_EVOLUTION_CHAINS,
   isEvolutionSlotUnlockedByEvoluter,
@@ -13,6 +16,7 @@ import {
 } from '../../types/digimon';
 import type {
   DigimonRuntimeStats,
+  InventoryItem,
   LiveWorldHudSnapshot,
 } from '../../types/hud';
 import {
@@ -26,9 +30,17 @@ interface DigimonBottomActionDockProps {
   stats: DigimonRuntimeStats;
   snapshot: LiveWorldHudSnapshot;
   ownedEvoluters?: number;
+  inventory?: readonly InventoryItem[];
+  foodSlotItemKey?: string | null;
+  vitaminSlotItemKey?: string | null;
   onTriggerSkill: (kind: 'special1' | 'special2') => void;
   onEvolveForm: (targetFormId: DigimonFormId) => void;
   onRequestUnlockForm?: (targetFormId: DigimonFormId) => void;
+  onUseQuickSlot?: (slot: 'food' | 'vitamin') => void;
+  onAssignQuickSlot?: (
+    slot: 'food' | 'vitamin',
+    itemKey: string | null
+  ) => void;
 }
 
 const STAGE_SHORT_TAG: Record<string, string> = {
@@ -40,18 +52,89 @@ const STAGE_SHORT_TAG: Record<string, string> = {
 
 /**
  * Bottom-center Digimon action cluster anchored cleanly between the virtual joystick and MENU:
- * - Top row: F1 & F2 skill squares centered pixel-perfectly above Champion & Ultimate
- * - Bottom row: 4 direct click-to-evolve squares (Rookie, Champion, Ultimate, Mega)
+ * - Top row (4 aligned squares):
+ *     [F1] above Rookie · [F2] above Champion · [Comida HP] above Ultimate · [Vitamina DS] above Mega
+ * - Bottom row (4 aligned squares):
+ *     [Rookie] [Champion] [Ultimate] [Mega]
  */
 export const DigimonBottomActionDock = memo(function DigimonBottomActionDock({
   digimon,
   stats,
   snapshot,
   ownedEvoluters = 0,
+  inventory = [],
+  foodSlotItemKey = null,
+  vitaminSlotItemKey = null,
   onTriggerSkill,
   onEvolveForm,
   onRequestUnlockForm,
+  onUseQuickSlot,
+  onAssignQuickSlot,
 }: DigimonBottomActionDockProps) {
+  const [openPickerSlot, setOpenPickerSlot] = useState<
+    'food' | 'vitamin' | null
+  >(null);
+
+  useEffect(() => {
+    if (!openPickerSlot) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpenPickerSlot(null);
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [openPickerSlot]);
+
+  const foodOptions = useMemo(
+    () =>
+      inventory.filter(
+        (it) =>
+          it.category === 'consumable' &&
+          (it.hpRestore ?? 0) > 0 &&
+          it.quantity > 0
+      ),
+    [inventory]
+  );
+
+  const vitaminOptions = useMemo(
+    () =>
+      inventory.filter(
+        (it) =>
+          it.category === 'consumable' &&
+          (it.dsRestore ?? 0) > 0 &&
+          it.quantity > 0
+      ),
+    [inventory]
+  );
+
+  const assignedFoodItem = useMemo(
+    () =>
+      foodSlotItemKey
+        ? inventory.find((it) => it.itemKey === foodSlotItemKey) ?? null
+        : null,
+    [inventory, foodSlotItemKey]
+  );
+
+  const assignedVitaminItem = useMemo(
+    () =>
+      vitaminSlotItemKey
+        ? inventory.find((it) => it.itemKey === vitaminSlotItemKey) ?? null
+        : null,
+    [inventory, vitaminSlotItemKey]
+  );
+
+  const assignedFoodCatalog = useMemo(
+    () => (foodSlotItemKey ? getCatalogItemByKey(foodSlotItemKey) : null),
+    [foodSlotItemKey]
+  );
+
+  const assignedVitaminCatalog = useMemo(
+    () =>
+      vitaminSlotItemKey ? getCatalogItemByKey(vitaminSlotItemKey) : null,
+    [vitaminSlotItemKey]
+  );
+
   const inCombatArea =
     snapshot.mapId !== 'dats-center' && !snapshot.inSafeZone;
   const skillTheme = getDigimonSkillTheme(digimon.id);
@@ -103,15 +186,156 @@ export const DigimonBottomActionDock = memo(function DigimonBottomActionDock({
 
   const evoChain = DIGIMON_EVOLUTION_CHAINS[digimon.starterId] ?? [];
 
+  const consumableQuickSlots = [
+    {
+      slot: 'food' as const,
+      keyLabel: '1',
+      title: 'Comida (HP)',
+      emptyHint: 'Clique para colocar Comida (HP)',
+      itemKey: foodSlotItemKey,
+      invItem: assignedFoodItem,
+      catalogItem: assignedFoodCatalog,
+      options: foodOptions,
+      isFood: true,
+    },
+    {
+      slot: 'vitamin' as const,
+      keyLabel: '2',
+      title: 'Vitamina (DS)',
+      emptyHint: 'Clique para colocar Vitamina (DS)',
+      itemKey: vitaminSlotItemKey,
+      invItem: assignedVitaminItem,
+      catalogItem: assignedVitaminCatalog,
+      options: vitaminOptions,
+      isFood: false,
+    },
+  ];
+
+  const activePickerMeta =
+    openPickerSlot === 'food'
+      ? consumableQuickSlots[0]
+      : openPickerSlot === 'vitamin'
+        ? consumableQuickSlots[1]
+        : null;
+
   return (
     <div
       onPointerDown={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}
-      className="pointer-events-auto flex flex-col items-center gap-1 select-none sm:gap-1.5"
+      className="pointer-events-auto relative flex flex-col items-center gap-1 select-none sm:gap-1.5"
     >
-      {/* Top Row: F1 & F2 Skill Squares (centered directly above Champion & Ultimate) */}
+      {/* Upward Consumable Picker Popover (Food HP / Vitamin DS) */}
+      {activePickerMeta && (
+        <div
+          role="dialog"
+          aria-label={`Selecionar ${activePickerMeta.title}`}
+          className="animate-dmo-window absolute bottom-full left-1/2 z-50 mb-2 w-[min(90vw,268px)] -translate-x-1/2 overflow-hidden rounded-2xl border-2 border-cyan-300/80 bg-gradient-to-b from-[#0b3588]/98 via-[#061d52]/98 to-[#030e2b]/98 p-2.5 shadow-[0_14px_36px_rgba(0,8,34,0.92),0_0_20px_rgba(56,214,255,0.35)]"
+        >
+          <div className="flex items-center justify-between border-b border-cyan-400/25 pb-1.5">
+            <div className="flex items-center gap-1.5">
+              {activePickerMeta.isFood ? (
+                <Heart className="h-3.5 w-3.5 text-emerald-300" />
+              ) : (
+                <Zap className="h-3.5 w-3.5 text-cyan-300" />
+              )}
+              <span className="text-[11px] font-black tracking-wide text-white">
+                {activePickerMeta.isFood
+                  ? 'Escolher Comida (HP)'
+                  : 'Escolher Vitamina (DS)'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setOpenPickerSlot(null)}
+              aria-label="Fechar seletor"
+              className="flex h-6 w-6 items-center justify-center rounded-md border border-cyan-400/35 bg-[#051a48] text-cyan-200 hover:bg-sky-800"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          {activePickerMeta.options.length > 0 ? (
+            <div className="mt-2 max-h-[188px] space-y-1 overflow-y-auto pr-0.5">
+              {activePickerMeta.options.map((item) => {
+                const isSelected = activePickerMeta.itemKey === item.itemKey;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      onAssignQuickSlot?.(activePickerMeta.slot, item.itemKey);
+                      setOpenPickerSlot(null);
+                    }}
+                    className={`flex w-full items-center gap-2 rounded-xl border px-2 py-1.5 text-left transition active:scale-[0.98] ${
+                      isSelected
+                        ? 'border-amber-300/90 bg-amber-500/20'
+                        : 'border-cyan-400/25 bg-[#041438]/90 hover:border-cyan-200/80 hover:bg-[#082461]/95'
+                    }`}
+                  >
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-cyan-400/35 bg-[#020b22]">
+                      {item.iconUrl ? (
+                        <img
+                          src={item.iconUrl}
+                          alt={item.name}
+                          draggable={false}
+                          className="h-7 w-7 object-contain"
+                        />
+                      ) : activePickerMeta.isFood ? (
+                        <Heart className="h-4 w-4 text-emerald-300" />
+                      ) : (
+                        <Zap className="h-4 w-4 text-cyan-300" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[10.5px] font-black text-white">
+                        {item.name}
+                      </p>
+                      <p
+                        className={`text-[9.5px] font-bold tabular-nums ${
+                          activePickerMeta.isFood
+                            ? 'text-emerald-300'
+                            : 'text-cyan-300'
+                        }`}
+                      >
+                        {activePickerMeta.isFood
+                          ? `+${item.hpRestore} HP`
+                          : `+${item.dsRestore} DS`}
+                      </p>
+                    </div>
+                    <span className="shrink-0 rounded-md border border-cyan-300/35 bg-[#020a1f] px-1.5 py-0.5 text-[10px] font-black tabular-nums text-amber-200">
+                      ×{item.quantity}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="mt-2 rounded-xl border border-cyan-400/20 bg-[#03102e] px-2.5 py-2.5 text-center text-[10px] font-semibold leading-relaxed text-sky-200/85">
+              {activePickerMeta.isFood
+                ? 'Você não tem nenhuma Comida (HP) no inventário. Compre na Loja da MudFrigimon no DATS Center.'
+                : 'Você não tem nenhuma Vitamina (DS) no inventário. Compre na Loja da MudFrigimon no DATS Center.'}
+            </p>
+          )}
+
+          {activePickerMeta.itemKey && onAssignQuickSlot && (
+            <button
+              type="button"
+              onClick={() => {
+                onAssignQuickSlot(activePickerMeta.slot, null);
+                setOpenPickerSlot(null);
+              }}
+              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-rose-400/50 bg-rose-950/75 px-2.5 py-1.5 text-[10px] font-black text-rose-200 transition hover:bg-rose-900/90 active:scale-95"
+            >
+              <Trash2 className="h-3 w-3" />
+              <span>Remover do quadrado</span>
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Top Row: [F1] above Rookie · [F2] above Champion · [Food HP] above Ultimate · [Vitamin DS] above Mega */}
       <div
-        aria-label="Habilidades do Digimon"
+        aria-label="Habilidades e Consumíveis Rápidos"
         className="dmo-frame flex items-center gap-[3px] rounded-lg p-[3px] shadow-[0_6px_18px_rgba(0,10,40,0.75)] sm:gap-1.5 sm:rounded-xl sm:p-1"
       >
         {skillSlots.map((slot) => {
@@ -189,6 +413,155 @@ export const DigimonBottomActionDock = memo(function DigimonBottomActionDock({
                   {slot.keyLabel}
                 </span>
               </button>
+            </div>
+          );
+        })}
+
+        {/* Manual Consumable Quick-Slots: [Food HP] above Ultimate, [Vitamin DS] above Mega */}
+        {consumableQuickSlots.map((qs) => {
+          const qty = qs.invItem?.quantity ?? 0;
+          const displayName =
+            qs.invItem?.name ?? qs.catalogItem?.name ?? qs.title;
+          const displayIcon = qs.invItem?.iconUrl ?? qs.catalogItem?.iconUrl;
+          const restoreVal = qs.isFood
+            ? qs.invItem?.hpRestore ?? qs.catalogItem?.hpRestore ?? 0
+            : qs.invItem?.dsRestore ?? qs.catalogItem?.dsRestore ?? 0;
+          const hasAssigned = Boolean(qs.itemKey);
+          const hasStock = hasAssigned && qty > 0;
+          const isPickerOpen = openPickerSlot === qs.slot;
+
+          return (
+            <div key={qs.slot} className="group/qslot relative">
+              {/* Upward Hover Tooltip */}
+              {!isPickerOpen && (
+                <div
+                  role="tooltip"
+                  className="pointer-events-none absolute bottom-full left-1/2 z-40 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-lg border border-cyan-300/75 bg-[#041130]/96 px-2.5 py-1 text-center opacity-0 shadow-[0_6px_18px_rgba(0,0,0,0.88),0_0_10px_rgba(56,214,255,0.45)] transition-opacity duration-150 group-hover/qslot:opacity-100 group-focus-within/qslot:opacity-100 sm:block"
+                >
+                  <p className="text-[10.5px] font-black tracking-wide text-white">
+                    {hasAssigned ? displayName : qs.title}
+                  </p>
+                  <p
+                    className={`mt-0.5 text-[9px] font-bold ${
+                      qs.isFood ? 'text-emerald-300' : 'text-cyan-300'
+                    }`}
+                  >
+                    {hasStock
+                      ? `Tecla ${qs.keyLabel} · +${restoreVal} ${qs.isFood ? 'HP' : 'DS'} · Estoque: ${qty}`
+                      : hasAssigned
+                        ? 'Sem estoque · Clique para trocar'
+                        : qs.emptyHint}
+                  </p>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (hasStock && onUseQuickSlot) {
+                    setOpenPickerSlot(null);
+                    onUseQuickSlot(qs.slot);
+                  } else {
+                    setOpenPickerSlot((prev) =>
+                      prev === qs.slot ? null : qs.slot
+                    );
+                  }
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setOpenPickerSlot((prev) =>
+                    prev === qs.slot ? null : qs.slot
+                  );
+                }}
+                title={
+                  hasStock
+                    ? `Usar ${displayName} (+${restoreVal} ${qs.isFood ? 'HP' : 'DS'}) · Tecla ${qs.keyLabel}`
+                    : qs.emptyHint
+                }
+                aria-label={
+                  hasStock
+                    ? `Usar ${displayName} (${qs.title})`
+                    : `Configurar quadrado de ${qs.title}`
+                }
+                className={`relative flex h-[31px] w-[31px] items-center justify-center overflow-hidden rounded-[6px] border bg-[#030b22] transition-all duration-150 active:scale-95 sm:h-10 sm:w-10 sm:rounded-lg ${
+                  isPickerOpen
+                    ? 'border-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.7)]'
+                    : hasStock
+                      ? qs.isFood
+                        ? 'border-emerald-400/90 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.22)_0%,rgba(3,11,34,0.96)_100%)] shadow-[0_0_8px_rgba(16,185,129,0.4)] hover:brightness-110'
+                        : 'border-cyan-300/90 bg-[radial-gradient(circle_at_center,rgba(56,189,248,0.24)_0%,rgba(3,11,34,0.96)_100%)] shadow-[0_0_8px_rgba(56,189,248,0.42)] hover:brightness-110'
+                      : hasAssigned
+                        ? 'border-rose-400/55 bg-[#120714]/90 opacity-80 hover:border-amber-300'
+                        : qs.isFood
+                          ? 'border-dashed border-emerald-400/60 bg-[#041a24]/85 hover:border-emerald-300'
+                          : 'border-dashed border-cyan-400/60 bg-[#041432]/85 hover:border-cyan-300'
+                }`}
+              >
+                {displayIcon ? (
+                  <img
+                    src={displayIcon}
+                    alt={displayName}
+                    draggable={false}
+                    className={`h-full w-full object-contain p-[2px] ${
+                      !hasStock ? 'opacity-45 grayscale' : ''
+                    }`}
+                  />
+                ) : (
+                  <span className="flex flex-col items-center justify-center leading-none">
+                    {qs.isFood ? (
+                      <Heart className="h-3.5 w-3.5 text-emerald-300/85 sm:h-4 sm:w-4" />
+                    ) : (
+                      <Zap className="h-3.5 w-3.5 text-cyan-300/85 sm:h-4 sm:w-4" />
+                    )}
+                    <Plus className="mt-[1px] h-2 w-2 text-white/75 sm:h-2.5 sm:w-2.5" />
+                  </span>
+                )}
+
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-0 top-0 h-1/3 bg-gradient-to-b from-white/15 to-transparent"
+                />
+
+                {/* Keybind badge (1 = Comida, 2 = Vitamina) */}
+                <span
+                  className={`pointer-events-none absolute bottom-[1px] left-[1px] z-20 rounded-[3px] border bg-[#02081a]/92 px-[2.5px] py-[0.5px] font-display text-[6.5px] font-bold leading-none shadow-[0_1px_2px_rgba(0,0,0,0.95)] sm:text-[7.5px] ${
+                    qs.isFood
+                      ? 'border-emerald-300/80 text-emerald-200'
+                      : 'border-cyan-300/80 text-cyan-200'
+                  }`}
+                >
+                  {qs.keyLabel}
+                </span>
+
+                {/* Quantity Counter Badge */}
+                {hasAssigned && (
+                  <span
+                    className={`pointer-events-none absolute bottom-[1px] right-[1px] z-20 rounded-[3px] bg-[#02081a]/95 px-[2px] py-[0.5px] text-[6.5px] font-black leading-none tabular-nums shadow-[0_1px_2px_rgba(0,0,0,1)] sm:text-[7.5px] ${
+                      hasStock ? 'text-amber-200' : 'text-rose-300'
+                    }`}
+                  >
+                    {qty > 99 ? '99+' : qty}
+                  </span>
+                )}
+              </button>
+
+              {/* Tiny touch-friendly swap pip on top-right when an item is assigned */}
+              {hasAssigned && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpenPickerSlot((prev) =>
+                      prev === qs.slot ? null : qs.slot
+                    );
+                  }}
+                  title={`Trocar ${qs.title}`}
+                  aria-label={`Trocar ${qs.title}`}
+                  className="absolute -right-[2px] -top-[2px] z-30 flex h-[12px] w-[12px] items-center justify-center rounded-full border border-cyan-300/80 bg-[#051842] text-cyan-200 shadow hover:border-amber-300 hover:text-amber-200 sm:h-[14px] sm:w-[14px]"
+                >
+                  <RefreshCw className="h-2 w-2 sm:h-2.5 sm:w-2.5" />
+                </button>
+              )}
             </div>
           );
         })}

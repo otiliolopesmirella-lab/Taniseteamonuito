@@ -16,7 +16,11 @@ import {
 } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { ensurePlayerDocBootstrapped } from './cloudSaveService';
-import type { SharedWorldMapId } from './worldPresenceService';
+import {
+  safeChannelId,
+  type SharedWorldMapId,
+  type WorldChannelId,
+} from './worldPresenceService';
 import type { TamerId } from '../types/character';
 import type { DigimonFormId } from '../types/digimon';
 import { isValidAvatarPhotoDataUrl } from '../utils/avatarPhoto';
@@ -35,6 +39,7 @@ export interface PartyMemberRecord {
   hp: number;
   maxHp: number;
   mapId: SharedWorldMapId;
+  channelId: WorldChannelId;
 }
 
 export interface PartyRecord {
@@ -95,6 +100,7 @@ export interface PartyActorProfile {
   hp: number;
   maxHp: number;
   mapId: SharedWorldMapId;
+  channelId?: WorldChannelId;
 }
 
 const VALID_TAMERS = new Set<TamerId>(['kai', 'ren', 'hina', 'yuna']);
@@ -183,6 +189,7 @@ export function sanitizePartyMember(
     hp,
     maxHp,
     mapId: safeMapId(profile.mapId),
+    channelId: safeChannelId(profile.channelId),
   };
 }
 
@@ -203,6 +210,7 @@ function parsePartyMember(raw: unknown, fallbackUid: string): PartyMemberRecord 
     hp: safeInt(m.hp, 0, maxHp, maxHp),
     maxHp,
     mapId: safeMapId(m.mapId),
+    channelId: safeChannelId(m.channelId),
   };
 }
 

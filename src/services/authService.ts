@@ -39,6 +39,11 @@ import {
   isCurrentAuthUserBootstrappedGm,
   resolveIsGmAccount,
 } from './gmRoleService';
+import {
+  applyPendingReferralCodeIfAny,
+  ensureOwnReferralProfile,
+  savePendingReferralCode,
+} from './referralService';
 import { markLocalWorldPresenceOffline } from './worldPresenceService';
 
 const REMEMBERED_USER_KEY = 'dw_digital_war_remembered_user';
@@ -620,6 +625,17 @@ class FirebaseDigitalWarAuthService implements AuthAdapter {
       hydrateLocalCacheFromCloud(cloud.username, cloud);
       const isGM = await resolveIsGmAccount(fbUser);
 
+      // Ensure account invite code exists and redeem any pending referral link/code
+      const tamerLabel = cloud.tamerSelection?.tamerName || cloud.username;
+      void ensureOwnReferralProfile({
+        tamerName: tamerLabel,
+        characterId: cloud.tamerSelection?.characterId,
+        tamerPhotoUrl: cloud.hudState?.tamerPhotoUrl ?? null,
+        tamerCoverUrl: cloud.hudState?.tamerCoverUrl ?? null,
+        isGm: isGM,
+      });
+      void applyPendingReferralCodeIfAny(tamerLabel);
+
       return {
         success: true,
         message: `Bem-vindo de volta, ${cloud.username}! Progresso carregado da nuvem.`,
@@ -683,6 +699,9 @@ class FirebaseDigitalWarAuthService implements AuthAdapter {
       await updateProfile(cred.user, { displayName: cleanUsername });
       rememberUsernameEmailAlias(cleanUsername, emailTrimmed);
       persistRememberPreference(true, cleanUsername);
+      if (payload.referralCode) {
+        savePendingReferralCode(payload.referralCode);
+      }
 
       await sendEmailVerification(cred.user);
 
@@ -747,6 +766,17 @@ class FirebaseDigitalWarAuthService implements AuthAdapter {
       rememberUsernameEmailAlias(cloud.username, current.email);
       hydrateLocalCacheFromCloud(cloud.username, cloud);
       const isGM = await resolveIsGmAccount(current);
+
+      // Immediately generate this new account's unique invite code & count any pending invite code
+      const tamerLabel = cloud.tamerSelection?.tamerName || cloud.username;
+      void ensureOwnReferralProfile({
+        tamerName: tamerLabel,
+        characterId: cloud.tamerSelection?.characterId,
+        tamerPhotoUrl: cloud.hudState?.tamerPhotoUrl ?? null,
+        tamerCoverUrl: cloud.hudState?.tamerCoverUrl ?? null,
+        isGm: isGM,
+      });
+      await applyPendingReferralCodeIfAny(tamerLabel);
 
       return {
         success: true,
