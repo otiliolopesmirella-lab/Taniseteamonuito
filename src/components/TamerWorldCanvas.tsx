@@ -338,6 +338,7 @@ import {
   acceptPartyInvite,
   calcPartyShareFactor,
   declinePartyInvite,
+  getPartySharePercent,
   leaveOrKickParty,
   MAX_PARTY_MEMBERS,
   publishPartyXpEvent,
@@ -2143,22 +2144,32 @@ export function TamerWorldCanvas({
         if (evt.mapId !== sim.mapId) return;
 
         const activeParty = playerPartyRef.current;
+        if (!activeParty || !activeParty.memberUids.includes(evt.killerUid)) {
+          return;
+        }
         const myCh = currentChannelRef.current;
-        const killerCh = activeParty?.members[evt.killerUid]?.channelId;
-        if (killerCh && killerCh !== myCh) return;
+        const killerLive = remoteSmoothRef.current.get(evt.killerUid)?.player;
+        const eventCh =
+          evt.channelId ??
+          killerLive?.channelId ??
+          activeParty.members[evt.killerUid]?.channelId;
+        // Strict same-channel requirement: players on different Channels never share Party XP
+        if (!eventCh || eventCh !== myCh) return;
 
-        const sameMapCount = activeParty
-          ? Math.max(
-              2,
-              activeParty.memberUids.filter(
-                (uid) =>
-                  uid === actorUid ||
-                  (activeParty.members[uid]?.mapId === sim.mapId &&
-                    (activeParty.members[uid]?.channelId ?? 1) === myCh)
-              ).length
-            )
-          : 2;
-        const shareFactor = calcPartyShareFactor(sameMapCount);
+        const sameMapChannelCount = Math.max(
+          2,
+          activeParty.memberUids.filter((uid) => {
+            if (uid === actorUid) return true;
+            if (uid === evt.killerUid) return true;
+            const live = remoteSmoothRef.current.get(uid)?.player;
+            const memberMap = live?.mapId ?? activeParty.members[uid]?.mapId;
+            const memberCh =
+              live?.channelId ?? activeParty.members[uid]?.channelId;
+            return memberMap === sim.mapId && memberCh === myCh;
+          }).length
+        );
+        const shareFactor = calcPartyShareFactor(sameMapChannelCount);
+        const sharePct = getPartySharePercent(sameMapChannelCount);
 
         const prevAcc = hudAccountRef.current;
         const formNow = activeFormRef.current;
@@ -2218,7 +2229,7 @@ export function TamerWorldCanvas({
           id: sim.nextFxId++,
           x: sim.partner.x,
           y: sim.partner.y - 54,
-          text: `+${gainedDigimonExp} EXP (Party)`,
+          text: `+${gainedDigimonExp} EXP (Party ${sharePct}%)`,
           color: '#38bdf8',
           elapsed: 0,
           duration: 1.05,
@@ -2226,7 +2237,7 @@ export function TamerWorldCanvas({
 
         pushChatMessage(
           'party',
-          `${evt.killerName} abateu ${evt.mobName} (Nv.${evt.mobLevel}): +${gainedDigimonExp} EXP (${formNow.name}) · +${gainedTamerExp} EXP (Tamer).`,
+          `${evt.killerName} abateu ${evt.mobName} (Nv.${evt.mobLevel}) [CH${myCh} · ${sharePct}%]: +${gainedDigimonExp} EXP (${formNow.name}) · +${gainedTamerExp} EXP (Tamer).`,
           { tone: 'loot' }
         );
 
@@ -4047,6 +4058,27 @@ export function TamerWorldCanvas({
       nearbyPointId: null,
       nearReturnPortal: false,
     }));
+
+    // Immediately sync the new map & channel to active Party so shared EXP activates with zero delay
+    const activePartyNow = playerPartyRef.current;
+    if (activePartyNow) {
+      const accNow = hudAccountRef.current;
+      const formNow = activeFormRef.current;
+      void syncLocalMemberInParty(activePartyNow.partyId, {
+        uid: actorUid,
+        tamerName: runtimeMetaRef.current.tamerName,
+        characterId: selection.characterId,
+        tamerLevel: accNow.tamer.level,
+        tamerPhotoUrl: accNow.tamerPhotoUrl ?? null,
+        digimonFormId: formNow.id,
+        digimonName: accNow.digimon.nickname?.trim() || formNow.name,
+        digimonLevel: accNow.digimon.level,
+        hp: accNow.digimon.hp,
+        maxHp: accNow.digimon.maxHp,
+        mapId: sim.mapId,
+        channelId: currentChannelRef.current,
+      });
+    }
 
     persistProgress();
     playDigitalTone('confirm', soundEnabled);
@@ -6743,16 +6775,19 @@ export function TamerWorldCanvas({
 
             const prevAcc = hudAccountRef.current;
             const activeParty = playerPartyRef.current;
+            const myChNow = currentChannelRef.current;
             const sameMapPartyCount = activeParty
               ? Math.max(
                   1,
-                  activeParty.memberUids.filter(
-                    (uid) =>
-                      uid === actorUid ||
-                      (activeParty.members[uid]?.mapId === sim.mapId &&
-                        (activeParty.members[uid]?.channelId ?? 1) ===
-                          currentChannelRef.current)
-                  ).length
+                  activeParty.memberUids.filter((uid) => {
+                    if (uid === actorUid) return true;
+                    const live = remoteSmoothRef.current.get(uid)?.player;
+                    const memberMap =
+                      live?.mapId ?? activeParty.members[uid]?.mapId;
+                    const memberCh =
+                      live?.channelId ?? activeParty.members[uid]?.channelId;
+                    return memberMap === sim.mapId && memberCh === myChNow;
+                  }).length
                 )
               : 1;
             const partyShareFactor = calcPartyShareFactor(sameMapPartyCount);
@@ -6804,6 +6839,7 @@ export function TamerWorldCanvas({
                 killerUid: actorUid,
                 killerName: runtimeMetaRef.current.tamerName,
                 mapId: sim.mapId,
+                channelId: myChNow,
                 mobName: enemy.name,
                 mobLevel: enemy.level,
                 baseExp: enemy.expReward,

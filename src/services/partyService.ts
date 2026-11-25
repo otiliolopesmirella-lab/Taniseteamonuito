@@ -73,6 +73,7 @@ export interface PartyXpEventRecord {
   killerUid: string;
   killerName: string;
   mapId: SharedWorldMapId;
+  channelId?: WorldChannelId;
   mobName: string;
   mobLevel: number;
   baseExp: number;
@@ -244,17 +245,23 @@ function parsePartyDoc(
 }
 
 /**
- * Shared EXP scaling for DMO-style 4-player parties on the same map:
- * - Solo (1): 100%
- * - Duo (2): 85% per kill (each teammate also shares their kills -> 170% combined)
- * - Trio (3): 78% per kill
- * - Full Party (4): 72% per kill
+ * Authentic Digimon Masters Online (DMO) Party EXP sharing percentages
+ * for up to 4 players in the SAME Map and SAME Channel (CH):
+ * - 1 jogador (Solo / sem aliados no mesmo mapa e canal): 100%
+ * - 2 jogadores no mesmo mapa e canal (Duo): 90% por membro (180% total)
+ * - 3 jogadores no mesmo mapa e canal (Trio): 85% por membro (255% total)
+ * - 4 jogadores no mesmo mapa e canal (Full Party): 80% por membro (320% total)
+ * Each member's personal EXP boosters, Guild buffs, and Server EXP rate stack individually.
  */
-export function calcPartyShareFactor(sameMapPartyCount: number): number {
-  if (sameMapPartyCount <= 1) return 1.0;
-  if (sameMapPartyCount === 2) return 0.85;
-  if (sameMapPartyCount === 3) return 0.78;
-  return 0.72;
+export function calcPartyShareFactor(sameMapChannelPartyCount: number): number {
+  if (sameMapChannelPartyCount <= 1) return 1.0;
+  if (sameMapChannelPartyCount === 2) return 0.9;
+  if (sameMapChannelPartyCount === 3) return 0.85;
+  return 0.8;
+}
+
+export function getPartySharePercent(sameMapChannelPartyCount: number): number {
+  return Math.round(calcPartyShareFactor(sameMapChannelPartyCount) * 100);
 }
 
 function readLocalRecord<T>(key: string): Record<string, T> {
@@ -398,7 +405,7 @@ export function subscribeIncomingPartyInvites(
 export function subscribePartyXpEvents(
   partyId: string | null,
   selfUid: string,
-  joinedAtMs: number,
+  _joinedAtMs: number,
   onXpEvent: (evt: PartyXpEventRecord) => void
 ): () => void {
   if (!partyId || !isFirestoreVerified()) {
@@ -406,6 +413,7 @@ export function subscribePartyXpEvents(
   }
 
   const processedIds = new Set<string>();
+  let initialized = false;
   const q = query(
     collection(db, 'parties', partyId, 'xpEvents'),
     orderBy('createdAt', 'desc'),
@@ -415,31 +423,44 @@ export function subscribePartyXpEvents(
   return onSnapshot(
     q,
     (snapshot) => {
+      // Seed pre-existing kills on initial snapshot so we never replay old EXP
+      // AND never drop new live kills due to client-vs-server clock drift.
+      if (!initialized) {
+        initialized = true;
+        snapshot.docs.forEach((d) => {
+          processedIds.add(d.id);
+        });
+        return;
+      }
+
+      const effectiveSelfUid = auth.currentUser?.uid ?? selfUid;
+
       snapshot.docChanges().forEach((change) => {
         if (change.type !== 'added' && change.type !== 'modified') return;
         const d = change.doc;
         if (processedIds.has(d.id)) return;
         const raw = (d.data() ?? {}) as Record<string, unknown>;
         const serverMs = parseTimestampMs(raw.createdAt);
-        // Ignore unconfirmed pending writes or events from before we joined the party
-        if (serverMs === null) return;
-        if (serverMs < joinedAtMs - 2000) {
-          processedIds.add(d.id);
-          return;
-        }
+        // Wait for serverTimestamp resolution on local pending writes
+        if (serverMs === null && d.metadata.hasPendingWrites) return;
         processedIds.add(d.id);
+
         const killerUid = String(raw.killerUid ?? '');
-        if (!killerUid || killerUid === selfUid) return;
+        if (!killerUid || killerUid === effectiveSelfUid) return;
 
         onXpEvent({
           eventId: String(raw.eventId ?? d.id),
           killerUid,
           killerName: String(raw.killerName ?? 'Aliado').slice(0, 24),
           mapId: safeMapId(raw.mapId),
+          channelId:
+            raw.channelId !== undefined
+              ? safeChannelId(raw.channelId)
+              : undefined,
           mobName: String(raw.mobName ?? 'Digimon').slice(0, 32),
           mobLevel: safeInt(raw.mobLevel, 1, 200, 1),
           baseExp: safeInt(raw.baseExp, 1, 50_000_000, 10),
-          createdAtMs: serverMs,
+          createdAtMs: serverMs ?? Date.now(),
         });
       });
     },
@@ -1030,9 +1051,13 @@ export async function syncLocalMemberInParty(
     return;
   }
 
+  const user = auth.currentUser;
+  if (!user || !user.emailVerified) return;
+  const authMember: PartyMemberRecord = { ...sanitized, uid: user.uid };
+
   try {
     await updateDoc(doc(db, 'parties', partyId), {
-      [`members.${sanitized.uid}`]: sanitized,
+      [`members.${user.uid}`]: authMember,
       updatedAt: serverTimestamp(),
     });
   } catch {
@@ -1045,6 +1070,7 @@ export async function publishPartyXpEvent(params: {
   killerUid: string;
   killerName: string;
   mapId: SharedWorldMapId;
+  channelId: WorldChannelId;
   mobName: string;
   mobLevel: number;
   baseExp: number;
@@ -1055,18 +1081,34 @@ export async function publishPartyXpEvent(params: {
 
   const eventId = `pxp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
   const path = `parties/${params.partyId}/xpEvents/${eventId}`;
+  const eventRef = doc(db, 'parties', params.partyId, 'xpEvents', eventId);
+  const basePayload = {
+    eventId,
+    killerUid: user.uid,
+    killerName: params.killerName.trim().slice(0, 24) || 'Aliado',
+    mapId: safeMapId(params.mapId),
+    mobName: params.mobName.trim().slice(0, 32) || 'Digimon',
+    mobLevel: safeInt(params.mobLevel, 1, 200, 1),
+    baseExp: safeInt(params.baseExp, 1, 50_000_000, 10),
+    createdAt: serverTimestamp(),
+  };
+
   try {
-    await setDoc(doc(db, 'parties', params.partyId, 'xpEvents', eventId), {
-      eventId,
-      killerUid: user.uid,
-      killerName: params.killerName.trim().slice(0, 24) || 'Aliado',
-      mapId: safeMapId(params.mapId),
-      mobName: params.mobName.trim().slice(0, 32) || 'Digimon',
-      mobLevel: safeInt(params.mobLevel, 1, 200, 1),
-      baseExp: safeInt(params.baseExp, 1, 50_000_000, 10),
-      createdAt: serverTimestamp(),
+    await setDoc(eventRef, {
+      ...basePayload,
+      channelId: safeChannelId(params.channelId),
     });
   } catch (error) {
+    const rawMsg = error instanceof Error ? error.message : String(error);
+    // Graceful fallback if production firestore.rules hasn't been republished with channelId yet
+    if (/permission|denied/i.test(rawMsg)) {
+      try {
+        await setDoc(eventRef, basePayload);
+        return;
+      } catch {
+        // Fall through to structured error logging
+      }
+    }
     try {
       handleFirestoreError(error, OperationType.CREATE, path);
     } catch {

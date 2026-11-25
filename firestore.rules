@@ -595,11 +595,12 @@ service cloud.firestore {
 
     function isValidPartyXpEvent(data, eventId) {
       return data.keys().hasAll(['eventId', 'killerUid', 'killerName', 'mapId', 'mobName', 'mobLevel', 'baseExp', 'createdAt']) &&
-        data.keys().hasOnly(['eventId', 'killerUid', 'killerName', 'mapId', 'mobName', 'mobLevel', 'baseExp', 'createdAt']) &&
+        data.keys().hasOnly(['eventId', 'killerUid', 'killerName', 'mapId', 'channelId', 'mobName', 'mobLevel', 'baseExp', 'createdAt']) &&
         data.eventId is string && isValidId(data.eventId) && data.eventId == eventId &&
         data.killerUid is string && isValidId(data.killerUid) &&
         data.killerName is string && data.killerName.size() >= 1 && data.killerName.size() <= 24 &&
         data.mapId in ['dats-center', 'd-terminal', 'hunting-plains', 'data-forest', 'digi-mountain', 'digital-desert', 'data-sea', 'digimon-island', 'dark-area', 'virtual-world'] &&
+        (!('channelId' in data) || (data.channelId is number && data.channelId >= 1 && data.channelId <= 5)) &&
         data.mobName is string && data.mobName.size() >= 1 && data.mobName.size() <= 32 &&
         data.mobLevel is number && data.mobLevel >= 1 && data.mobLevel <= 200 &&
         data.baseExp is number && data.baseExp >= 1 && data.baseExp <= 50000000 &&

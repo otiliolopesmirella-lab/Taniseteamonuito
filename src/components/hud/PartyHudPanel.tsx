@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import type { GuildInviteRecord } from '../../services/guildService';
 import {
+  getPartySharePercent,
   MAX_PARTY_MEMBERS,
   type PartyInviteRecord,
   type PartyRecord,
@@ -62,6 +63,12 @@ export const PartyHudPanel = memo(function PartyHudPanel({
     : [];
   // Never clone the local player's own portrait/Digimon underneath their own HUD
   const teammates = members.filter((m) => m.uid !== actorUid);
+  const sameMapChannelCount =
+    1 +
+    teammates.filter(
+      (m) => m.mapId === currentMapId && m.channelId === currentChannelId
+    ).length;
+  const partySharePct = getPartySharePercent(sameMapChannelCount);
   const isLeader = party?.leaderUid === actorUid;
   const hasAnyInvites =
     incomingInvites.length > 0 || incomingGuildInvites.length > 0;
@@ -294,6 +301,29 @@ export const PartyHudPanel = memo(function PartyHudPanel({
 
           {!collapsed && (
             <div className="space-y-1 p-1.5">
+              {teammates.length > 0 && (
+                <div
+                  className={`flex items-center justify-between gap-1 rounded-md border px-1.5 py-0.5 text-[8.5px] font-black ${
+                    sameMapChannelCount >= 2
+                      ? 'border-emerald-400/45 bg-emerald-950/55 text-emerald-200'
+                      : 'border-amber-400/45 bg-amber-950/55 text-amber-200'
+                  }`}
+                >
+                  {sameMapChannelCount >= 2 ? (
+                    <>
+                      <span>XP Party (CH{currentChannelId}): {partySharePct}%</span>
+                      <span className="tabular-nums text-cyan-200">
+                        {sameMapChannelCount}/{members.length} no CH
+                      </span>
+                    </>
+                  ) : (
+                    <span className="truncate">
+                      Mesmo mapa e CH para dividir XP
+                    </span>
+                  )}
+                </div>
+              )}
+
               {teammates.length === 0 ? (
                 <p className="rounded-lg border border-cyan-400/25 bg-[#03102e]/85 px-2 py-1.5 text-[9.5px] font-bold text-cyan-100/90">
                   Aguardando jogador aceitar o convite...

@@ -1136,8 +1136,12 @@
         },
         "mapId": {
           "type": "string",
-          "enum": ["dats-center", "hunting-plains", "data-forest", "digi-mountain", "digital-desert", "data-sea", "digimon-island", "dark-area", "virtual-world"],
+          "enum": ["dats-center", "d-terminal", "hunting-plains", "data-forest", "digi-mountain", "digital-desert", "data-sea", "digimon-island", "dark-area", "virtual-world"],
           "description": "Map ID where the mob was defeated."
+        },
+        "channelId": {
+          "type": "number",
+          "description": "World Channel ID (1..5) where the mob was defeated for strict same-channel party XP sharing."
         },
         "mobName": {
           "type": "string",
