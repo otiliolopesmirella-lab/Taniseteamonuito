@@ -5,6 +5,7 @@ import {
   MapPin,
   MessageCircle,
   Navigation,
+  ShieldPlus,
   UserPlus,
   Users,
   X,
@@ -78,12 +79,7 @@ export const OnlinePlayersBadge = memo(function OnlinePlayersBadge({
         title="Ver jogadores online no Mundo Digital"
         className="flex items-center gap-1.5 rounded-full border border-emerald-400/65 bg-[#051844]/95 px-2.5 py-1 text-[10px] font-extrabold text-emerald-100 shadow-[0_0_14px_rgba(16,185,129,0.34)] transition hover:border-emerald-300 hover:bg-[#09296b] active:scale-95"
       >
-        <span className="relative flex h-2 w-2">
-          <span
-            className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${dotColor}`}
-          />
-          <span className={`relative inline-flex h-2 w-2 rounded-full ${dotColor}`} />
-        </span>
+        <span className={`inline-flex h-2 w-2 rounded-full ${dotColor}`} />
         <Users className="h-3 w-3 text-emerald-300" />
         <span className="tabular-nums">
           {sameMapCount} aqui · {totalOnline} online
@@ -204,7 +200,14 @@ export const OnlinePlayersBadge = memo(function OnlinePlayersBadge({
                         key={p.uid}
                         className="flex items-center justify-between gap-2 rounded-lg border border-amber-400/25 bg-[#07183c]/85 px-2 py-1"
                       >
-                        <div className="min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onSelectPlayer(p);
+                            setOpen(false);
+                          }}
+                          className="min-w-0 flex-1 text-left"
+                        >
                           <div className="flex items-center gap-1">
                             {p.isGm && (
                               <Crown className="h-3 w-3 shrink-0 text-amber-300" />
@@ -216,7 +219,7 @@ export const OnlinePlayersBadge = memo(function OnlinePlayersBadge({
                           <p className="truncate text-[9.5px] text-sky-200/75">
                             {MAP_LABELS[p.mapId]} · {form.name}
                           </p>
-                        </div>
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
@@ -238,7 +241,7 @@ export const OnlinePlayersBadge = memo(function OnlinePlayersBadge({
               <p className="rounded-lg border border-cyan-400/20 bg-[#041438] px-2.5 py-2 text-center text-[10px] leading-relaxed text-sky-200/80">
                 {syncStatus === 'error'
                   ? 'Reconectando ao servidor mundial...'
-                  : 'Conectado ao mapa compartilhado! Entre com 2 contas diferentes no mesmo link para ver os personagens juntos ao vivo.'}
+                  : 'Nenhum outro jogador online no momento.'}
               </p>
             )}
           </div>
@@ -252,7 +255,12 @@ interface RemotePlayerInspectorCardProps {
   player: RemoteWorldPlayer;
   partyMemberUids?: readonly string[];
   partyFull?: boolean;
+  partyLeaderOnlyBlocked?: boolean;
   onInviteParty?: (player: RemoteWorldPlayer) => void;
+  canInviteGuild?: boolean;
+  guildInviteDisabled?: boolean;
+  guildInviteLabel?: string;
+  onInviteGuild?: (player: RemoteWorldPlayer) => void;
   onMeetPlayer: (player: RemoteWorldPlayer) => void;
   onWaveHello: (targetName: string) => void;
   onClose: () => void;
@@ -262,7 +270,12 @@ export const RemotePlayerInspectorCard = memo(function RemotePlayerInspectorCard
   player,
   partyMemberUids = [],
   partyFull = false,
+  partyLeaderOnlyBlocked = false,
   onInviteParty,
+  canInviteGuild = false,
+  guildInviteDisabled = false,
+  guildInviteLabel = 'Convidar Guilda',
+  onInviteGuild,
   onMeetPlayer,
   onWaveHello,
   onClose,
@@ -272,13 +285,15 @@ export const RemotePlayerInspectorCard = memo(function RemotePlayerInspectorCard
     TAMER_CHARACTERS.find((c) => c.id === player.characterId) ??
     TAMER_CHARACTERS[0];
   const alreadyInParty = partyMemberUids.includes(player.uid);
+  const partyDisabled =
+    alreadyInParty || partyFull || partyLeaderOnlyBlocked;
 
   return (
     <div
       onPointerDown={(e) => e.stopPropagation()}
       role="dialog"
       aria-label={`Perfil do jogador ${player.tamerName}`}
-      className="pointer-events-auto absolute left-1/2 top-[116px] z-35 w-[min(92vw,328px)] -translate-x-1/2 rounded-2xl border-2 border-emerald-400/80 bg-[#051844]/98 p-3 shadow-[0_0_28px_rgba(16,185,129,0.45)] sm:top-[106px]"
+      className="pointer-events-auto absolute left-1/2 top-[116px] z-35 w-[min(92vw,344px)] -translate-x-1/2 rounded-2xl border-2 border-emerald-400/80 bg-[#051844]/98 p-3 shadow-[0_0_28px_rgba(16,185,129,0.45)] sm:top-[106px]"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2.5">
@@ -318,51 +333,74 @@ export const RemotePlayerInspectorCard = memo(function RemotePlayerInspectorCard
         </button>
       </div>
 
-      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+      <div className="mt-2.5 grid grid-cols-2 gap-1.5">
         {onInviteParty && (
           <button
             type="button"
-            disabled={alreadyInParty || partyFull}
+            disabled={partyDisabled}
             onClick={() => {
               onInviteParty(player);
               onClose();
             }}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border px-3 py-1.5 text-[11px] font-extrabold shadow transition active:scale-95 ${
-              alreadyInParty || partyFull
+            className={`flex min-h-[34px] items-center justify-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[11px] font-extrabold shadow transition active:scale-95 ${
+              partyDisabled
                 ? 'cursor-not-allowed border-slate-500/50 bg-slate-800/80 text-slate-300'
                 : 'border-amber-300/85 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 hover:brightness-110'
             }`}
           >
-            <UserPlus className="h-3.5 w-3.5" />
-            <span>
+            <UserPlus className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">
               {alreadyInParty
                 ? 'Na Party'
-                : partyFull
-                  ? 'Party Cheia'
-                  : 'Convidar Party'}
+                : partyLeaderOnlyBlocked
+                  ? 'Só o Líder'
+                  : partyFull
+                    ? 'Party Cheia'
+                    : 'Convidar Party'}
             </span>
           </button>
         )}
+
+        {canInviteGuild && onInviteGuild && (
+          <button
+            type="button"
+            disabled={guildInviteDisabled}
+            onClick={() => {
+              onInviteGuild(player);
+              onClose();
+            }}
+            className={`flex min-h-[34px] items-center justify-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-[11px] font-extrabold shadow transition active:scale-95 ${
+              guildInviteDisabled
+                ? 'cursor-not-allowed border-slate-500/50 bg-slate-800/80 text-slate-300'
+                : 'border-indigo-300/85 bg-gradient-to-r from-indigo-500 to-violet-600 text-white hover:brightness-110'
+            }`}
+          >
+            <ShieldPlus className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{guildInviteLabel}</span>
+          </button>
+        )}
+
         <button
           type="button"
           onClick={() => {
             onMeetPlayer(player);
             onClose();
           }}
-          className="flex items-center justify-center gap-1 rounded-xl border border-cyan-300/70 bg-[#0a2f78] px-3 py-1.5 text-[11px] font-extrabold text-cyan-100 shadow hover:bg-[#0d3d99] active:scale-95"
+          className="flex min-h-[34px] items-center justify-center gap-1 rounded-xl border border-cyan-300/70 bg-[#0a2f78] px-2.5 py-1.5 text-[11px] font-extrabold text-cyan-100 shadow hover:bg-[#0d3d99] active:scale-95"
         >
-          <LocateFixed className="h-3.5 w-3.5" />
+          <LocateFixed className="h-3.5 w-3.5 shrink-0" />
           <span>Ir até</span>
         </button>
+
         <button
           type="button"
           onClick={() => {
             onWaveHello(player.tamerName);
             onClose();
           }}
-          className="flex items-center justify-center gap-1.5 rounded-xl border border-emerald-300/70 bg-gradient-to-r from-emerald-600 to-cyan-600 px-3 py-1.5 text-[11px] font-extrabold text-white shadow hover:brightness-110 active:scale-95"
+          className="flex min-h-[34px] items-center justify-center gap-1.5 rounded-xl border border-emerald-300/70 bg-gradient-to-r from-emerald-600 to-cyan-600 px-2.5 py-1.5 text-[11px] font-extrabold text-white shadow hover:brightness-110 active:scale-95"
         >
-          <MessageCircle className="h-3.5 w-3.5" />
+          <MessageCircle className="h-3.5 w-3.5 shrink-0" />
           <span>Olá</span>
         </button>
       </div>

@@ -50,6 +50,7 @@ import { INVENTORY_TOTAL_SLOTS } from '../../services/hudGameService';
 import {
   checkMercadoPagoOrderStatus,
   createMercadoPagoCheckout,
+  reconcilePendingMercadoPagoOrders,
   type MercadoPagoCheckoutResult,
   type MercadoPagoStatusResult,
 } from '../../services/mercadoPagoService';
@@ -165,6 +166,8 @@ export function DwCoinShopModal({
   const [mpStatus, setMpStatus] = useState<MercadoPagoStatusResult | null>(null);
   const [pixCopied, setPixCopied] = useState(false);
   const [orderCreditedInCloud, setOrderCreditedInCloud] = useState(false);
+  const [reconcilingOrders, setReconcilingOrders] = useState(false);
+  const [reconcileMessage, setReconcileMessage] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{
     tone: 'ok' | 'error' | 'info';
     text: string;
@@ -307,7 +310,10 @@ export function DwCoinShopModal({
         });
         if (result.ok) {
           setMpStatus(result);
-          if (result.approved && !silent) {
+          if (result.approved && (result.credited || result.alreadyCredited)) {
+            setOrderCreditedInCloud(true);
+            onPlayTone('confirm');
+          } else if (result.approved && !silent) {
             onPlayTone('confirm');
           }
         }
@@ -317,6 +323,52 @@ export function DwCoinShopModal({
     },
     [activeCheckoutOrder, mpChecking, mpCheckout, onPlayTone, orderCreditedInCloud]
   );
+
+  // Auto-reconcile any previously paid pending orders as soon as the shop opens
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const summary = await reconcilePendingMercadoPagoOrders();
+      if (cancelled) return;
+      if (summary.creditedCount > 0 && summary.totalDwCoinCredited > 0) {
+        onPlayTone('confirm');
+        setReconcileMessage(
+          `+${summary.totalDwCoinCredited.toLocaleString('pt-BR')} DL Din creditados automaticamente!`
+        );
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [onPlayTone]);
+
+  const handleManualReconcilePending = useCallback(async () => {
+    if (reconcilingOrders) return;
+    onPlayTone('click');
+    setReconcilingOrders(true);
+    setReconcileMessage(null);
+    try {
+      const summary = await reconcilePendingMercadoPagoOrders();
+      if (summary.creditedCount > 0 && summary.totalDwCoinCredited > 0) {
+        onPlayTone('confirm');
+        setReconcileMessage(
+          `+${summary.totalDwCoinCredited.toLocaleString('pt-BR')} DL Din creditados na sua conta!`
+        );
+      } else if (summary.approvedAwaitingServerConfig > 0) {
+        setReconcileMessage(
+          'Pagamento encontrado no Mercado Pago! Aguardando liberação automática do servidor.'
+        );
+      } else if (summary.checkedCount === 0) {
+        setReconcileMessage('Nenhum pedido PIX/Cartão pendente encontrado.');
+      } else {
+        setReconcileMessage(
+          'Pedido ainda aguardando confirmação do banco. Tente novamente em instantes.'
+        );
+      }
+    } finally {
+      setReconcilingOrders(false);
+    }
+  }, [onPlayTone, reconcilingOrders]);
 
   // Watch Firestore order status in real time so instant credit confirmation appears automatically
   useEffect(() => {
@@ -346,30 +398,38 @@ export function DwCoinShopModal({
     return () => unsub();
   }, [activeCheckoutOrder, onPlayTone, rechargeStep]);
 
-  // Auto-poll Mercado Pago every 6 seconds while awaiting PIX or Checkout Pro confirmation
+  // Auto-poll Mercado Pago every 5s while awaiting PIX/Checkout Pro AND check immediately when returning from bank app
   useEffect(() => {
     if (
       rechargeStep !== 'checkout' ||
       !activeCheckoutOrder ||
       !mpCheckout ||
       !mpCheckout.ok ||
-      mpStatus?.approved ||
       orderCreditedInCloud
     ) {
       return;
     }
 
-    const intervalMs = mpCheckout.mode === 'pix' ? 6000 : 8000;
+    const intervalMs = mpCheckout.mode === 'pix' ? 5000 : 7000;
     const timer = window.setInterval(() => {
       void handleCheckMercadoPagoStatus(true);
     }, intervalMs);
 
-    return () => window.clearInterval(timer);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void handleCheckMercadoPagoStatus(true);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [
     activeCheckoutOrder,
     handleCheckMercadoPagoStatus,
     mpCheckout,
-    mpStatus?.approved,
     orderCreditedInCloud,
     rechargeStep,
   ]);
@@ -959,6 +1019,33 @@ export function DwCoinShopModal({
             className="absolute cursor-pointer rounded-2xl transition-all hover:bg-cyan-300/16 hover:ring-2 hover:ring-cyan-200/90 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200"
           />
 
+          {/* Quick Bottom-Right Pending Payment Recovery Button */}
+          <button
+            type="button"
+            disabled={reconcilingOrders}
+            onClick={() => void handleManualReconcilePending()}
+            title="Verificar pagamentos PIX/Cartão aprovados e creditar DL Din"
+            className="absolute right-2.5 bottom-2.5 z-10 flex min-h-[34px] items-center gap-1.5 rounded-xl border border-emerald-300/75 bg-[#041840]/92 px-2.5 py-1 text-[10.5px] font-black text-emerald-200 shadow-lg backdrop-blur-sm transition hover:bg-emerald-900/85 active:scale-95 disabled:opacity-60"
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 shrink-0 ${reconcilingOrders ? 'animate-spin' : ''}`}
+            />
+            <span>{reconcilingOrders ? 'Verificando...' : 'Verificar PIX'}</span>
+          </button>
+
+          {reconcileMessage && (
+            <div className="absolute inset-x-3 bottom-14 z-10 flex items-center justify-between gap-2 rounded-xl border border-emerald-300/75 bg-[#041a3d]/95 px-3 py-2 text-[11px] font-bold text-emerald-100 shadow-xl">
+              <span>{reconcileMessage}</span>
+              <button
+                type="button"
+                onClick={() => setReconcileMessage(null)}
+                className="shrink-0 text-xs font-black text-emerald-200/80 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {/* Interactive Pack Purchase Confirmation Overlay (Select Method / Mandatory Terms / Existing Checkout) */}
           {selectedPack && rechargeStep === 'terms' && (
             <div
@@ -1245,10 +1332,26 @@ export function DwCoinShopModal({
                             <strong className="tabular-nums text-white">
                               #{mpStatus.mpPaymentId}
                             </strong>{' '}
-                            aprovado. Seus{' '}
-                            <strong>{selectedPack.dwCoinAmount} DL Din</strong>{' '}
-                            estão prontos para liberação na sua conta.
+                            aprovado.{' '}
+                            {mpStatus.autoCreditConfigured === false
+                              ? `Seus ${selectedPack.dwCoinAmount} DL Din foram confirmados e aguardam conclusão da entrega automática pelo servidor.`
+                              : `Creditando ${selectedPack.dwCoinAmount} DL Din automaticamente na sua conta...`}
                           </p>
+                          <button
+                            type="button"
+                            disabled={mpChecking}
+                            onClick={() => void handleCheckMercadoPagoStatus(false)}
+                            className="flex min-h-[36px] w-full items-center justify-center gap-1.5 rounded-xl border border-emerald-300/70 bg-emerald-700/80 px-3 text-[11px] font-black text-white hover:bg-emerald-600 disabled:opacity-60"
+                          >
+                            <RefreshCw
+                              className={`h-3.5 w-3.5 shrink-0 ${mpChecking ? 'animate-spin' : ''}`}
+                            />
+                            <span>
+                              {mpChecking
+                                ? 'Finalizando crédito...'
+                                : 'Atualizar Saldo Agora'}
+                            </span>
+                          </button>
                         </div>
                       ) : mpLoading ? (
                         <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-cyan-400/35 bg-[#041232] px-3 py-6 text-center">

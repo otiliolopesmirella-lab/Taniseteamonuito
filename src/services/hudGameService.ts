@@ -1037,7 +1037,8 @@ export function loadAccountHudState(
 
 export function saveAccountHudState(
   state: AccountHudPersistence,
-  immediate = false
+  immediate = false,
+  options?: { syncDCoinToCloud?: boolean; skipCloudSync?: boolean }
 ): void {
   const stamped: AccountHudPersistence = {
     ...state,
@@ -1059,7 +1060,9 @@ export function saveAccountHudState(
     }, 450);
   }
 
-  scheduleHudStateSync(stamped);
+  if (!options?.skipCloudSync) {
+    scheduleHudStateSync(stamped, options?.syncDCoinToCloud === true);
+  }
 }
 
 export function applyExpToTamer(

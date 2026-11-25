@@ -1,8 +1,13 @@
 import {
+  collection,
   doc,
+  getDocs,
+  query,
   serverTimestamp,
   setDoc,
+  Timestamp,
   updateDoc,
+  where,
 } from 'firebase/firestore';
 import {
   DWCOIN_PURCHASE_TERMS_VERSION,
@@ -127,6 +132,63 @@ export async function createDwCoinPurchaseOrder(
   }
 
   return order;
+}
+
+export interface PendingPlayerOrderSummary {
+  orderId: string;
+  packId: string;
+  dwCoinAmount: number;
+  priceBrlLabel: string;
+  paymentMethod: DwCoinPaymentMethod;
+  createdAtMs: number;
+}
+
+/**
+ * Lista os pedidos pendentes recentes da própria conta autenticada para verificação
+ * automática no Mercado Pago (ex.: ao voltar do app do banco ou reabrir o jogo).
+ */
+export async function listMyPendingDwCoinOrders(
+  maxAgeMs = 72 * 60 * 60 * 1000
+): Promise<PendingPlayerOrderSummary[]> {
+  const user = auth.currentUser;
+  if (!user || !user.emailVerified) return [];
+
+  try {
+    const snap = await getDocs(
+      query(collection(db, 'dwCoinOrders'), where('ownerUid', '==', user.uid))
+    );
+    const cutoff = Date.now() - maxAgeMs;
+    const rows: PendingPlayerOrderSummary[] = [];
+
+    snap.forEach((docSnap) => {
+      const d = docSnap.data() ?? {};
+      if (d.status !== 'pending') return;
+      const rawCreated = d.createdAt;
+      const createdAtMs =
+        rawCreated instanceof Timestamp
+          ? rawCreated.toMillis()
+          : rawCreated &&
+              typeof rawCreated === 'object' &&
+              'toMillis' in rawCreated &&
+              typeof (rawCreated as Timestamp).toMillis === 'function'
+            ? (rawCreated as Timestamp).toMillis()
+            : Date.now();
+      if (createdAtMs < cutoff) return;
+      rows.push({
+        orderId: String(d.orderId ?? docSnap.id),
+        packId: String(d.packId ?? 'pack_10'),
+        dwCoinAmount: typeof d.dwCoinAmount === 'number' ? d.dwCoinAmount : 0,
+        priceBrlLabel: String(d.priceBrlLabel ?? ''),
+        paymentMethod: d.paymentMethod === 'card' ? 'card' : 'pix',
+        createdAtMs,
+      });
+    });
+
+    rows.sort((a, b) => b.createdAtMs - a.createdAtMs);
+    return rows.slice(0, 8);
+  } catch {
+    return [];
+  }
 }
 
 /**

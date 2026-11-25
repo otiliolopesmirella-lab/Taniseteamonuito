@@ -3,11 +3,14 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  limit,
   onSnapshot,
   query,
   runTransaction,
   serverTimestamp,
   setDoc,
+  Timestamp,
+  updateDoc,
   where,
   type Unsubscribe,
 } from 'firebase/firestore';
@@ -1474,5 +1477,443 @@ export async function contributeGuildExp(params: {
     return { leveledUp, newLevel };
   } catch {
     return { leveledUp: false };
+  }
+}
+
+// ============================================================================
+// Guild Invite System (Líder 'master' e Sub-Líder 'submaster' -> Sim / Não)
+// ============================================================================
+
+export interface GuildInviteRecord {
+  inviteId: string;
+  guildId: string;
+  guildName: string;
+  guildTag: string;
+  guildLevel: number;
+  guildEmblemColor: GuildEmblemColor;
+  fromUid: string;
+  fromName: string;
+  fromRole: 'master' | 'submaster';
+  toUid: string;
+  toName: string;
+  status: 'pending' | 'accepted' | 'declined';
+  createdAtMs: number;
+}
+
+const LOCAL_GUILD_INVITES_KEY = 'dmo_guild_invites_v1';
+const localGuildInviteListeners = new Set<() => void>();
+
+function notifyLocalGuildInviteListeners(): void {
+  for (const fn of localGuildInviteListeners) fn();
+}
+
+function readLocalGuildInvites(): Record<string, GuildInviteRecord> {
+  try {
+    const raw = window.localStorage.getItem(LOCAL_GUILD_INVITES_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, GuildInviteRecord>;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeLocalGuildInvites(map: Record<string, GuildInviteRecord>): void {
+  try {
+    window.localStorage.setItem(LOCAL_GUILD_INVITES_KEY, JSON.stringify(map));
+  } catch {
+    // Ignore storage quota errors
+  }
+  notifyLocalGuildInviteListeners();
+}
+
+function parseGuildInviteTimestampMs(raw: unknown): number {
+  if (raw instanceof Timestamp) return raw.toMillis();
+  if (
+    raw &&
+    typeof raw === 'object' &&
+    'toMillis' in raw &&
+    typeof (raw as Timestamp).toMillis === 'function'
+  ) {
+    return (raw as Timestamp).toMillis();
+  }
+  return Date.now();
+}
+
+export function buildGuildInviteId(guildId: string, toUid: string): string {
+  return `ginv_${guildId}_${toUid}`;
+}
+
+export function canMemberInviteToGuild(
+  guild: GuildRecord | null,
+  actorUid: string
+): boolean {
+  if (!guild || !actorUid) return false;
+  if (guild.masterUid === actorUid) return true;
+  const role = guild.members[actorUid]?.role;
+  return role === 'master' || role === 'submaster';
+}
+
+export function subscribeIncomingGuildInvites(
+  actorUid: string,
+  onUpdate: (invites: GuildInviteRecord[]) => void
+): Unsubscribe {
+  if (!actorUid) {
+    onUpdate([]);
+    return () => undefined;
+  }
+
+  const emitLocal = () => {
+    const all = Object.values(readLocalGuildInvites())
+      .filter((inv) => inv.toUid === actorUid && inv.status === 'pending')
+      .sort((a, b) => b.createdAtMs - a.createdAtMs);
+    onUpdate(all);
+  };
+
+  if (!isFirestoreReady()) {
+    localGuildInviteListeners.add(emitLocal);
+    emitLocal();
+    return () => {
+      localGuildInviteListeners.delete(emitLocal);
+    };
+  }
+
+  const q = query(
+    collection(db, 'guildInvites'),
+    where('toUid', '==', actorUid),
+    limit(15)
+  );
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const list: GuildInviteRecord[] = [];
+      snapshot.forEach((d) => {
+        const raw = (d.data() ?? {}) as Record<string, unknown>;
+        if (raw.status !== 'pending') return;
+        const colorRaw = raw.guildEmblemColor;
+        const guildEmblemColor: GuildEmblemColor =
+          colorRaw === 'amber' ||
+          colorRaw === 'crimson' ||
+          colorRaw === 'emerald' ||
+          colorRaw === 'violet'
+            ? colorRaw
+            : 'cyan';
+        list.push({
+          inviteId: String(raw.inviteId ?? d.id),
+          guildId: String(raw.guildId ?? ''),
+          guildName: String(raw.guildName ?? 'Guilda').slice(0, 24),
+          guildTag: String(raw.guildTag ?? 'DATS').toUpperCase().slice(0, 4),
+          guildLevel: Math.max(1, Math.min(GUILD_MAX_LEVEL, Math.round(Number(raw.guildLevel) || 1))),
+          guildEmblemColor,
+          fromUid: String(raw.fromUid ?? ''),
+          fromName: String(raw.fromName ?? 'Líder').slice(0, 24),
+          fromRole: raw.fromRole === 'submaster' ? 'submaster' : 'master',
+          toUid: String(raw.toUid ?? actorUid),
+          toName: String(raw.toName ?? 'Tamer').slice(0, 24),
+          status: 'pending',
+          createdAtMs: parseGuildInviteTimestampMs(raw.createdAt),
+        });
+      });
+      list.sort((a, b) => b.createdAtMs - a.createdAtMs);
+      onUpdate(list);
+    },
+    (error) => {
+      try {
+        handleFirestoreError(error, OperationType.LIST, 'guildInvites');
+      } catch {
+        // Non-fatal
+      }
+    }
+  );
+}
+
+export async function sendGuildInvite(params: {
+  guild: GuildRecord;
+  actorUid: string;
+  actorName: string;
+  targetUid: string;
+  targetName: string;
+  targetGuildName?: string | null;
+}): Promise<{ ok: boolean; message: string }> {
+  const { guild, actorUid, actorName, targetUid, targetName, targetGuildName } = params;
+
+  if (!canMemberInviteToGuild(guild, actorUid)) {
+    return {
+      ok: false,
+      message: 'Apenas o Líder ou Sub-Líder da Guilda podem enviar convites.',
+    };
+  }
+  if (!targetUid || targetUid === actorUid) {
+    return { ok: false, message: 'Você não pode convidar a si mesmo para a Guilda.' };
+  }
+  if (guild.memberUids.includes(targetUid)) {
+    return { ok: false, message: `${targetName} já faz parte da sua Guilda.` };
+  }
+  if (targetGuildName) {
+    return {
+      ok: false,
+      message: `${targetName} já pertence à guilda ${targetGuildName}.`,
+    };
+  }
+  if (guild.memberUids.length >= getGuildMaxMembersForLevel(guild.level)) {
+    return { ok: false, message: 'A Guilda atingiu o limite máximo de membros.' };
+  }
+
+  const fromRole: 'master' | 'submaster' =
+    guild.masterUid === actorUid ? 'master' : 'submaster';
+  const inviteId = buildGuildInviteId(guild.guildId, targetUid);
+  const cleanFromName = actorName.trim().slice(0, 24) || 'Tamer';
+  const cleanToName = targetName.trim().slice(0, 24) || 'Tamer';
+
+  if (!isFirestoreReady()) {
+    const map = readLocalGuildInvites();
+    map[inviteId] = {
+      inviteId,
+      guildId: guild.guildId,
+      guildName: guild.name,
+      guildTag: guild.tag,
+      guildLevel: guild.level,
+      guildEmblemColor: guild.emblemColor,
+      fromUid: actorUid,
+      fromName: cleanFromName,
+      fromRole,
+      toUid: targetUid,
+      toName: cleanToName,
+      status: 'pending',
+      createdAtMs: Date.now(),
+    };
+    writeLocalGuildInvites(map);
+    return {
+      ok: true,
+      message: `Convite da Guilda [${guild.tag}] enviado para ${cleanToName}!`,
+    };
+  }
+
+  const user = auth.currentUser;
+  if (!user || !user.emailVerified || user.uid !== actorUid) {
+    return { ok: false, message: 'Conta não verificada para convites de Guilda.' };
+  }
+
+  const inviteRef = doc(db, 'guildInvites', inviteId);
+  const payload = {
+    inviteId,
+    guildId: guild.guildId,
+    guildName: guild.name.slice(0, 24),
+    guildTag: guild.tag.toUpperCase().slice(0, 4),
+    guildLevel: Math.max(1, Math.min(GUILD_MAX_LEVEL, guild.level)),
+    guildEmblemColor: guild.emblemColor,
+    fromUid: user.uid,
+    fromName: cleanFromName,
+    fromRole,
+    toUid: targetUid,
+    toName: cleanToName,
+    status: 'pending' as const,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  try {
+    try {
+      await setDoc(inviteRef, payload);
+    } catch {
+      await deleteDoc(inviteRef);
+      await setDoc(inviteRef, payload);
+    }
+    return {
+      ok: true,
+      message: `Convite da Guilda [${guild.tag}] enviado para ${cleanToName}!`,
+    };
+  } catch (error) {
+    try {
+      handleFirestoreError(error, OperationType.WRITE, `guildInvites/${inviteId}`);
+    } catch {
+      // Logged
+    }
+    return {
+      ok: false,
+      message: `Não foi possível enviar convite de Guilda para ${cleanToName}.`,
+    };
+  }
+}
+
+export async function acceptGuildInvite(params: {
+  invite: GuildInviteRecord;
+  actorUid: string;
+  tamerName: string;
+  tamerLevel: number;
+  digimonFormId?: string;
+  currentGuild: GuildRecord | null;
+}): Promise<{ ok: boolean; message: string; guildName?: string }> {
+  const { invite, actorUid, tamerName, tamerLevel, digimonFormId, currentGuild } = params;
+
+  if (currentGuild && currentGuild.guildId !== invite.guildId) {
+    return {
+      ok: false,
+      message: `Saia da sua Guilda atual (${currentGuild.name}) antes de aceitar outro convite.`,
+    };
+  }
+
+  const cleanTamer = tamerName.trim().slice(0, 24) || 'Tamer';
+  const nowIso = new Date().toISOString();
+  const formId = digimonFormId || 'agumon';
+
+  if (!isFirestoreReady()) {
+    const map = readLocalGuilds();
+    const g = map[invite.guildId];
+    if (!g) {
+      const invs = readLocalGuildInvites();
+      delete invs[invite.inviteId];
+      writeLocalGuildInvites(invs);
+      return { ok: false, message: 'Esta Guilda não existe mais.' };
+    }
+    if (g.memberUids.length >= getGuildMaxMembersForLevel(g.level)) {
+      return { ok: false, message: 'Esta Guilda atingiu o limite máximo de membros.' };
+    }
+    if (!g.memberUids.includes(actorUid)) {
+      map[invite.guildId] = {
+        ...g,
+        memberUids: [...g.memberUids, actorUid],
+        members: {
+          ...g.members,
+          [actorUid]: {
+            uid: actorUid,
+            tamerName: cleanTamer,
+            role: 'member',
+            tamerLevel: Math.max(1, tamerLevel),
+            contributionExp: 0,
+            joinedAtIso: nowIso,
+            digimonFormId: formId,
+          },
+        },
+        chatMessages: [
+          ...g.chatMessages.slice(-24),
+          {
+            id: `gc-join-${Date.now()}`,
+            senderName: cleanTamer,
+            role: 'member',
+            text: `${cleanTamer} aceitou o convite e entrou para a Guilda!`,
+            timestamp: nowTimeLabel(),
+          },
+        ],
+      };
+      writeLocalGuilds(map);
+    }
+    const invs = readLocalGuildInvites();
+    delete invs[invite.inviteId];
+    writeLocalGuildInvites(invs);
+    return {
+      ok: true,
+      guildName: g.name,
+      message: `Você entrou para a Guilda [${g.tag}] ${g.name}!`,
+    };
+  }
+
+  const user = auth.currentUser;
+  if (!user || !user.emailVerified || user.uid !== actorUid) {
+    return { ok: false, message: 'Sessão não verificada.' };
+  }
+
+  const guildRef = doc(db, 'guilds', invite.guildId);
+  const inviteRef = doc(db, 'guildInvites', invite.inviteId);
+
+  try {
+    let joinedName = invite.guildName;
+    let joinedTag = invite.guildTag;
+    const txRes = await runTransaction(db, async (tx) => {
+      const snap = await tx.get(guildRef);
+      if (!snap.exists()) {
+        return { ok: false, reason: 'Esta Guilda não existe mais.' };
+      }
+      const g = parseGuildDoc((snap.data() ?? {}) as Record<string, unknown>, snap.id);
+      joinedName = g.name;
+      joinedTag = g.tag;
+      if (g.memberUids.includes(actorUid)) {
+        return { ok: true, reason: 'already' };
+      }
+      if (g.memberUids.length >= getGuildMaxMembersForLevel(g.level)) {
+        return { ok: false, reason: 'Esta Guilda atingiu o limite máximo de membros.' };
+      }
+      const nextMembers = {
+        ...g.members,
+        [actorUid]: {
+          uid: actorUid,
+          tamerName: cleanTamer,
+          role: 'member' as GuildRole,
+          tamerLevel: Math.max(1, tamerLevel),
+          contributionExp: 0,
+          joinedAtIso: nowIso,
+          digimonFormId: formId,
+        },
+      };
+      const nextChat: GuildChatEntry[] = [
+        ...g.chatMessages.slice(-24),
+        {
+          id: `gc-join-${Date.now()}`,
+          senderName: cleanTamer,
+          role: 'member',
+          text: `${cleanTamer} aceitou o convite e entrou para a Guilda!`,
+          timestamp: nowTimeLabel(),
+        },
+      ];
+      tx.update(guildRef, {
+        memberUids: [...g.memberUids, actorUid],
+        members: nextMembers,
+        chatMessages: nextChat,
+        updatedAt: serverTimestamp(),
+      });
+      return { ok: true, reason: 'joined' };
+    });
+
+    if (!txRes.ok) {
+      await deleteDoc(inviteRef).catch(() => undefined);
+      return { ok: false, message: txRes.reason };
+    }
+
+    await deleteDoc(inviteRef).catch(async () => {
+      await updateDoc(inviteRef, {
+        status: 'accepted',
+        updatedAt: serverTimestamp(),
+      }).catch(() => undefined);
+    });
+
+    return {
+      ok: true,
+      guildName: joinedName,
+      message: `Você entrou para a Guilda [${joinedTag}] ${joinedName}!`,
+    };
+  } catch (error) {
+    try {
+      handleFirestoreError(error, OperationType.WRITE, `guilds/${invite.guildId}`);
+    } catch {
+      // Logged
+    }
+    return {
+      ok: false,
+      message: 'Não foi possível entrar na Guilda. O convite pode ter expirado.',
+    };
+  }
+}
+
+export async function declineGuildInvite(inviteId: string): Promise<void> {
+  if (!inviteId) return;
+  if (!isFirestoreReady()) {
+    const invs = readLocalGuildInvites();
+    delete invs[inviteId];
+    writeLocalGuildInvites(invs);
+    return;
+  }
+
+  try {
+    await deleteDoc(doc(db, 'guildInvites', inviteId));
+  } catch {
+    try {
+      await updateDoc(doc(db, 'guildInvites', inviteId), {
+        status: 'declined',
+        updatedAt: serverTimestamp(),
+      });
+    } catch {
+      // Non-fatal cleanup
+    }
   }
 }

@@ -532,6 +532,12 @@ export async function sendPartyInvite(params: {
   }
 
   if (currentParty) {
+    if (currentParty.leaderUid !== senderProfile.uid) {
+      return {
+        ok: false,
+        message: 'Apenas o líder da Party pode convidar novos jogadores.',
+      };
+    }
     if (currentParty.memberUids.includes(targetUid)) {
       return {
         ok: false,

@@ -1443,6 +1443,143 @@
         }
       },
       "required": ["logId", "actorUid", "actorName", "action", "targetUid", "targetName", "summary", "createdAt"]
+    },
+    "GlobalChatMessage": {
+      "title": "GlobalChatMessage",
+      "description": "Server-wide cross-map Global Chat message visible to all verified online players regardless of map.",
+      "type": "object",
+      "properties": {
+        "messageId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Unique Global Chat message ID."
+        },
+        "senderUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the sender."
+        },
+        "senderName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24,
+          "description": "Display Tamer name of the sender."
+        },
+        "isGmSender": {
+          "type": "boolean",
+          "description": "Server-verified GM badge flag."
+        },
+        "mapId": {
+          "type": "string",
+          "enum": ["dats-center", "hunting-plains", "data-forest", "digi-mountain", "digital-desert", "data-sea", "digimon-island", "dark-area", "virtual-world"],
+          "description": "Map where the sender was located when sending."
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 140,
+          "description": "Message body."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the message was created."
+        }
+      },
+      "required": ["messageId", "senderUid", "senderName", "isGmSender", "mapId", "text", "createdAt"]
+    },
+    "GuildInvite": {
+      "title": "GuildInvite",
+      "description": "Targeted Guild invitation sent by a Guild Leader or Sub-Leader to another verified online player.",
+      "type": "object",
+      "properties": {
+        "inviteId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Deterministic invite document ID (ginv_{guildId}_{toUid})."
+        },
+        "guildId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Target Guild document ID."
+        },
+        "guildName": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 24,
+          "description": "Display name of the Guild."
+        },
+        "guildTag": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 4,
+          "description": "Short 2-4 character guild tag."
+        },
+        "guildLevel": {
+          "type": "number",
+          "description": "Current level of the Guild (1..10)."
+        },
+        "guildEmblemColor": {
+          "type": "string",
+          "enum": ["cyan", "amber", "crimson", "emerald", "violet"],
+          "description": "Guild crest color theme."
+        },
+        "fromUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID of the inviting Guild Leader or Sub-Leader."
+        },
+        "fromName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24,
+          "description": "Display Tamer name of the inviter."
+        },
+        "fromRole": {
+          "type": "string",
+          "enum": ["master", "submaster"],
+          "description": "Role of the inviter within the Guild."
+        },
+        "toUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID of the invited player."
+        },
+        "toName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24,
+          "description": "Display Tamer name of the invited player."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "accepted", "declined"],
+          "description": "Current invite resolution status."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the invite was sent."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest invite state update."
+        }
+      },
+      "required": ["inviteId", "guildId", "guildName", "guildTag", "guildLevel", "guildEmblemColor", "fromUid", "fromName", "fromRole", "toUid", "toName", "status", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
@@ -1521,6 +1658,14 @@
     "/gmAuditLogs/{logId}": {
       "schema": { "$ref": "#/entities/GmAuditLog" },
       "description": "Immutable administrative audit logs visible exclusively to verified GMs."
+    },
+    "/globalChat/{messageId}": {
+      "schema": { "$ref": "#/entities/GlobalChatMessage" },
+      "description": "Server-wide cross-map Global Chat messages readable by all verified online players."
+    },
+    "/guildInvites/{inviteId}": {
+      "schema": { "$ref": "#/entities/GuildInvite" },
+      "description": "Targeted Guild invitations sent by Guild Leaders or Sub-Leaders and resolved by the invited player."
     }
   }
 }

@@ -101,7 +101,7 @@ export interface InventoryItem {
   reinforceMeta?: EggReinforceItemMetadata;
 }
 
-export type ChatChannel = 'all' | 'party' | 'guild' | 'whisper' | 'system';
+export type ChatChannel = 'global' | 'map' | 'guild' | 'party' | 'system';
 
 export interface ChatMessage {
   id: string;

@@ -65,22 +65,39 @@ export function playDigitalTone(
 export const SELECTION_THEME_MUSIC_URL =
   '/assets/aistudio/Digimon_Data_Squad_-_Vem_Comigo__Daniel_Quirino__MP3_160K__6db659da.mp3';
 
-const SELECTION_THEME_TARGET_VOL = 0.42;
+export const DATS_CENTER_MUSIC_URL =
+  '/assets/aistudio/Digimon_Masters_Online_Soundtrack_-_DATS_Center_MP3_160K__f3e6ac69.mp3';
 
-class SelectionThemeController {
+const SELECTION_THEME_TARGET_VOL = 0.42;
+const DATS_CENTER_TARGET_VOL = 0.36;
+
+class LoopingBgmController {
   private audio: HTMLAudioElement | null = null;
   private active = false;
   private muted = false;
+  private volumeMultiplier = 1;
   private fadeTimer: number | null = null;
   private unlockHandler: (() => void) | null = null;
+  private readonly trackUrl: string;
+  private readonly targetVol: number;
+
+  constructor(trackUrl: string, targetVol: number) {
+    this.trackUrl = trackUrl;
+    this.targetVol = targetVol;
+  }
+
+  private getEffectiveVolume(): number {
+    if (this.muted) return 0;
+    return Math.max(0, Math.min(1, this.targetVol * this.volumeMultiplier));
+  }
 
   private ensureAudio(): HTMLAudioElement | null {
     if (typeof window === 'undefined') return null;
     if (!this.audio) {
-      const el = new Audio(SELECTION_THEME_MUSIC_URL);
+      const el = new Audio(this.trackUrl);
       el.loop = true;
       el.preload = 'auto';
-      el.volume = this.muted ? 0 : SELECTION_THEME_TARGET_VOL;
+      el.volume = this.getEffectiveVolume();
       this.audio = el;
     }
     return this.audio;
@@ -104,13 +121,13 @@ class SelectionThemeController {
   private attachUnlockListener() {
     if (this.unlockHandler || typeof window === 'undefined') return;
     this.unlockHandler = () => {
-      if (!this.active || this.muted) {
+      if (!this.active || this.muted || this.volumeMultiplier <= 0.001) {
         this.clearUnlockListener();
         return;
       }
       const el = this.ensureAudio();
       if (!el) return;
-      el.volume = SELECTION_THEME_TARGET_VOL;
+      el.volume = this.getEffectiveVolume();
       el.play()
         .then(() => {
           this.clearUnlockListener();
@@ -123,19 +140,19 @@ class SelectionThemeController {
     window.addEventListener('keydown', this.unlockHandler, { passive: true });
   }
 
-  start(soundEnabled: boolean): void {
+  start(musicEnabled: boolean): void {
     this.clearFade();
     this.active = true;
-    this.muted = !soundEnabled;
+    this.muted = !musicEnabled;
     const el = this.ensureAudio();
     if (!el) return;
 
-    el.volume = this.muted ? 0 : SELECTION_THEME_TARGET_VOL;
-    if (this.muted) {
+    el.volume = this.getEffectiveVolume();
+    if (this.muted || this.volumeMultiplier <= 0.001) {
       return;
     }
 
-    // If already playing smoothly (e.g. moving from Tamer Select -> Digimon Select), keep going without restarting!
+    // If already playing smoothly, keep going without restarting!
     if (!el.paused && el.currentTime > 0) {
       return;
     }
@@ -149,17 +166,34 @@ class SelectionThemeController {
       });
   }
 
+  setVolumeMultiplier(multiplier: number): void {
+    this.volumeMultiplier = Math.max(0, Math.min(1, multiplier));
+    const el = this.audio;
+    if (!el) return;
+    el.volume = this.getEffectiveVolume();
+    if (!this.muted && this.active && this.volumeMultiplier > 0.001 && el.paused) {
+      this.clearFade();
+      el.play()
+        .then(() => {
+          this.clearUnlockListener();
+        })
+        .catch(() => {
+          this.attachUnlockListener();
+        });
+    }
+  }
+
   setMuted(muted: boolean): void {
     this.muted = muted;
     const el = this.audio;
     if (!el) return;
-    if (muted) {
+    if (muted || this.volumeMultiplier <= 0.001) {
       el.volume = 0;
       return;
     }
     if (this.active) {
       this.clearFade();
-      el.volume = SELECTION_THEME_TARGET_VOL;
+      el.volume = this.getEffectiveVolume();
       if (el.paused) {
         el.play()
           .then(() => {
@@ -189,7 +223,7 @@ class SelectionThemeController {
       return;
     }
 
-    // Smooth ~240ms fade-out when spawning into DATS Center
+    // Smooth ~240ms fade-out when transitioning away
     const startVol = el.volume;
     let step = 0;
     const totalSteps = 8;
@@ -210,7 +244,15 @@ class SelectionThemeController {
   }
 }
 
-export const selectionThemePlayer = new SelectionThemeController();
+export const selectionThemePlayer = new LoopingBgmController(
+  SELECTION_THEME_MUSIC_URL,
+  SELECTION_THEME_TARGET_VOL
+);
+
+export const datsCenterMusicPlayer = new LoopingBgmController(
+  DATS_CENTER_MUSIC_URL,
+  DATS_CENTER_TARGET_VOL
+);
 
 export const EVOLUTION_AUDIO_TRACKS = {
   /** Voice pronouncing "EVOLUTION!" triggered at exact 2.0s mark */

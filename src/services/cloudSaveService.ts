@@ -732,6 +732,7 @@ interface PlayerPatchOverrides {
   starterDigimon?: CloudStarterDigimon;
   adventureProgress?: CloudAdventureProgress;
   hudState?: CloudHudState;
+  syncDCoin?: boolean;
 }
 
 function isFirestoreTimestampLike(value: unknown): value is Timestamp {
@@ -926,9 +927,50 @@ async function updatePlayerDocWithSelfHeal(
     const path = `players/${user.uid}`;
     const playerRef = doc(db, 'players', user.uid);
     const updatePayload: Record<string, unknown> = {
-      ...patch,
       updatedAt: serverTimestamp(),
     };
+    if (patch.tamerSelection !== undefined) {
+      updatePayload.tamerSelection = patch.tamerSelection;
+    }
+    if (patch.starterDigimon !== undefined) {
+      updatePayload.starterDigimon = patch.starterDigimon;
+    }
+    if (patch.adventureProgress !== undefined) {
+      updatePayload.adventureProgress = patch.adventureProgress;
+    }
+    if (patch.hudState !== undefined) {
+      if (patch.syncDCoin === true) {
+        updatePayload.hudState = patch.hudState;
+      } else {
+        // Dotted HUD fields omit hudState.dCoin so gameplay auto-saves (XP, kills, drops)
+        // can never overwrite a concurrent Mercado Pago or GM DL-DIN credit with a stale local balance.
+        const h = patch.hudState;
+        updatePayload['hudState.tamer'] = h.tamer;
+        updatePayload['hudState.digimon'] = h.digimon;
+        updatePayload['hudState.bits'] = h.bits;
+        updatePayload['hudState.inventory'] = h.inventory;
+        updatePayload['hudState.equippedItems'] = h.equippedItems;
+        updatePayload['hudState.guildName'] = h.guildName;
+        updatePayload['hudState.defeatedEnemiesTotal'] = h.defeatedEnemiesTotal;
+        updatePayload['hudState.updatedAt'] = h.updatedAt;
+        if (h.tamerPhotoUrl !== undefined) {
+          updatePayload['hudState.tamerPhotoUrl'] = h.tamerPhotoUrl;
+        } else {
+          updatePayload['hudState.tamerPhotoUrl'] = deleteField();
+        }
+        if (h.tamerCoverUrl !== undefined) {
+          updatePayload['hudState.tamerCoverUrl'] = h.tamerCoverUrl;
+        } else {
+          updatePayload['hudState.tamerCoverUrl'] = deleteField();
+        }
+        if (h.xpBoostUntilMs !== undefined) {
+          updatePayload['hudState.xpBoostUntilMs'] = h.xpBoostUntilMs;
+        }
+        if (h.autoFarmVipUnlocked === true) {
+          updatePayload['hudState.autoFarmVipUnlocked'] = true;
+        }
+      }
+    }
 
     try {
       await updateDoc(playerRef, updatePayload);
@@ -1017,6 +1059,20 @@ async function updatePlayerDocWithSelfHeal(
         extraKeysCount = extraTopLevelKeys.length;
         const hasDottedExtraKey = extraTopLevelKeys.some((k) => k.includes('.'));
 
+        const mergedHudState: CloudHudState | null = patch.hudState
+          ? patch.syncDCoin === true || !existingHud
+            ? patch.hudState
+            : {
+                ...patch.hudState,
+                dCoin: existingHud.dCoin,
+                autoFarmVipUnlocked:
+                  patch.hudState.autoFarmVipUnlocked === true ||
+                  existingHud.autoFarmVipUnlocked === true
+                    ? true
+                    : undefined,
+              }
+          : existingHud;
+
         const normalizedFields: Record<string, unknown> = {
           ownerUid: user.uid,
           username: safeUsername,
@@ -1024,7 +1080,7 @@ async function updatePlayerDocWithSelfHeal(
           tamerSelection: existingTamer ?? patch.tamerSelection ?? null,
           starterDigimon: existingStarter ?? patch.starterDigimon ?? null,
           adventureProgress: patch.adventureProgress ?? existingAdv,
-          hudState: patch.hudState ?? existingHud,
+          hudState: mergedHudState ? stripUndefined(mergedHudState) : null,
           updatedAt: serverTimestamp(),
         };
         ruleMismatchDiag = diagnosePlayerSaveMismatch(raw, normalizedFields, user.uid);
@@ -1164,6 +1220,7 @@ export async function syncStarterDigimonToCloud(
 
 let pendingAdventure: CloudAdventureProgress | null = null;
 let pendingHud: CloudHudState | null = null;
+let pendingHudSyncsDCoin = false;
 let syncTimer: number | null = null;
 let inFlightCommitPromise: Promise<void> | null = null;
 
@@ -1182,19 +1239,25 @@ async function commitPendingCloudSaves(): Promise<void> {
   if (!user) {
     pendingAdventure = null;
     pendingHud = null;
+    pendingHudSyncsDCoin = false;
     return;
   }
 
   const adv = pendingAdventure;
   const hud = pendingHud;
+  const syncDCoin = pendingHudSyncsDCoin;
   pendingAdventure = null;
   pendingHud = null;
+  pendingHudSyncsDCoin = false;
 
   if (!adv && !hud) return;
 
   const patch: PlayerPatchOverrides = {};
   if (adv) patch.adventureProgress = adv;
-  if (hud) patch.hudState = hud;
+  if (hud) {
+    patch.hudState = hud;
+    patch.syncDCoin = syncDCoin;
+  }
 
   const commitPromise = (async () => {
     await updatePlayerDocWithSelfHeal(user, patch, true);
@@ -1234,13 +1297,19 @@ export function scheduleAdventureProgressSync(progress: {
   }
 }
 
-export function scheduleHudStateSync(state: AccountHudPersistence): void {
+export function scheduleHudStateSync(
+  state: AccountHudPersistence,
+  syncDCoin = false
+): void {
   if (!getVerifiedCurrentUser()) return;
   pendingHud = sanitizeHudStateForCloud(state);
+  if (syncDCoin) {
+    pendingHudSyncsDCoin = true;
+  }
   if (syncTimer === null) {
     syncTimer = window.setTimeout(() => {
       void commitPendingCloudSaves();
-    }, 1800);
+    }, syncDCoin ? 350 : 1800);
   }
 }
 

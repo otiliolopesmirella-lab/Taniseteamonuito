@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import { Map as MapIcon, Minus, Plus, Search } from 'lucide-react';
+import { Map as MapIcon, Maximize2, Minus, Plus } from 'lucide-react';
 import {
   DATA_FOREST_FRIENDLY_NPCS,
   DATA_FOREST_IMAGE_URL,
@@ -12,10 +12,9 @@ import {
   getDataForestZoneAtPoint,
 } from '../../maps/dataForestMap';
 import {
-  DATS_COLLIDERS,
+  buildDatsCenterStaticLayer,
   DATS_INTERACTION_POINTS,
   DATS_MAP_ID,
-  DATS_PLAZA_CENTER,
   DATS_WORLD_H,
   DATS_WORLD_W,
 } from '../../maps/datsCenterMap';
@@ -101,15 +100,17 @@ import type { LiveWorldHudSnapshot } from '../../types/hud';
 
 interface MinimapHudPanelProps {
   snapshot: LiveWorldHudSnapshot;
+  minimapSize?: 'compacto' | 'padrao';
   onOpenFullMap: () => void;
 }
 
 export const MinimapHudPanel = memo(function MinimapHudPanel({
   snapshot,
+  minimapSize = 'padrao',
   onOpenFullMap,
 }: MinimapHudPanelProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  // Pre-baked 240x150 offscreen thumbnails per map (eliminates downsampling 2400x1350 PNGs 4x/sec)
+  // Pre-baked aspect-accurate offscreen thumbnails per map (exact 16:9 for combat maps, exact 1600:1480 for DATS)
   const thumbCacheRef = useRef<Partial<Record<string, HTMLCanvasElement>>>({});
   const loadingMapRef = useRef<Set<string>>(new Set());
   const [thumbVersion, setThumbVersion] = useState(0);
@@ -133,6 +134,7 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
     isDigimonIsland ||
     isDarkArea ||
     isVirtualWorld;
+
   const regionLabel = isVirtualWorld
     ? 'Mundo Virtual'
     : isDarkArea
@@ -150,6 +152,7 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
                 : isHunting
                   ? 'Planície Digital'
                   : 'DATS Center';
+
   const activeSubZone = isVirtualWorld
     ? getVirtualWorldZoneAtPoint(snapshot.tamerX, snapshot.tamerY)
     : isDarkArea
@@ -168,9 +171,43 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
                   ? getHuntingZoneAtPoint(snapshot.tamerX, snapshot.tamerY)
                   : null;
 
-  // Lazily load and bake ONLY the currently visited combat map's thumbnail
+  const subZoneText =
+    snapshot.mapId === DATS_MAP_ID
+      ? 'Praça Central DATS'
+      : activeSubZone
+        ? activeSubZone.speciesLabel
+          ? `${activeSubZone.name} · ${activeSubZone.speciesLabel}`
+          : activeSubZone.name
+        : regionLabel;
+
+  // Exact canvas internal resolution matching the active map's photo proportions
+  const canvasW = isCombatMap ? 320 : 240;
+  const canvasH = isCombatMap ? 180 : 222;
+
+  // Lazily bake exact-aspect thumbnail for the active map (including DATS Center artwork)
   useEffect(() => {
     const mapId = snapshot.mapId;
+    if (thumbCacheRef.current[mapId] || loadingMapRef.current.has(mapId)) {
+      return;
+    }
+
+    if (mapId === DATS_MAP_ID) {
+      loadingMapRef.current.add(mapId);
+      const source = buildDatsCenterStaticLayer();
+      const thumb = document.createElement('canvas');
+      thumb.width = 240;
+      thumb.height = 222;
+      const tCtx = thumb.getContext('2d');
+      if (tCtx) {
+        tCtx.imageSmoothingEnabled = true;
+        tCtx.imageSmoothingQuality = 'high';
+        tCtx.drawImage(source, 0, 0, thumb.width, thumb.height);
+      }
+      thumbCacheRef.current[mapId] = thumb;
+      setThumbVersion((v) => v + 1);
+      return;
+    }
+
     const url =
       mapId === VIRTUAL_WORLD_MAP_ID
         ? VIRTUAL_WORLD_BANNER_URL
@@ -189,17 +226,16 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
                     : mapId === HUNTING_MAP_ID
                       ? HUNTING_MAP_BANNER_URL
                       : null;
-    if (!url || thumbCacheRef.current[mapId] || loadingMapRef.current.has(mapId)) {
-      return;
-    }
+
+    if (!url) return;
     loadingMapRef.current.add(mapId);
     const img = new Image();
     img.decoding = 'async';
     img.src = url;
     img.onload = () => {
       const thumb = document.createElement('canvas');
-      thumb.width = 240;
-      thumb.height = 150;
+      thumb.width = 320;
+      thumb.height = 180;
       const tCtx = thumb.getContext('2d');
       if (tCtx) {
         tCtx.imageSmoothingEnabled = true;
@@ -209,6 +245,11 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
       thumbCacheRef.current[mapId] = thumb;
       setThumbVersion((v) => v + 1);
     };
+  }, [snapshot.mapId]);
+
+  // Reset zoom cleanly when switching maps
+  useEffect(() => {
+    setZoom(1.0);
   }, [snapshot.mapId]);
 
   useEffect(() => {
@@ -257,151 +298,63 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
 
     ctx.clearRect(0, 0, w, h);
 
-    // Cyber map backdrop
-    const bgGrad = ctx.createLinearGradient(0, 0, 0, h);
-    bgGrad.addColorStop(
-      0,
-      isVirtualWorld
-        ? '#0a2d6e'
-        : isDarkArea
-          ? '#2e1065'
-          : isDigitalDesert
-            ? '#5b3412'
-            : isDigiMountain
-              ? '#0a3a6b'
-              : isDataForest
-                ? '#064e3b'
-                : isHunting
-                  ? '#06335e'
-                  : '#062c7a'
-    );
-    bgGrad.addColorStop(
-      1,
-      isVirtualWorld
-        ? '#04102b'
-        : isDarkArea
-          ? '#090518'
-          : isDigitalDesert
-            ? '#291506'
-            : isDigiMountain
-              ? '#051937'
-              : isDataForest
-                ? '#022c22'
-                : isHunting
-                  ? '#031730'
-                  : '#03133d'
-    );
-    ctx.fillStyle = bgGrad;
-    ctx.fillRect(0, 0, w, h);
+    const baseScaleX = w / worldW;
+    const baseScaleY = h / worldH;
+    const scaleX = baseScaleX * zoom;
+    const scaleY = baseScaleY * zoom;
+    const drawW = worldW * scaleX;
+    const drawH = worldH * scaleY;
 
-    ctx.strokeStyle = 'rgba(56, 232, 255, 0.14)';
-    ctx.lineWidth = 1;
-    for (let gx = 0; gx < w; gx += 18) {
-      ctx.beginPath();
-      ctx.moveTo(gx, 0);
-      ctx.lineTo(gx, h);
-      ctx.stroke();
+    let offsetX = 0;
+    let offsetY = 0;
+    if (zoom > 1.01) {
+      const desiredX = w / 2 - snapshot.tamerX * scaleX;
+      const desiredY = h / 2 - snapshot.tamerY * scaleY;
+      offsetX = Math.min(0, Math.max(w - drawW, desiredX));
+      offsetY = Math.min(0, Math.max(h - drawH, desiredY));
     }
-    for (let gy = 0; gy < h; gy += 18) {
-      ctx.beginPath();
-      ctx.moveTo(0, gy);
-      ctx.lineTo(w, gy);
-      ctx.stroke();
-    }
-
-    const baseScale = Math.min(w / worldW, h / worldH);
-    const scale = baseScale * zoom;
 
     ctx.save();
-    if (zoom <= 1.05) {
-      ctx.translate((w - worldW * scale) / 2, (h - worldH * scale) / 2);
-    } else {
-      ctx.translate(w / 2 - snapshot.tamerX * scale, h / 2 - snapshot.tamerY * scale);
-    }
+    ctx.translate(offsetX, offsetY);
 
     const activeThumb = thumbCacheRef.current[snapshot.mapId];
-    if (isVirtualWorld && activeThumb) {
-      ctx.drawImage(activeThumb, 0, 0, worldW * scale, worldH * scale);
-      ctx.fillStyle = 'rgba(4, 18, 48, 0.22)';
-      ctx.fillRect(0, 0, worldW * scale, worldH * scale);
-    } else if (isDarkArea && activeThumb) {
-      ctx.drawImage(activeThumb, 0, 0, worldW * scale, worldH * scale);
-      ctx.fillStyle = 'rgba(15, 6, 36, 0.24)';
-      ctx.fillRect(0, 0, worldW * scale, worldH * scale);
-    } else if (isDigimonIsland && activeThumb) {
-      ctx.drawImage(activeThumb, 0, 0, worldW * scale, worldH * scale);
-      ctx.fillStyle = 'rgba(4, 24, 52, 0.22)';
-      ctx.fillRect(0, 0, worldW * scale, worldH * scale);
-    } else if (isDataSea && activeThumb) {
-      ctx.drawImage(activeThumb, 0, 0, worldW * scale, worldH * scale);
-      ctx.fillStyle = 'rgba(4, 24, 52, 0.22)';
-      ctx.fillRect(0, 0, worldW * scale, worldH * scale);
-    } else if (isDigitalDesert && activeThumb) {
-      ctx.drawImage(activeThumb, 0, 0, worldW * scale, worldH * scale);
-      ctx.fillStyle = 'rgba(28, 18, 6, 0.24)';
-      ctx.fillRect(0, 0, worldW * scale, worldH * scale);
-    } else if (isDigiMountain && activeThumb) {
-      ctx.drawImage(activeThumb, 0, 0, worldW * scale, worldH * scale);
-      ctx.fillStyle = 'rgba(5, 22, 52, 0.24)';
-      ctx.fillRect(0, 0, worldW * scale, worldH * scale);
-    } else if (isDataForest && activeThumb) {
-      ctx.drawImage(activeThumb, 0, 0, worldW * scale, worldH * scale);
-      ctx.fillStyle = 'rgba(4, 26, 28, 0.24)';
-      ctx.fillRect(0, 0, worldW * scale, worldH * scale);
-    } else if (isHunting && activeThumb) {
-      ctx.drawImage(activeThumb, 0, 0, worldW * scale, worldH * scale);
-      // Subtle cool veil so map markers stay ultra-legible
-      ctx.fillStyle = 'rgba(4, 22, 54, 0.22)';
-      ctx.fillRect(0, 0, worldW * scale, worldH * scale);
+    if (activeThumb) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(activeThumb, 0, 0, drawW, drawH);
+      // Very light contrast scrim so markers read clearly without hiding the map art
+      ctx.fillStyle = isCombatMap
+        ? 'rgba(3, 12, 30, 0.14)'
+        : 'rgba(3, 14, 38, 0.10)';
+      ctx.fillRect(0, 0, drawW, drawH);
     } else {
-      ctx.fillStyle = isCombatMap ? 'rgba(13, 72, 66, 0.7)' : 'rgba(12, 62, 158, 0.65)';
-      ctx.fillRect(0, 0, worldW * scale, worldH * scale);
+      ctx.fillStyle = '#051a45';
+      ctx.fillRect(0, 0, drawW, drawH);
     }
 
-    ctx.strokeStyle = 'rgba(56, 232, 255, 0.5)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(0, 0, worldW * scale, worldH * scale);
-
     if (!isCombatMap) {
-      ctx.fillStyle = 'rgba(56, 232, 255, 0.35)';
-      ctx.beginPath();
-      ctx.ellipse(
-        DATS_PLAZA_CENTER.x * scale,
-        DATS_PLAZA_CENTER.y * scale,
-        185 * scale,
-        118 * scale,
-        0,
-        0,
-        Math.PI * 2
-      );
-      ctx.fill();
-
-      for (const c of DATS_COLLIDERS) {
-        ctx.fillStyle =
-          c.kind === 'building' || c.kind === 'wall'
-            ? '#020f36'
-            : c.kind === 'tree'
-              ? '#15803d'
-              : '#1e3a8a';
-        ctx.fillRect(c.x * scale, c.y * scale, c.w * scale, c.h * scale);
-      }
-
+      // DATS portals & interactive nodes
       for (const pt of DATS_INTERACTION_POINTS) {
         if (pt.id === 'dats-mudfrigimon-npc') continue;
+        const px = pt.x * scaleX;
+        const py = pt.y * scaleY;
         ctx.fillStyle = pt.kind === 'world-portal' ? '#ffd43b' : '#38e8ff';
         ctx.beginPath();
-        ctx.arc(pt.x * scale, pt.y * scale, 3.2, 0, Math.PI * 2);
+        ctx.arc(px, py, pt.kind === 'world-portal' ? 4.4 : 3.4, 0, Math.PI * 2);
         ctx.fill();
+        ctx.strokeStyle = '#020617';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
       }
 
-      // Official Fixed DATS NPCs (Richard Sampson & MudFrigimon)
+      // Official Fixed DATS NPCs
       for (const npc of DATS_FIXED_NPCS) {
         ctx.fillStyle = '#34d399';
         ctx.beginPath();
-        ctx.arc(npc.x * scale, npc.y * scale, 3.4, 0, Math.PI * 2);
+        ctx.arc(npc.x * scaleX, npc.y * scaleY, 4.0, 0, Math.PI * 2);
         ctx.fill();
         ctx.strokeStyle = '#fde047';
-        ctx.lineWidth = 0.9;
+        ctx.lineWidth = 1.2;
         ctx.stroke();
       }
     } else {
@@ -467,14 +420,14 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
                     : FRIENDLY_FIELD_NPCS;
 
       // Safe Sanctuary ring
-      ctx.strokeStyle = 'rgba(56, 232, 255, 0.7)';
-      ctx.lineWidth = 1.2;
-      ctx.fillStyle = 'rgba(56, 232, 255, 0.16)';
+      ctx.strokeStyle = 'rgba(56, 232, 255, 0.78)';
+      ctx.lineWidth = 1.4;
+      ctx.fillStyle = 'rgba(56, 232, 255, 0.14)';
       ctx.beginPath();
       ctx.arc(
-        safeZone.x * scale,
-        safeZone.y * scale,
-        safeZone.radius * scale,
+        safeZone.x * scaleX,
+        safeZone.y * scaleY,
+        safeZone.radius * ((scaleX + scaleY) / 2),
         0,
         Math.PI * 2
       );
@@ -485,22 +438,22 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
       ctx.fillStyle = '#ffd43b';
       ctx.beginPath();
       ctx.arc(
-        returnPortal.x * scale,
-        returnPortal.y * scale,
-        3.6,
+        returnPortal.x * scaleX,
+        returnPortal.y * scaleY,
+        4.6,
         0,
         Math.PI * 2
       );
       ctx.fill();
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 0.9;
+      ctx.strokeStyle = '#020617';
+      ctx.lineWidth = 1.3;
       ctx.stroke();
 
       // Interactive Landmarks
       for (const pt of points) {
         ctx.fillStyle = pt.accentColor || '#38e8ff';
         ctx.beginPath();
-        ctx.arc(pt.x * scale, pt.y * scale, 2.7, 0, Math.PI * 2);
+        ctx.arc(pt.x * scaleX, pt.y * scaleY, 3.2, 0, Math.PI * 2);
         ctx.fill();
       }
 
@@ -508,58 +461,75 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
       for (const npc of npcs) {
         ctx.fillStyle = '#34d399';
         ctx.beginPath();
-        ctx.arc(npc.x * scale, npc.y * scale, 2.9, 0, Math.PI * 2);
+        ctx.arc(npc.x * scaleX, npc.y * scaleY, 3.6, 0, Math.PI * 2);
         ctx.fill();
+        ctx.strokeStyle = '#020617';
+        ctx.lineWidth = 1;
+        ctx.stroke();
       }
 
-      // Active Wild Digimons + Prominent Crimson-Gold Raid Boss Beacon
+      // Active Wild Digimons + Raid Boss Beacon
       for (const en of snapshot.minimapEnemies) {
         if (!en.alive) continue;
         if (en.isBoss) {
-          ctx.fillStyle = 'rgba(239, 68, 68, 0.35)';
+          ctx.fillStyle = 'rgba(239, 68, 68, 0.36)';
           ctx.beginPath();
-          ctx.arc(en.x * scale, en.y * scale, 7.2, 0, Math.PI * 2);
+          ctx.arc(en.x * scaleX, en.y * scaleY, 9.2, 0, Math.PI * 2);
           ctx.fill();
           ctx.fillStyle = '#ef4444';
           ctx.beginPath();
-          ctx.arc(en.x * scale, en.y * scale, 4.4, 0, Math.PI * 2);
+          ctx.arc(en.x * scaleX, en.y * scaleY, 5.4, 0, Math.PI * 2);
           ctx.fill();
           ctx.strokeStyle = '#fde047';
-          ctx.lineWidth = 1.4;
+          ctx.lineWidth = 1.6;
           ctx.stroke();
           continue;
         }
         ctx.fillStyle = '#fb7185';
         ctx.beginPath();
-        ctx.arc(en.x * scale, en.y * scale, 1.8, 0, Math.PI * 2);
+        ctx.arc(en.x * scaleX, en.y * scaleY, 2.3, 0, Math.PI * 2);
         ctx.fill();
       }
     }
 
-    // Other Online Players on the same map (Emerald pin, Gold crown pin for GM)
+    // Other Online Players on the same map
     for (const remote of snapshot.minimapPlayers ?? []) {
       ctx.fillStyle = remote.isGm ? '#facc15' : '#34d399';
       ctx.beginPath();
-      ctx.arc(remote.x * scale, remote.y * scale, remote.isGm ? 3.8 : 3.2, 0, Math.PI * 2);
+      ctx.arc(
+        remote.x * scaleX,
+        remote.y * scaleY,
+        remote.isGm ? 4.8 : 4.1,
+        0,
+        Math.PI * 2
+      );
       ctx.fill();
       ctx.strokeStyle = '#020617';
-      ctx.lineWidth = 1.1;
+      ctx.lineWidth = 1.4;
       ctx.stroke();
     }
 
-    // Partner Dot
+    // Partner Digimon gold dot
     ctx.fillStyle = '#fde047';
     ctx.beginPath();
-    ctx.arc(snapshot.partnerX * scale, snapshot.partnerY * scale, 2.8, 0, Math.PI * 2);
+    ctx.arc(snapshot.partnerX * scaleX, snapshot.partnerY * scaleY, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#020617';
+    ctx.lineWidth = 1.1;
+    ctx.stroke();
+
+    // Tamer Cyan Pin with crisp halo
+    ctx.fillStyle = 'rgba(56, 232, 255, 0.32)';
+    ctx.beginPath();
+    ctx.arc(snapshot.tamerX * scaleX, snapshot.tamerY * scaleY, 8.2, 0, Math.PI * 2);
     ctx.fill();
 
-    // Tamer Cyan Pin
     ctx.fillStyle = '#38e8ff';
     ctx.beginPath();
-    ctx.arc(snapshot.tamerX * scale, snapshot.tamerY * scale, 4, 0, Math.PI * 2);
+    ctx.arc(snapshot.tamerX * scaleX, snapshot.tamerY * scaleY, 5.0, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1.4;
+    ctx.lineWidth = 1.8;
     ctx.stroke();
 
     ctx.restore();
@@ -577,7 +547,18 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
     isCombatMap,
     minimized,
     thumbVersion,
+    canvasW,
+    canvasH,
   ]);
+
+  // Exact CSS width classes matching each map's natural proportions and user size preference
+  const containerWidthClass = isCombatMap
+    ? minimapSize === 'compacto'
+      ? 'w-[148px] min-[390px]:w-[162px] sm:w-[184px]'
+      : 'w-[174px] min-[390px]:w-[192px] sm:w-[224px]'
+    : minimapSize === 'compacto'
+      ? 'w-[122px] min-[390px]:w-[132px] sm:w-[148px]'
+      : 'w-[144px] min-[390px]:w-[156px] sm:w-[174px]';
 
   return (
     <div
@@ -588,86 +569,95 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
         <button
           type="button"
           onClick={() => setMinimized(false)}
-          className="dmo-frame flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[11px] font-extrabold text-white"
+          className="dmo-frame flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[11px] font-extrabold text-white shadow-[0_6px_18px_rgba(2,10,32,0.75)] hover:brightness-110 active:scale-95"
         >
           <MapIcon className="h-3.5 w-3.5 text-cyan-300" />
           <span>{regionLabel}</span>
         </button>
       ) : (
-        <div className="dmo-frame w-[136px] overflow-hidden rounded-xl min-[390px]:w-[150px] sm:w-[162px]">
-          {/* Header */}
-          <div className="flex items-center justify-between border-b border-cyan-300/45 bg-gradient-to-b from-[#1159d6] to-[#083287] px-2 py-0.5 sm:px-2.5 sm:py-1">
+        <div
+          className={`dmo-frame overflow-hidden rounded-xl shadow-[0_8px_24px_rgba(2,10,32,0.82)] ${containerWidthClass}`}
+        >
+          {/* Clean Top Bar: Map Name + Minimize */}
+          <div className="flex items-center justify-between gap-1 border-b border-cyan-300/40 bg-gradient-to-b from-[#1159d6] to-[#083287] px-2 py-1">
             <span className="truncate text-[10px] font-extrabold tracking-wide text-white drop-shadow sm:text-[11px]">
               {regionLabel}
             </span>
-            <button
-              type="button"
-              onClick={() => setMinimized(true)}
-              title="Minimizar minimapa"
-              className="ml-1 rounded px-1 text-[10px] font-bold text-cyan-100 hover:bg-white/10"
-            >
-              _
-            </button>
-          </div>
-
-          {/* Radar Viewport */}
-          <div className="relative h-[110px] w-full sm:h-[138px]">
-            <canvas
-              ref={canvasRef}
-              width={162}
-              height={138}
-              className="block h-full w-full"
-            />
-
-            {/* Top-Left Gold Search Button */}
-            <button
-              type="button"
-              onClick={onOpenFullMap}
-              title="Abrir Mapa Completo"
-              className="dmo-gold-circle absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full text-[#3b1b04] active:scale-95"
-            >
-              <Search className="h-3 w-3 stroke-[2.5]" />
-            </button>
-
-            {/* Top-Right Gold - / + Zoom Buttons */}
-            <div className="absolute right-1.5 top-1.5 flex items-center gap-1">
+            <div className="flex shrink-0 items-center gap-1">
+              {zoom > 1.01 && (
+                <span className="rounded bg-[#031438]/75 px-1 text-[8.5px] font-black tabular-nums text-cyan-200">
+                  {zoom.toFixed(1)}x
+                </span>
+              )}
               <button
                 type="button"
-                onClick={() => setZoom((z) => Math.max(1.0, Number((z - 0.35).toFixed(2))))}
-                aria-label="Diminuir zoom do minimapa"
-                className="dmo-gold-circle flex h-5 w-5 items-center justify-center rounded-full text-[#3b1b04] active:scale-95"
+                onClick={() => setMinimized(true)}
+                title="Minimizar minimapa"
+                aria-label="Minimizar minimapa"
+                className="flex h-4 w-5 items-center justify-center rounded bg-white/10 text-[10px] font-black text-cyan-100 hover:bg-white/20"
               >
-                <Minus className="h-3 w-3 stroke-[2.5]" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setZoom((z) => Math.min(2.4, Number((z + 0.35).toFixed(2))))}
-                aria-label="Aumentar zoom do minimapa"
-                className="dmo-gold-circle flex h-5 w-5 items-center justify-center rounded-full text-[#3b1b04] active:scale-95"
-              >
-                <Plus className="h-3 w-3 stroke-[2.5]" />
+                _
               </button>
             </div>
+          </div>
 
-            {/* Area / Sub-region Label */}
-            <span className="pointer-events-none absolute left-1.5 top-7 max-w-[118px] truncate rounded bg-[#031438]/82 px-1.5 py-0.5 text-[8.5px] font-extrabold leading-tight text-cyan-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.95)]">
-              {snapshot.mapId === DATS_MAP_ID
-                ? 'Praça DATS'
-                : activeSubZone
-                  ? activeSubZone.speciesLabel
-                    ? `${activeSubZone.name} · ${activeSubZone.speciesLabel}`
-                    : activeSubZone.name
-                  : regionLabel}
+          {/* Exact-Aspect Edge-to-Edge Map Photo Viewport (Click to open Full Map) */}
+          <button
+            type="button"
+            onClick={onOpenFullMap}
+            title="Clique para abrir o Mapa Completo"
+            aria-label="Abrir Mapa Completo"
+            className={`relative block w-full overflow-hidden bg-[#041232] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 ${
+              isCombatMap ? 'aspect-[16/9]' : 'aspect-[40/37]'
+            }`}
+          >
+            <canvas
+              ref={canvasRef}
+              width={canvasW}
+              height={canvasH}
+              className="block h-full w-full"
+            />
+          </button>
+
+          {/* Clean Footer Bar: Sub-region Label + Zoom & Full-Map Controls (zero clutter over map photo) */}
+          <div className="flex items-center justify-between gap-1 border-t border-cyan-400/35 bg-[#04143a]/96 px-1.5 py-1">
+            <span className="min-w-0 flex-1 truncate text-[9px] font-extrabold text-cyan-100/95">
+              {subZoneText}
             </span>
-
-            {/* Bottom-Left Gold N Compass + Star Badge */}
-            <div className="pointer-events-none absolute bottom-1.5 left-1.5 flex items-center gap-1">
-              <span className="dmo-gold-circle flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-black text-[#3b1b04]">
-                N
-              </span>
-              <span className="flex h-5 w-5 items-center justify-center rounded-full border border-amber-200 bg-[#082b78] text-[9px] font-black text-amber-300 shadow">
-                ✦
-              </span>
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={() =>
+                  setZoom((z) => Math.max(1.0, Number((z - 0.35).toFixed(2))))
+                }
+                disabled={zoom <= 1.0}
+                aria-label="Diminuir zoom do minimapa"
+                title="Diminuir zoom"
+                className="flex h-5 w-5 items-center justify-center rounded-md border border-cyan-300/50 bg-[#09296b] text-cyan-100 hover:bg-[#113d96] active:scale-95 disabled:opacity-45"
+              >
+                <Minus className="h-2.5 w-2.5 stroke-[2.6]" />
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setZoom((z) => Math.min(2.4, Number((z + 0.35).toFixed(2))))
+                }
+                disabled={zoom >= 2.4}
+                aria-label="Aumentar zoom do minimapa"
+                title="Aumentar zoom"
+                className="flex h-5 w-5 items-center justify-center rounded-md border border-cyan-300/50 bg-[#09296b] text-cyan-100 hover:bg-[#113d96] active:scale-95 disabled:opacity-45"
+              >
+                <Plus className="h-2.5 w-2.5 stroke-[2.6]" />
+              </button>
+              <button
+                type="button"
+                onClick={onOpenFullMap}
+                aria-label="Abrir Mapa Completo"
+                title="Abrir Mapa Completo"
+                className="flex h-5 w-5 items-center justify-center rounded-md border border-amber-300/75 bg-gradient-to-b from-amber-300 to-amber-500 text-[#2b1402] shadow-sm hover:brightness-110 active:scale-95"
+              >
+                <Maximize2 className="h-2.5 w-2.5 stroke-[2.6]" />
+              </button>
             </div>
           </div>
         </div>

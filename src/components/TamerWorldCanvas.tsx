@@ -251,6 +251,7 @@ import {
   executeDigiEggHatch,
   executeEggReinforce,
 } from '../services/incubatorService';
+import { reconcilePendingMercadoPagoOrders } from '../services/mercadoPagoService';
 import {
   addDigimonToArchiveForAdmin,
   addDigimonToPartyReserve,
@@ -278,15 +279,26 @@ import { recordDwCoinSpendTransaction } from '../services/dwCoinLedgerService';
 import { logGmAction } from '../services/gmControlService';
 import { isCurrentAuthUserBootstrappedGm } from '../services/gmRoleService';
 import {
+  acceptGuildInvite,
+  canMemberInviteToGuild,
   computeDailyGuildEventStandings,
   contributeGuildExp,
+  declineGuildInvite,
   fetchRecruitingGuilds,
   getCurrentActorUid,
+  getGuildMaxMembersForLevel,
   getServerDayKey,
   sendGuildChatMessage,
+  sendGuildInvite,
+  subscribeIncomingGuildInvites,
   subscribePlayerGuild,
+  type GuildInviteRecord,
   type GuildRecord,
 } from '../services/guildService';
+import {
+  sendGlobalChatMessage,
+  subscribeGlobalChat,
+} from '../services/globalChatService';
 import {
   AUTO_FARM_VIP_COST_DWCOIN,
   AUTO_FARM_VIP_XP_BONUS_PCT,
@@ -402,6 +414,7 @@ import {
   type InWorldSwapAnimationState,
 } from '../utils/inWorldSwapFx';
 import {
+  datsCenterMusicPlayer,
   playDigiEggCollectPing,
   playDigiEggDropSound,
   playDigitalTone,
@@ -465,7 +478,6 @@ interface TamerWorldCanvasProps {
   isGM: boolean;
   cloudIsGm?: boolean;
   onUpdatePreferences: (next: AppPreferences) => void;
-  onOpenFeedback?: (screenContext?: string) => void;
   onAdminSwitchStarter?: (starterId: StarterDigimonId) => void;
   onAdminSwitchTamer?: (tamerId: TamerId) => void;
   onOpenSelectionFlow?: (screen: 'character-select' | 'digimon-select') => void;
@@ -820,7 +832,6 @@ export function TamerWorldCanvas({
   isGM: isGmProp,
   cloudIsGm = false,
   onUpdatePreferences,
-  onOpenFeedback,
   onAdminSwitchStarter,
   onAdminSwitchTamer,
   onOpenSelectionFlow,
@@ -890,6 +901,11 @@ export function TamerWorldCanvas({
     starterDigimonId: starterDigimon.digimonId,
     accentHex: character.theme.accentHex,
     graphicsQuality: preferences.graphicsQuality,
+    animationsEnabled: preferences.animationsEnabled,
+    showFloatingDamage: preferences.showFloatingDamage,
+    showPlayerNames: preferences.showPlayerNames,
+    showChatBubbles: preferences.showChatBubbles,
+    showOffscreenPointers: preferences.showOffscreenPointers,
   });
   runtimeMetaRef.current = {
     characterId: selection.characterId,
@@ -897,6 +913,11 @@ export function TamerWorldCanvas({
     starterDigimonId: starterDigimon.digimonId,
     accentHex: character.theme.accentHex,
     graphicsQuality: preferences.graphicsQuality,
+    animationsEnabled: preferences.animationsEnabled,
+    showFloatingDamage: preferences.showFloatingDamage,
+    showPlayerNames: preferences.showPlayerNames,
+    showChatBubbles: preferences.showChatBubbles,
+    showOffscreenPointers: preferences.showOffscreenPointers,
   };
 
   const evoStatus = useMemo(
@@ -986,7 +1007,7 @@ export function TamerWorldCanvas({
   const [digimonLevelUpPulse, setDigimonLevelUpPulse] = useState(false);
 
   // Chat & Notifications State (No fake players!)
-  const [chatChannel, setChatChannel] = useState<ChatChannel>('all');
+  const [chatChannel, setChatChannel] = useState<ChatChannel>('global');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [notifications, setNotifications] = useState<HudNotificationItem[]>([]);
 
@@ -1020,6 +1041,10 @@ export function TamerWorldCanvas({
     PartyInviteRecord[]
   >([]);
   const knownPartyInviteIdsRef = useRef<Set<string>>(new Set());
+  const [incomingGuildInvites, setIncomingGuildInvites] = useState<
+    GuildInviteRecord[]
+  >([]);
+  const knownGuildInviteIdsRef = useRef<Set<string>>(new Set());
 
   // Auto-Hunt & Auto HP/DS Recovery Configuration (persisted per account in localStorage)
   const autoHuntStorageKey =
@@ -1415,7 +1440,7 @@ export function TamerWorldCanvas({
     };
   }, [actorUid, isServerGm, onExitToLogin]);
 
-  // Live Sync for external GM Balance Adjustments (Bits / DWcoin) on /players/{actorUid}
+  // Live Sync for external DL-DIN / GM Balance Adjustments (Mercado Pago auto-credit + GM credits) on /players/{actorUid}
   useEffect(() => {
     const user = auth.currentUser;
     if (!user || !user.emailVerified || user.uid !== actorUid) return;
@@ -1447,32 +1472,62 @@ export function TamerWorldCanvas({
           };
           hudAccountRef.current = syncedVipState;
           setHudAccount(syncedVipState);
-          saveAccountHudState(syncedVipState, true);
+          saveAccountHudState(syncedVipState, true, { skipCloudSync: true });
         }
 
         const prevObserved = lastCloudMoneyRef.current;
         lastCloudMoneyRef.current = { bits: cloudBits, dCoin: cloudDCoin };
-        if (!prevObserved) return;
+        const cur = hudAccountRef.current;
+
+        // First snapshot after load: if cloud already holds MORE DL-DIN (e.g. paid while reloading/offline), adopt immediately!
+        if (!prevObserved) {
+          if (cloudDCoin > cur.dCoin) {
+            const added = cloudDCoin - cur.dCoin;
+            const syncedState: AccountHudPersistence = {
+              ...cur,
+              dCoin: cloudDCoin,
+              autoFarmVipUnlocked: cur.autoFarmVipUnlocked === true || cloudAutoFarmVip,
+              updatedAt: new Date().toISOString(),
+            };
+            hudAccountRef.current = syncedState;
+            setHudAccount(syncedState);
+            saveAccountHudState(syncedState, true, { skipCloudSync: true });
+            pushNotification(
+              'DL Din Recebido!',
+              `+${added.toLocaleString('pt-BR')} DL Din creditados na sua conta (saldo: ${cloudDCoin.toLocaleString('pt-BR')} DL Din).`
+            );
+            pushChatMessage(
+              'system',
+              `[DL Din] +${added.toLocaleString('pt-BR')} DL Din creditados na sua conta! Novo saldo: ${cloudDCoin.toLocaleString('pt-BR')} DL Din.`,
+              { tone: 'loot' }
+            );
+          }
+          return;
+        }
 
         const cloudChanged =
           cloudBits !== prevObserved.bits || cloudDCoin !== prevObserved.dCoin;
         if (!cloudChanged) return;
 
-        const cur = hudAccountRef.current;
         const differsFromLocal =
           cloudBits !== cur.bits || cloudDCoin !== cur.dCoin;
         const quietLocalWindow =
           Date.now() - lastLocalMoneyMutationAtRef.current > 3000;
+        const externalDCoinIncrease = cloudDCoin > prevObserved.dCoin && cloudDCoin > cur.dCoin;
         const externalDCoinChange = cloudDCoin !== prevObserved.dCoin && cloudDCoin !== cur.dCoin;
 
-        if (!differsFromLocal || (!quietLocalWindow && !externalDCoinChange)) {
+        if (
+          !differsFromLocal ||
+          (!quietLocalWindow && !externalDCoinIncrease && !externalDCoinChange)
+        ) {
           return;
         }
 
         const nextBits = quietLocalWindow ? cloudBits : cur.bits;
-        const nextDCoin = cloudDCoin;
+        const nextDCoin = externalDCoinIncrease || externalDCoinChange ? cloudDCoin : cur.dCoin;
         if (nextBits === cur.bits && nextDCoin === cur.dCoin) return;
 
+        const dCoinDelta = nextDCoin - cur.dCoin;
         const nextState: AccountHudPersistence = {
           ...cur,
           bits: nextBits,
@@ -1482,23 +1537,102 @@ export function TamerWorldCanvas({
         };
         hudAccountRef.current = nextState;
         setHudAccount(nextState);
-        saveAccountHudState(nextState, true);
-        pushNotification(
-          'Saldo Atualizado pelo GM',
-          `Novo saldo: ${formatDigitalCurrency(nextBits)} · ${nextDCoin.toLocaleString('pt-BR')} DL Din.`
-        );
-        pushChatMessage(
-          'system',
-          `[GM] Seu saldo foi atualizado pela administração (${formatDigitalCurrency(nextBits)} · ${nextDCoin.toLocaleString('pt-BR')} DL Din).`,
-          { tone: 'loot' }
-        );
+        saveAccountHudState(nextState, true, { skipCloudSync: true });
+
+        if (dCoinDelta > 0) {
+          playDigitalTone('confirm', soundEnabled);
+          pushNotification(
+            'DL Din Creditado!',
+            `+${dCoinDelta.toLocaleString('pt-BR')} DL Din adicionados! Novo saldo: ${nextDCoin.toLocaleString('pt-BR')} DL Din.`
+          );
+          pushChatMessage(
+            'system',
+            `[DL Din] +${dCoinDelta.toLocaleString('pt-BR')} DL Din creditados na sua conta! Novo saldo: ${nextDCoin.toLocaleString('pt-BR')} DL Din.`,
+            { tone: 'loot' }
+          );
+        } else {
+          pushNotification(
+            'Saldo Atualizado',
+            `Novo saldo: ${formatDigitalCurrency(nextBits)} · ${nextDCoin.toLocaleString('pt-BR')} DL Din.`
+          );
+          pushChatMessage(
+            'system',
+            `[Sistema] Seu saldo foi atualizado (${formatDigitalCurrency(nextBits)} · ${nextDCoin.toLocaleString('pt-BR')} DL Din).`,
+            { tone: 'loot' }
+          );
+        }
       },
       () => {
         // Non-fatal listener guard
       }
     );
     return unsub;
-  }, [actorUid, pushChatMessage, pushNotification]);
+  }, [actorUid, pushChatMessage, pushNotification, soundEnabled]);
+
+  // Auto-reconcile pending Mercado Pago orders on login, Checkout Pro redirect (?order_id=...), or returning from mobile bank app
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user || !user.emailVerified || user.uid !== actorUid) return;
+
+    let cancelled = false;
+    let lastCheckedAt = 0;
+
+    const runReconcile = async (force = false) => {
+      const now = Date.now();
+      if (!force && now - lastCheckedAt < 10_000) return;
+      lastCheckedAt = now;
+      try {
+        const summary = await reconcilePendingMercadoPagoOrders();
+        if (cancelled) return;
+        if (summary.creditedCount > 0 && summary.totalDwCoinCredited > 0) {
+          // Ensure immediate local reflection even before Firestore snapshot arrives
+          if (
+            typeof summary.latestBalance === 'number' &&
+            summary.latestBalance > hudAccountRef.current.dCoin
+          ) {
+            const cur = hudAccountRef.current;
+            const nextState: AccountHudPersistence = {
+              ...cur,
+              dCoin: summary.latestBalance,
+              updatedAt: new Date().toISOString(),
+            };
+            hudAccountRef.current = nextState;
+            setHudAccount(nextState);
+            saveAccountHudState(nextState, true, { skipCloudSync: true });
+            lastCloudMoneyRef.current = {
+              bits: nextState.bits,
+              dCoin: summary.latestBalance,
+            };
+            playDigitalTone('confirm', soundEnabled);
+            pushNotification(
+              'Pagamento Confirmado!',
+              `+${summary.totalDwCoinCredited.toLocaleString('pt-BR')} DL Din creditados automaticamente na sua conta!`
+            );
+            pushChatMessage(
+              'system',
+              `[Mercado Pago] Pagamento aprovado! +${summary.totalDwCoinCredited.toLocaleString('pt-BR')} DL Din creditados automaticamente na sua conta.`,
+              { tone: 'loot' }
+            );
+          }
+        }
+      } catch {
+        // Silent best-effort reconciliation
+      }
+    };
+
+    void runReconcile(true);
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void runReconcile(false);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [actorUid, pushChatMessage, pushNotification, soundEnabled]);
 
   // Subscribe to Player's DMO Guild & live Guild Chat
   useEffect(() => {
@@ -1658,9 +1792,49 @@ export function TamerWorldCanvas({
       setIncomingPartyInvites(invites);
     });
 
+    const unsubGuildInvites = subscribeIncomingGuildInvites(
+      actorUid,
+      (invites) => {
+        for (const inv of invites) {
+          if (!knownGuildInviteIdsRef.current.has(inv.inviteId)) {
+            knownGuildInviteIdsRef.current.add(inv.inviteId);
+            playDigitalTone('confirm', soundEnabledRef.current);
+            pushChatMessage(
+              'system',
+              `[Guilda] ${inv.fromName} convidou você para a Guilda [${inv.guildTag}] ${inv.guildName}!`,
+              { tone: 'info' }
+            );
+          }
+        }
+        setIncomingGuildInvites(invites);
+      }
+    );
+
+    const unsubGlobalChat = subscribeGlobalChat((msg) => {
+      setChatMessages((prev) => {
+        const cid = `global-${msg.messageId}`;
+        if (prev.some((m) => m.id === cid)) return prev;
+        const merged: ChatMessage[] = [
+          ...prev,
+          {
+            id: cid,
+            channel: 'global',
+            sender: msg.senderName,
+            isGmSender: msg.isGmSender,
+            mapTag: getMapDisplayLabel(msg.mapId, true),
+            text: msg.text,
+            timestamp: msg.timestampLabel,
+          },
+        ];
+        return merged.length > 90 ? merged.slice(merged.length - 90) : merged;
+      });
+    });
+
     return () => {
       unsubParty();
       unsubInvites();
+      unsubGuildInvites();
+      unsubGlobalChat();
     };
   }, [actorUid, pushChatMessage]);
 
@@ -1949,6 +2123,31 @@ export function TamerWorldCanvas({
     minimapEnemies: [],
   }));
 
+  // Play DATS Center soundtrack in loop while inside DATS Center; obey musicEnabled & musicVolume settings
+  const datsMusicActive = preferences.musicEnabled && preferences.musicVolume > 0;
+
+  useEffect(() => {
+    datsCenterMusicPlayer.setVolumeMultiplier(preferences.musicVolume / 100);
+  }, [preferences.musicVolume]);
+
+  useEffect(() => {
+    if (liveSnapshot.mapId === DATS_MAP_ID) {
+      datsCenterMusicPlayer.start(datsMusicActive);
+    } else {
+      datsCenterMusicPlayer.stop();
+    }
+  }, [liveSnapshot.mapId, datsMusicActive]);
+
+  useEffect(() => {
+    datsCenterMusicPlayer.setMuted(!datsMusicActive);
+  }, [datsMusicActive]);
+
+  useEffect(() => {
+    return () => {
+      datsCenterMusicPlayer.stop();
+    };
+  }, []);
+
   const simRef = useRef<{
     mapId: ActiveWorldMapId;
     x: number;
@@ -2117,31 +2316,32 @@ export function TamerWorldCanvas({
         }
         knownOnlineUidsRef.current.add(p.uid);
 
-        // Process live chat broadcasts (deduplicated by uid + chatSeq)
+        // Process live local proximity chat broadcasts (strictly same map & nearby players only!)
         const prevSeq = seenRemoteChatSeqRef.current.get(p.uid);
         let bubbleText = smoothMap.get(p.uid)?.bubbleText ?? '';
         let bubbleExpiresAt = smoothMap.get(p.uid)?.bubbleExpiresAt ?? 0;
+        const isSameMapNearby =
+          p.mapId === simRef.current.mapId &&
+          Math.hypot(p.worldX - simRef.current.x, p.worldY - simRef.current.y) <=
+            680;
 
         if (prevSeq === undefined) {
           seenRemoteChatSeqRef.current.set(p.uid, p.chatSeq);
-          // Only show speech bubble on initial sync if it was sent in the last 7 seconds
-          if (p.chatText && Math.abs(now - p.updatedAtMs) <= 7000) {
+          // Only show speech bubble on initial sync if on same map, nearby, and recent
+          if (isSameMapNearby && p.chatText && Math.abs(now - p.updatedAtMs) <= 7000) {
             bubbleText = p.chatText;
             bubbleExpiresAt = now + 5500;
           }
         } else if (p.chatSeq > prevSeq && p.chatText) {
           seenRemoteChatSeqRef.current.set(p.uid, p.chatSeq);
-          bubbleText = p.chatText;
-          bubbleExpiresAt = now + 5500;
-          const otherMapTag =
-            p.mapId !== simRef.current.mapId
-              ? getMapDisplayLabel(p.mapId, true)
-              : undefined;
-          pushChatMessage('all', p.chatText, {
-            sender: p.tamerName,
-            isGmSender: p.isGm,
-            mapTag: otherMapTag,
-          });
+          if (isSameMapNearby) {
+            bubbleText = p.chatText;
+            bubbleExpiresAt = now + 5500;
+            pushChatMessage('map', p.chatText, {
+              sender: p.tamerName,
+              isGmSender: p.isGm,
+            });
+          }
         }
 
         const existingSmooth = smoothMap.get(p.uid);
@@ -2590,16 +2790,39 @@ export function TamerWorldCanvas({
     saveAccountHudState(hudAccountRef.current, true);
   }
 
+  const GM_INFINITE_DCOIN_CAP = 999_999_999;
+  const gmInfiniteStorageKey = `dl_gm_infinite_dcoin_${actorUid}`;
+  const [gmInfiniteDCoin, setGmInfiniteDCoin] = useState<boolean>(() => {
+    if (!isGM) return false;
+    try {
+      return window.localStorage.getItem(gmInfiniteStorageKey) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const gmInfiniteDCoinRef = useRef(gmInfiniteDCoin);
+  gmInfiniteDCoinRef.current = gmInfiniteDCoin;
+
   function commitHudAccount(next: AccountHudPersistence, immediateLocalSave = false) {
+    let finalNext = next;
+    if (isGM && gmInfiniteDCoinRef.current && finalNext.dCoin < GM_INFINITE_DCOIN_CAP) {
+      finalNext = {
+        ...finalNext,
+        dCoin: GM_INFINITE_DCOIN_CAP,
+      };
+    }
+    const dCoinChangedLocally = finalNext.dCoin !== hudAccountRef.current.dCoin;
     if (
-      next.bits !== hudAccountRef.current.bits ||
-      next.dCoin !== hudAccountRef.current.dCoin
+      finalNext.bits !== hudAccountRef.current.bits ||
+      dCoinChangedLocally
     ) {
       lastLocalMoneyMutationAtRef.current = Date.now();
     }
-    hudAccountRef.current = next;
-    setHudAccount(next);
-    saveAccountHudState(next, immediateLocalSave);
+    hudAccountRef.current = finalNext;
+    setHudAccount(finalNext);
+    saveAccountHudState(finalNext, immediateLocalSave || dCoinChangedLocally, {
+      syncDCoinToCloud: dCoinChangedLocally,
+    });
   }
 
   const handleUpdateTamerPhoto = useCallback(
@@ -2728,6 +2951,65 @@ export function TamerWorldCanvas({
       pushChatMessage('system', `[Party] ${res.message}`, { tone: 'info' });
     },
     [actorUid, pushChatMessage, soundEnabled]
+  );
+
+  const handleInvitePlayerToGuild = useCallback(
+    async (
+      targetUid: string,
+      targetName: string,
+      targetGuildName?: string | null
+    ) => {
+      const activeGuild = playerGuildRef.current;
+      if (!activeGuild) {
+        playDigitalTone('error', soundEnabled);
+        pushChatMessage(
+          'system',
+          '[Guilda] Você precisa ser Líder ou Sub-Líder de uma Guilda para convidar jogadores.',
+          { tone: 'warning' }
+        );
+        return;
+      }
+      const res = await sendGuildInvite({
+        guild: activeGuild,
+        actorUid,
+        actorName: runtimeMetaRef.current.tamerName,
+        targetUid,
+        targetName,
+        targetGuildName,
+      });
+      playDigitalTone(res.ok ? 'confirm' : 'error', soundEnabled);
+      pushChatMessage('system', `[Guilda] ${res.message}`, {
+        tone: res.ok ? 'info' : 'warning',
+      });
+    },
+    [actorUid, pushChatMessage, soundEnabled]
+  );
+
+  const handleAcceptGuildInvite = useCallback(
+    async (invite: GuildInviteRecord) => {
+      const acc = hudAccountRef.current;
+      const res = await acceptGuildInvite({
+        invite,
+        actorUid,
+        tamerName: runtimeMetaRef.current.tamerName,
+        tamerLevel: acc.tamer.level,
+        digimonFormId: activeFormRef.current.id,
+        currentGuild: playerGuildRef.current,
+      });
+      playDigitalTone(res.ok ? 'confirm' : 'error', soundEnabled);
+      pushChatMessage('system', `[Guilda] ${res.message}`, {
+        tone: res.ok ? 'level' : 'warning',
+      });
+    },
+    [actorUid, pushChatMessage, soundEnabled]
+  );
+
+  const handleDeclineGuildInvite = useCallback(
+    async (inviteId: string) => {
+      playDigitalTone('click', soundEnabled);
+      await declineGuildInvite(inviteId);
+    },
+    [soundEnabled]
   );
 
   const handleOpenCharacterWindow = useCallback(() => {
@@ -3754,21 +4036,71 @@ export function TamerWorldCanvas({
     (bitsDelta: number, dCoinDelta: number) => {
       if (!isGM) return;
       const prevAcc = hudAccountRef.current;
-      commitHudAccount({
-        ...prevAcc,
-        bits: Math.max(0, prevAcc.bits + bitsDelta),
-        dCoin: Math.max(0, prevAcc.dCoin + dCoinDelta),
-        updatedAt: new Date().toISOString(),
-      });
+      const nextBits = Math.max(0, Math.min(1_000_000_000, prevAcc.bits + bitsDelta));
+      const nextDCoin = Math.max(
+        0,
+        Math.min(GM_INFINITE_DCOIN_CAP, prevAcc.dCoin + dCoinDelta)
+      );
+      commitHudAccount(
+        {
+          ...prevAcc,
+          bits: nextBits,
+          dCoin: nextDCoin,
+          updatedAt: new Date().toISOString(),
+        },
+        true
+      );
       playDigitalTone('confirm', soundEnabled);
       const parts: string[] = [];
       if (bitsDelta > 0) parts.push(`+${formatDigitalCurrency(bitsDelta)}`);
-      if (dCoinDelta > 0) parts.push(`+${dCoinDelta.toLocaleString('pt-BR')} DL Din`);
+      if (dCoinDelta > 0) {
+        parts.push(
+          nextDCoin >= GM_INFINITE_DCOIN_CAP
+            ? `DL Din no máximo (${GM_INFINITE_DCOIN_CAP.toLocaleString('pt-BR')})`
+            : `+${dCoinDelta.toLocaleString('pt-BR')} DL Din`
+        );
+      }
       pushChatMessage('system', `[GM] Creditado: ${parts.join(' · ')}.`, {
         tone: 'loot',
       });
     },
     [isGM, pushChatMessage, soundEnabled]
+  );
+
+  const handleToggleGmInfiniteDCoin = useCallback(
+    (enabled: boolean) => {
+      if (!isGM) return;
+      setGmInfiniteDCoin(enabled);
+      gmInfiniteDCoinRef.current = enabled;
+      try {
+        window.localStorage.setItem(gmInfiniteStorageKey, enabled ? '1' : '0');
+      } catch {
+        // Ignore storage quota errors
+      }
+      if (enabled) {
+        const prevAcc = hudAccountRef.current;
+        commitHudAccount(
+          {
+            ...prevAcc,
+            dCoin: GM_INFINITE_DCOIN_CAP,
+            updatedAt: new Date().toISOString(),
+          },
+          true
+        );
+        playDigitalTone('confirm', soundEnabled);
+        pushChatMessage(
+          'system',
+          `[GM] Modo DL Din Infinito ATIVADO (${GM_INFINITE_DCOIN_CAP.toLocaleString('pt-BR')} DL Din com recarga automática).`,
+          { tone: 'loot' }
+        );
+      } else {
+        playDigitalTone('click', soundEnabled);
+        pushChatMessage('system', '[GM] Modo DL Din Infinito desativado.', {
+          tone: 'info',
+        });
+      }
+    },
+    [gmInfiniteStorageKey, isGM, pushChatMessage, soundEnabled]
   );
 
   const handleAdminSetServerExpRate = useCallback(
@@ -6238,28 +6570,34 @@ export function TamerWorldCanvas({
             ctx!.restore();
           }
 
-          ctx!.save();
-          const localFont = '700 12px "Exo 2", sans-serif';
-          ctx!.font = localFont;
-          ctx!.textAlign = 'center';
           const tagY = sim.y - 94;
-          const localTagText = isGM
-            ? `★ GM ${liveMeta.tamerName}`
-            : liveMeta.tamerName;
-          const tw = measureTextCached(ctx!, localFont, localTagText) + 14;
-          ctx!.fillStyle = 'rgba(4, 17, 46, 0.88)';
-          ctx!.beginPath();
-          ctx!.roundRect(sim.x - tw / 2, tagY - 14, tw, 18, 6);
-          ctx!.fill();
-          ctx!.strokeStyle = isGM ? '#facc15' : liveMeta.accentHex;
-          ctx!.lineWidth = isGM ? 1.4 : 1;
-          ctx!.stroke();
-          ctx!.fillStyle = isGM ? '#fef08a' : '#ffffff';
-          ctx!.fillText(localTagText, sim.x, tagY - 1);
-          ctx!.restore();
+          if (liveMeta.showPlayerNames) {
+            ctx!.save();
+            const localFont = '700 12px "Exo 2", sans-serif';
+            ctx!.font = localFont;
+            ctx!.textAlign = 'center';
+            const localTagText = isGM
+              ? `★ GM ${liveMeta.tamerName}`
+              : liveMeta.tamerName;
+            const tw = measureTextCached(ctx!, localFont, localTagText) + 14;
+            ctx!.fillStyle = 'rgba(4, 17, 46, 0.88)';
+            ctx!.beginPath();
+            ctx!.roundRect(sim.x - tw / 2, tagY - 14, tw, 18, 6);
+            ctx!.fill();
+            ctx!.strokeStyle = isGM ? '#facc15' : liveMeta.accentHex;
+            ctx!.lineWidth = isGM ? 1.4 : 1;
+            ctx!.stroke();
+            ctx!.fillStyle = isGM ? '#fef08a' : '#ffffff';
+            ctx!.fillText(localTagText, sim.x, tagY - 1);
+            ctx!.restore();
+          }
 
           // Local overhead chat bubble
-          if (localBubbleRef.current && Date.now() < localBubbleRef.current.expiresAt) {
+          if (
+            liveMeta.showChatBubbles &&
+            localBubbleRef.current &&
+            Date.now() < localBubbleRef.current.expiresAt
+          ) {
             drawSpeechBubble(
               ctx!,
               sim.x,
@@ -6391,29 +6729,31 @@ export function TamerWorldCanvas({
             }
 
             // Remote Tamer Nameplate (with GM Crown or Level tag)
-            ctx!.save();
-            const remoteFont = '700 11.5px "Exo 2", sans-serif';
-            ctx!.font = remoteFont;
-            ctx!.textAlign = 'center';
             const tagY = rY - 94;
-            const label = rp.isGm
-              ? `★ GM ${rp.tamerName}`
-              : `${rp.tamerName} Lv.${rp.tamerLevel}`;
-            const tw = measureTextCached(ctx!, remoteFont, label) + 14;
-            ctx!.fillStyle = rp.isGm
-              ? 'rgba(42, 22, 4, 0.92)'
-              : 'rgba(4, 22, 44, 0.88)';
-            ctx!.beginPath();
-            ctx!.roundRect(rX - tw / 2, tagY - 14, tw, 18, 6);
-            ctx!.fill();
-            ctx!.strokeStyle = rp.isGm ? '#facc15' : '#34d399';
-            ctx!.lineWidth = rp.isGm ? 1.5 : 1.1;
-            ctx!.stroke();
-            ctx!.fillStyle = rp.isGm ? '#fef08a' : '#d1fae5';
-            ctx!.fillText(label, rX, tagY - 1);
-            ctx!.restore();
+            if (runtimeMetaRef.current.showPlayerNames) {
+              ctx!.save();
+              const remoteFont = '700 11.5px "Exo 2", sans-serif';
+              ctx!.font = remoteFont;
+              ctx!.textAlign = 'center';
+              const label = rp.isGm
+                ? `★ GM ${rp.tamerName}`
+                : `${rp.tamerName} Lv.${rp.tamerLevel}`;
+              const tw = measureTextCached(ctx!, remoteFont, label) + 14;
+              ctx!.fillStyle = rp.isGm
+                ? 'rgba(42, 22, 4, 0.92)'
+                : 'rgba(4, 22, 44, 0.88)';
+              ctx!.beginPath();
+              ctx!.roundRect(rX - tw / 2, tagY - 14, tw, 18, 6);
+              ctx!.fill();
+              ctx!.strokeStyle = rp.isGm ? '#facc15' : '#34d399';
+              ctx!.lineWidth = rp.isGm ? 1.5 : 1.1;
+              ctx!.stroke();
+              ctx!.fillStyle = rp.isGm ? '#fef08a' : '#d1fae5';
+              ctx!.fillText(label, rX, tagY - 1);
+              ctx!.restore();
+            }
 
-            if (rBubbleText) {
+            if (rBubbleText && runtimeMetaRef.current.showChatBubbles) {
               drawSpeechBubble(
                 ctx!,
                 rX,
@@ -6903,18 +7243,20 @@ export function TamerWorldCanvas({
         );
       }
 
-      for (const ft of sim.floatingTexts) {
-        const fade = Math.max(0, 1 - ft.elapsed / ft.duration);
-        ctx!.save();
-        ctx!.globalAlpha = fade;
-        ctx!.font = '800 12px "Exo 2", sans-serif';
-        ctx!.textAlign = 'center';
-        ctx!.strokeStyle = 'rgba(2, 6, 23, 0.92)';
-        ctx!.lineWidth = 3;
-        ctx!.strokeText(ft.text, ft.x, ft.y);
-        ctx!.fillStyle = ft.color;
-        ctx!.fillText(ft.text, ft.x, ft.y);
-        ctx!.restore();
+      if (runtimeMetaRef.current.showFloatingDamage) {
+        for (const ft of sim.floatingTexts) {
+          const fade = Math.max(0, 1 - ft.elapsed / ft.duration);
+          ctx!.save();
+          ctx!.globalAlpha = fade;
+          ctx!.font = '800 12px "Exo 2", sans-serif';
+          ctx!.textAlign = 'center';
+          ctx!.strokeStyle = 'rgba(2, 6, 23, 0.92)';
+          ctx!.lineWidth = 3;
+          ctx!.strokeText(ft.text, ft.x, ft.y);
+          ctx!.fillStyle = ft.color;
+          ctx!.fillText(ft.text, ft.x, ft.y);
+          ctx!.restore();
+        }
       }
 
       ctx!.restore();
@@ -6934,6 +7276,7 @@ export function TamerWorldCanvas({
       }
 
       // Off-screen directional pointers for online players on the SAME map outside the camera viewport
+      if (runtimeMetaRef.current.showOffscreenPointers) {
       for (const smooth of remoteSmoothRef.current.values()) {
         const rp = smooth.player;
         if (rp.mapId !== sim.mapId) continue;
@@ -6990,6 +7333,7 @@ export function TamerWorldCanvas({
         ctx!.textAlign = 'left';
         ctx!.fillText(badgeText, bx + 18, by + 13.5, bw - 24);
         ctx!.restore();
+      }
       }
 
       } // end shouldDrawWorldFrame
@@ -7657,10 +8001,10 @@ export function TamerWorldCanvas({
   }
 
   function handleStartWhisperFriend(friendName: string) {
-    setChatChannel('whisper');
+    setChatChannel('global');
     pushChatMessage(
-      'whisper',
-      `Canal de sussurro aberto com ${friendName}. Digite sua mensagem abaixo!`,
+      'system',
+      `Chat Global selecionado para conversar com ${friendName}. Você também pode usar /invite ${friendName} para convidá-lo para Party.`,
       { tone: 'info' }
     );
   }
@@ -8371,10 +8715,17 @@ export function TamerWorldCanvas({
           <PartyHudPanel
             party={playerParty}
             incomingInvites={incomingPartyInvites}
+            incomingGuildInvites={incomingGuildInvites}
             actorUid={actorUid}
             currentMapId={liveSnapshot.mapId}
             onAcceptInvite={(invite) => void handleAcceptPartyInvite(invite)}
             onDeclineInvite={(inviteId) => void handleDeclinePartyInvite(inviteId)}
+            onAcceptGuildInvite={(invite) =>
+              void handleAcceptGuildInvite(invite)
+            }
+            onDeclineGuildInvite={(inviteId) =>
+              void handleDeclineGuildInvite(inviteId)
+            }
             onLeaveParty={() => void handleLeaveParty()}
             onKickMember={(targetUid) => void handleKickPartyMember(targetUid)}
           />
@@ -8485,6 +8836,7 @@ export function TamerWorldCanvas({
         <div className="flex flex-col items-end gap-1.5">
           <MinimapHudPanel
             snapshot={liveSnapshot}
+            minimapSize={preferences.minimapSize}
             onOpenFullMap={() => handleOpenHudWindow('map')}
           />
           {worldBossState && worldBossState.mapId === liveSnapshot.mapId && (
@@ -8577,30 +8929,78 @@ export function TamerWorldCanvas({
       )}
 
       {/* Selected Online Player Inspector Card */}
-      {selectedRemotePlayer && (
-        <RemotePlayerInspectorCard
-          player={selectedRemotePlayer}
-          partyMemberUids={playerParty?.memberUids ?? []}
-          partyFull={(playerParty?.memberUids.length ?? 0) >= MAX_PARTY_MEMBERS}
-          onInviteParty={(targetPlayer) =>
-            void handleInvitePlayerToParty(targetPlayer.uid, targetPlayer.tamerName)
-          }
-          onMeetPlayer={handleMeetPlayer}
-          onWaveHello={(targetName) => {
-            const greeting = `Olá, ${targetName}! Bora explorar juntos!`;
-            localBubbleRef.current = {
-              text: greeting,
-              expiresAt: Date.now() + 5500,
-            };
-            pushChatMessage('all', greeting, {
-              sender: selection.tamerName,
-              isGmSender: isServerGm,
-            });
-            void broadcastWorldChatBubble(greeting, buildLocalPresenceSnapshot());
-          }}
-          onClose={() => setSelectedRemotePlayer(null)}
-        />
-      )}
+      {selectedRemotePlayer && (() => {
+        const myGuild = playerGuild;
+        const canInviteToGuild = Boolean(
+          myGuild && canMemberInviteToGuild(myGuild, actorUid)
+        );
+        const targetAlreadyInMyGuild = Boolean(
+          myGuild && myGuild.memberUids.includes(selectedRemotePlayer.uid)
+        );
+        const targetInAnotherGuild = Boolean(
+          selectedRemotePlayer.guildName &&
+            (!myGuild || selectedRemotePlayer.guildName !== myGuild.name)
+        );
+        const myGuildIsFull = Boolean(
+          myGuild &&
+            myGuild.memberUids.length >=
+              getGuildMaxMembersForLevel(myGuild.level)
+        );
+        const guildInviteDisabled =
+          targetAlreadyInMyGuild || targetInAnotherGuild || myGuildIsFull;
+        const guildInviteLabel = targetAlreadyInMyGuild
+          ? 'Na Guilda'
+          : targetInAnotherGuild
+            ? 'Outra Guilda'
+            : myGuildIsFull
+              ? 'Guilda Cheia'
+              : 'Convidar Guilda';
+        const partyLeaderOnlyBlocked = Boolean(
+          playerParty && playerParty.leaderUid !== actorUid
+        );
+
+        return (
+          <RemotePlayerInspectorCard
+            player={selectedRemotePlayer}
+            partyMemberUids={playerParty?.memberUids ?? []}
+            partyFull={(playerParty?.memberUids.length ?? 0) >= MAX_PARTY_MEMBERS}
+            partyLeaderOnlyBlocked={partyLeaderOnlyBlocked}
+            onInviteParty={(targetPlayer) =>
+              void handleInvitePlayerToParty(
+                targetPlayer.uid,
+                targetPlayer.tamerName
+              )
+            }
+            canInviteGuild={canInviteToGuild}
+            guildInviteDisabled={guildInviteDisabled}
+            guildInviteLabel={guildInviteLabel}
+            onInviteGuild={(targetPlayer) =>
+              void handleInvitePlayerToGuild(
+                targetPlayer.uid,
+                targetPlayer.tamerName,
+                targetPlayer.guildName
+              )
+            }
+            onMeetPlayer={handleMeetPlayer}
+            onWaveHello={(targetName) => {
+              const greeting = `Olá, ${targetName}! Bora explorar juntos!`;
+              localBubbleRef.current = {
+                text: greeting,
+                expiresAt: Date.now() + 5500,
+              };
+              pushChatMessage('map', greeting, {
+                sender: selection.tamerName,
+                isGmSender: isServerGm,
+              });
+              void broadcastWorldChatBubble(
+                greeting,
+                buildLocalPresenceSnapshot()
+              );
+            }}
+            onClose={() => setSelectedRemotePlayer(null)}
+          />
+        );
+      })()}
 
       {/* Special Ready-to-Evolve / Evoluter Unlock Announcement Banner when hitting Lv. 15 / 30 / 50 */}
       {evolutionUnlockAlert && (() => {
@@ -8772,25 +9172,52 @@ export function TamerWorldCanvas({
             activeChannel={chatChannel}
             onChangeChannel={setChatChannel}
             onSendMessage={(text) => {
-              const inviteMatch = /^\/invite(?:\+|\s+)(.+)$/i.exec(text.trim());
-              if (inviteMatch) {
-                const rawTarget = inviteMatch[1].trim();
-                const lowerTarget = rawTarget.toLowerCase();
-                const matched =
+              const trimmed = text.trim();
+              const normalizeLookup = (val: string) =>
+                val
+                  .normalize('NFD')
+                  .replace(/[\u0300-\u036f]/g, '')
+                  .toLowerCase()
+                  .trim();
+
+              const findOnlinePlayerByName = (rawName: string) => {
+                const targetNorm = normalizeLookup(rawName);
+                if (!targetNorm) return null;
+                return (
                   remotePlayers.find(
-                    (p) => p.tamerName.toLowerCase() === lowerTarget
+                    (p) => normalizeLookup(p.tamerName) === targetNorm
                   ) ??
                   remotePlayers.find((p) =>
-                    p.tamerName.toLowerCase().startsWith(lowerTarget)
+                    normalizeLookup(p.tamerName).startsWith(targetNorm)
                   ) ??
                   remotePlayers.find((p) =>
-                    p.tamerName.toLowerCase().includes(lowerTarget)
+                    normalizeLookup(p.tamerName).includes(targetNorm)
+                  ) ??
+                  null
+                );
+              };
+
+              // Party invite command: /invite Nome, /invite+Nome, or /convidar Nome
+              if (/^\/(?:invite|convidar)(?:$|\s|\+)/i.test(trimmed)) {
+                const inviteMatch = /^\/(?:invite|convidar)(?:\+|\s+)(.+)$/i.exec(
+                  trimmed
+                );
+                if (!inviteMatch || !inviteMatch[1].trim()) {
+                  playDigitalTone('error', soundEnabled);
+                  pushChatMessage(
+                    'system',
+                    '[Party] Uso: digite /invite NomeDoJogador para enviar um convite de Party.',
+                    { tone: 'warning' }
                   );
+                  return;
+                }
+                const rawTarget = inviteMatch[1].trim();
+                const matched = findOnlinePlayerByName(rawTarget);
                 if (!matched) {
                   playDigitalTone('error', soundEnabled);
                   pushChatMessage(
                     'system',
-                    `[Party] Jogador "${rawTarget}" não encontrado online no momento.`,
+                    `[Party] Jogador "${rawTarget}" não encontrado online no servidor.`,
                     { tone: 'warning' }
                   );
                   return;
@@ -8799,13 +9226,47 @@ export function TamerWorldCanvas({
                 return;
               }
 
+              // Guild invite command: /ginvite Nome (Leader & Sub-Leader only)
+              if (/^\/ginvite(?:$|\s|\+)/i.test(trimmed)) {
+                const guildInviteMatch = /^\/ginvite(?:\+|\s+)(.+)$/i.exec(
+                  trimmed
+                );
+                if (!guildInviteMatch || !guildInviteMatch[1].trim()) {
+                  playDigitalTone('error', soundEnabled);
+                  pushChatMessage(
+                    'system',
+                    '[Guilda] Uso: digite /ginvite NomeDoJogador para convidar para sua Guilda.',
+                    { tone: 'warning' }
+                  );
+                  return;
+                }
+                const rawTarget = guildInviteMatch[1].trim();
+                const matched = findOnlinePlayerByName(rawTarget);
+                if (!matched) {
+                  playDigitalTone('error', soundEnabled);
+                  pushChatMessage(
+                    'system',
+                    `[Guilda] Jogador "${rawTarget}" não encontrado online no servidor.`,
+                    { tone: 'warning' }
+                  );
+                  return;
+                }
+                void handleInvitePlayerToGuild(
+                  matched.uid,
+                  matched.tamerName,
+                  matched.guildName
+                );
+                return;
+              }
+
+              // Strict Party-only chat
               if (chatChannel === 'party') {
                 const activeParty = playerPartyRef.current;
                 if (!activeParty) {
                   playDigitalTone('error', soundEnabled);
                   pushChatMessage(
                     'system',
-                    '[Party] Entre ou forme uma Party primeiro (clique em um Tamer ou digite /invite+Nome).',
+                    '[Party] Você não está em uma Party. Clique em um jogador ou digite /invite Nome para convidar.',
                     { tone: 'warning' }
                   );
                   return;
@@ -8815,37 +9276,68 @@ export function TamerWorldCanvas({
                   senderUid: actorUid,
                   senderName: selection.tamerName,
                   isGmSender: isServerGm,
-                  text,
+                  text: trimmed,
                 });
                 return;
               }
 
+              // Strict Guild-only chat
               if (chatChannel === 'guild') {
                 const activeGuild = playerGuildRef.current;
                 if (!activeGuild) {
                   playDigitalTone('error', soundEnabled);
+                  pushChatMessage(
+                    'system',
+                    '[Guilda] Você precisa entrar ou criar uma Guilda para falar neste canal.',
+                    { tone: 'warning' }
+                  );
                   return;
                 }
                 void sendGuildChatMessage({
                   guildId: activeGuild.guildId,
                   actorUid,
                   tamerName: selection.tamerName,
-                  text,
+                  text: trimmed,
                 });
                 return;
               }
-              const targetChannel: ChatChannel =
-                chatChannel === 'system' ? 'all' : chatChannel;
-              pushChatMessage(targetChannel, text, {
-                sender: selection.tamerName,
-                isGmSender: isServerGm,
-              });
-              // Show live speech bubble above local Tamer and broadcast to all online players in real time
-              localBubbleRef.current = {
-                text,
-                expiresAt: Date.now() + 5500,
-              };
-              void broadcastWorldChatBubble(text, buildLocalPresenceSnapshot());
+
+              // Global cross-map server chat
+              if (chatChannel === 'global') {
+                void sendGlobalChatMessage({
+                  senderUid: actorUid,
+                  senderName: selection.tamerName,
+                  isGmSender: isServerGm,
+                  mapId: simRef.current.mapId,
+                  text: trimmed,
+                });
+                return;
+              }
+
+              // Local Map proximity chat (only players nearby on the SAME map receive it)
+              if (chatChannel === 'map') {
+                pushChatMessage('map', trimmed, {
+                  sender: selection.tamerName,
+                  isGmSender: isServerGm,
+                });
+                localBubbleRef.current = {
+                  text: trimmed,
+                  expiresAt: Date.now() + 5500,
+                };
+                void broadcastWorldChatBubble(
+                  trimmed,
+                  buildLocalPresenceSnapshot()
+                );
+                return;
+              }
+
+              // System tab is read-only for normal chat
+              playDigitalTone('click', soundEnabled);
+              pushChatMessage(
+                'system',
+                'Selecione a aba Global, Mapa, Guilda ou Party para enviar mensagens.',
+                { tone: 'info' }
+              );
             }}
             onChatFocusChange={(focused) => {
               isChatFocusedRef.current = focused;
@@ -9339,6 +9831,8 @@ export function TamerWorldCanvas({
         onAdminGrantAllDatas={handleAdminGrantAllDatas}
         onAdminGrantAllEggs={handleAdminGrantAllEggs}
         onAdminGrantCurrency={handleAdminGrantCurrency}
+        gmInfiniteDCoin={gmInfiniteDCoin}
+        onAdminToggleInfiniteDCoin={handleToggleGmInfiniteDCoin}
         onAdminClearInventory={handleAdminClearInventory}
         onAdminSwitchTamer={onAdminSwitchTamer}
         onOpenSelectionFlow={onOpenSelectionFlow}
@@ -9382,11 +9876,6 @@ export function TamerWorldCanvas({
         onOpenDwCoinShop={() => setActiveHudWindow('shop')}
         isGM={isGM}
         cloudIsGm={isServerGm}
-        onOpenFeedback={
-          onOpenFeedback
-            ? () => onOpenFeedback(`world:${liveSnapshot.mapId}`)
-            : undefined
-        }
         onConfirmExit={() => {
           persistProgress();
           void markLocalWorldPresenceOffline();

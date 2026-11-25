@@ -1,23 +1,25 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import {
   AlertCircle,
-  Bug,
   CheckCircle2,
   Gift,
   Headset,
   KeyRound,
   Loader2,
   Mail,
+  Music2,
+  RotateCcw,
   Settings,
   Trophy,
   UserPlus,
   X,
 } from 'lucide-react';
 import { authService } from '../services/authService';
-import type {
-  AppPreferences,
-  AuthUserSummary,
-  ModalSection,
+import {
+  DEFAULT_APP_PREFERENCES,
+  type AppPreferences,
+  type AuthUserSummary,
+  type ModalSection,
 } from '../types/auth';
 import { playDigitalTone } from '../utils/soundFx';
 import { PWAInstallButton } from './PWAInstallButton';
@@ -27,7 +29,6 @@ interface UtilityModalProps {
   preferences: AppPreferences;
   onUpdatePreferences: (next: AppPreferences) => void;
   onAccountCreated?: (user: AuthUserSummary) => void;
-  onOpenFeedback?: () => void;
   onClose: () => void;
 }
 
@@ -59,7 +60,6 @@ export function UtilityModal({
   preferences,
   onUpdatePreferences,
   onAccountCreated,
-  onOpenFeedback,
   onClose,
 }: UtilityModalProps) {
   const [regUsername, setRegUsername] = useState('');
@@ -452,11 +452,14 @@ export function UtilityModal({
 
           {section === 'settings' && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between rounded-xl border border-sky-400/20 bg-[#040e24]/80 px-3.5 py-3">
+              {/* Audio & Music */}
+              <div className="flex items-center justify-between rounded-xl border border-sky-400/20 bg-[#040e24]/80 px-3.5 py-2.5">
                 <div>
-                  <p className="text-sm font-bold text-white">Efeitos sonoros</p>
+                  <p className="text-sm font-bold text-white">
+                    Efeitos sonoros
+                  </p>
                   <p className="text-xs text-slate-300">
-                    Retorno sonoro ao tocar nos controles
+                    Cliques, ações, combate e notificações
                   </p>
                 </div>
                 <button
@@ -468,7 +471,7 @@ export function UtilityModal({
                     onUpdatePreferences({ ...preferences, soundEnabled: next });
                     if (next) playDigitalTone('confirm', true);
                   }}
-                  className={`min-h-[44px] min-w-[74px] rounded-lg border px-3 text-xs font-extrabold transition-colors ${
+                  className={`min-h-[40px] min-w-[74px] rounded-lg border px-3 text-xs font-extrabold transition-colors ${
                     preferences.soundEnabled
                       ? 'border-cyan-300 bg-cyan-500/25 text-cyan-200'
                       : 'border-slate-600 bg-slate-800/70 text-slate-300'
@@ -478,10 +481,71 @@ export function UtilityModal({
                 </button>
               </div>
 
-              <div className="flex items-center justify-between rounded-xl border border-sky-400/20 bg-[#040e24]/80 px-3.5 py-3">
+              <div className="flex items-center justify-between rounded-xl border border-sky-400/20 bg-[#040e24]/80 px-3.5 py-2.5">
                 <div>
                   <p className="text-sm font-bold text-white">
-                    Partículas digitais
+                    Música de fundo
+                  </p>
+                  <p className="text-xs text-slate-300">
+                    Trilha sonora do DATS Center e seleção
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={preferences.musicEnabled}
+                  onClick={() => {
+                    playDigitalTone('click', preferences.soundEnabled);
+                    onUpdatePreferences({
+                      ...preferences,
+                      musicEnabled: !preferences.musicEnabled,
+                    });
+                  }}
+                  className={`min-h-[40px] min-w-[74px] rounded-lg border px-3 text-xs font-extrabold transition-colors ${
+                    preferences.musicEnabled
+                      ? 'border-cyan-300 bg-cyan-500/25 text-cyan-200'
+                      : 'border-slate-600 bg-slate-800/70 text-slate-300'
+                  }`}
+                >
+                  {preferences.musicEnabled ? 'ATIVO' : 'MUDO'}
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-sky-400/20 bg-[#040e24]/80 px-3.5 py-2.5">
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-sm font-bold text-white">
+                    <Music2 className="h-4 w-4 text-cyan-300" />
+                    <span>Volume da música</span>
+                  </span>
+                  <span className="text-xs font-extrabold tabular-nums text-[#ffd43b]">
+                    {preferences.musicEnabled
+                      ? `${preferences.musicVolume}%`
+                      : 'Mudo'}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  disabled={!preferences.musicEnabled}
+                  value={preferences.musicVolume}
+                  onChange={(e) =>
+                    onUpdatePreferences({
+                      ...preferences,
+                      musicVolume: Number(e.target.value),
+                    })
+                  }
+                  aria-label="Volume da música"
+                  className="h-2 w-full cursor-pointer accent-cyan-400 disabled:cursor-not-allowed disabled:opacity-45"
+                />
+              </div>
+
+              {/* Graphics & Interface */}
+              <div className="flex items-center justify-between rounded-xl border border-sky-400/20 bg-[#040e24]/80 px-3.5 py-2.5">
+                <div>
+                  <p className="text-sm font-bold text-white">
+                    Animações e partículas
                   </p>
                   <p className="text-xs text-slate-300">
                     Efeitos luminosos sutis no cenário
@@ -498,7 +562,7 @@ export function UtilityModal({
                       animationsEnabled: !preferences.animationsEnabled,
                     });
                   }}
-                  className={`min-h-[44px] min-w-[74px] rounded-lg border px-3 text-xs font-extrabold transition-colors ${
+                  className={`min-h-[40px] min-w-[74px] rounded-lg border px-3 text-xs font-extrabold transition-colors ${
                     preferences.animationsEnabled
                       ? 'border-cyan-300 bg-cyan-500/25 text-cyan-200'
                       : 'border-slate-600 bg-slate-800/70 text-slate-300'
@@ -508,9 +572,39 @@ export function UtilityModal({
                 </button>
               </div>
 
+              <div className="flex items-center justify-between rounded-xl border border-sky-400/20 bg-[#040e24]/80 px-3.5 py-2.5">
+                <div>
+                  <p className="text-sm font-bold text-white">
+                    Números de dano e EXP
+                  </p>
+                  <p className="text-xs text-slate-300">
+                    Mostrar dano flutuante durante batalhas
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={preferences.showFloatingDamage}
+                  onClick={() => {
+                    playDigitalTone('click', preferences.soundEnabled);
+                    onUpdatePreferences({
+                      ...preferences,
+                      showFloatingDamage: !preferences.showFloatingDamage,
+                    });
+                  }}
+                  className={`min-h-[40px] min-w-[74px] rounded-lg border px-3 text-xs font-extrabold transition-colors ${
+                    preferences.showFloatingDamage
+                      ? 'border-cyan-300 bg-cyan-500/25 text-cyan-200'
+                      : 'border-slate-600 bg-slate-800/70 text-slate-300'
+                  }`}
+                >
+                  {preferences.showFloatingDamage ? 'ATIVO' : 'DESL.'}
+                </button>
+              </div>
+
               <div className="rounded-xl border border-sky-400/20 bg-[#040e24]/80 px-3.5 py-3">
                 <p className="mb-2 text-sm font-bold text-white">
-                  Desempenho gráfico mobile
+                  Desempenho gráfico
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                   {(['alta', 'equilibrada'] as const).map((mode) => (
@@ -524,7 +618,7 @@ export function UtilityModal({
                           graphicsQuality: mode,
                         });
                       }}
-                      className={`min-h-[44px] rounded-lg border text-xs font-bold capitalize transition-colors ${
+                      className={`min-h-[42px] rounded-lg border text-xs font-bold transition-colors ${
                         preferences.graphicsQuality === mode
                           ? 'border-[#ffd43b] bg-amber-500/20 text-[#ffd43b]'
                           : 'border-sky-400/25 bg-[#061534] text-slate-300'
@@ -535,6 +629,51 @@ export function UtilityModal({
                   ))}
                 </div>
               </div>
+
+              <div className="rounded-xl border border-sky-400/20 bg-[#040e24]/80 px-3.5 py-3">
+                <p className="mb-2 text-sm font-bold text-white">
+                  Tamanho do minimapa
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(
+                    [
+                      { id: 'compacto', label: 'Compacto' },
+                      { id: 'padrao', label: 'Padrão' },
+                    ] as const
+                  ).map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        playDigitalTone('click', preferences.soundEnabled);
+                        onUpdatePreferences({
+                          ...preferences,
+                          minimapSize: opt.id,
+                        });
+                      }}
+                      className={`min-h-[40px] rounded-lg border text-xs font-bold transition-colors ${
+                        preferences.minimapSize === opt.id
+                          ? 'border-cyan-300 bg-cyan-500/25 text-cyan-100'
+                          : 'border-sky-400/25 bg-[#061534] text-slate-300'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  playDigitalTone('confirm', true);
+                  onUpdatePreferences({ ...DEFAULT_APP_PREFERENCES });
+                }}
+                className="flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl border border-amber-300/45 bg-amber-500/15 px-3 text-xs font-extrabold text-amber-200 hover:bg-amber-500/25 active:scale-[0.98]"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span>Restaurar Configurações Padrão</span>
+              </button>
 
               <PWAInstallButton
                 variant="compact"
@@ -623,20 +762,6 @@ export function UtilityModal({
                   Econômico em Configurações.
                 </p>
               </div>
-              {onOpenFeedback && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    playDigitalTone('click', preferences.soundEnabled);
-                    onClose();
-                    onOpenFeedback();
-                  }}
-                  className="flex min-h-[46px] w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-[#ffe259] to-[#e66f00] px-4 py-2.5 text-xs font-extrabold tracking-wide text-[#081226] shadow-[0_0_16px_rgba(255,174,0,0.4)] transition-transform active:scale-[0.98]"
-                >
-                  <Bug className="h-4 w-4 shrink-0" />
-                  <span>REPORTAR BUG / FEEDBACK DA VERSÃO ALFA</span>
-                </button>
-              )}
             </div>
           )}
         </div>

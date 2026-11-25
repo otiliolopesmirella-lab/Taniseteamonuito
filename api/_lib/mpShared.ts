@@ -54,7 +54,32 @@ export const SERVER_DWCOIN_PACKS: Readonly<Record<string, ServerDwCoinPack>> = {
 };
 
 export const FIREBASE_PROJECT_ID =
-  process.env.FIREBASE_PROJECT_ID?.trim() || 'digilegends-8bc7d';
+  process.env.FIREBASE_PROJECT_ID?.trim() ||
+  process.env.VITE_FIREBASE_PROJECT_ID?.trim() ||
+  'digilegends-8bc7d';
+
+export const FIREBASE_DATABASE_ID =
+  process.env.FIREBASE_DATABASE_ID?.trim() ||
+  process.env.VITE_FIREBASE_DATABASE_ID?.trim() ||
+  '(default)';
+
+export interface MpPaymentRecord {
+  id?: number | string;
+  status?: string;
+  status_detail?: string;
+  external_reference?: string;
+  transaction_amount?: number;
+  date_approved?: string | null;
+  date_created?: string | null;
+  payment_method_id?: string;
+  metadata?: {
+    order_id?: string;
+    owner_uid?: string;
+    pack_id?: string;
+    dw_coin_amount?: number;
+    price_cents?: number;
+  };
+}
 
 const GM_EMAILS = new Set([
   'opiadoalvorada@gmail.com',

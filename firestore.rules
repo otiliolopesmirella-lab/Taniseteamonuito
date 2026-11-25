@@ -646,6 +646,47 @@ service cloud.firestore {
         data.createdAt is timestamp;
     }
 
+    function isValidGlobalChatMessage(data, messageId) {
+      return data.keys().hasAll([
+          'messageId', 'senderUid', 'senderName', 'isGmSender', 'mapId', 'text', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'messageId', 'senderUid', 'senderName', 'isGmSender', 'mapId', 'text', 'createdAt'
+        ]) &&
+        data.messageId is string && isValidId(data.messageId) && data.messageId == messageId &&
+        data.senderUid is string && isValidId(data.senderUid) &&
+        data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 24 &&
+        data.isGmSender is bool &&
+        data.mapId in ['dats-center', 'hunting-plains', 'data-forest', 'digi-mountain', 'digital-desert', 'data-sea', 'digimon-island', 'dark-area', 'virtual-world'] &&
+        data.text is string && data.text.size() >= 1 && data.text.size() <= 140 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidGuildInvite(data, inviteId) {
+      return data.keys().hasAll([
+          'inviteId', 'guildId', 'guildName', 'guildTag', 'guildLevel', 'guildEmblemColor',
+          'fromUid', 'fromName', 'fromRole', 'toUid', 'toName', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'inviteId', 'guildId', 'guildName', 'guildTag', 'guildLevel', 'guildEmblemColor',
+          'fromUid', 'fromName', 'fromRole', 'toUid', 'toName', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.inviteId is string && isValidId(data.inviteId) && data.inviteId == inviteId &&
+        data.guildId is string && isValidId(data.guildId) &&
+        data.guildName is string && data.guildName.size() >= 3 && data.guildName.size() <= 24 &&
+        data.guildTag is string && data.guildTag.size() >= 2 && data.guildTag.size() <= 4 &&
+        data.guildLevel is number && data.guildLevel >= 1 && data.guildLevel <= 10 &&
+        data.guildEmblemColor in ['cyan', 'amber', 'crimson', 'emerald', 'violet'] &&
+        data.fromUid is string && isValidId(data.fromUid) &&
+        data.fromName is string && data.fromName.size() >= 1 && data.fromName.size() <= 24 &&
+        data.fromRole in ['master', 'submaster'] &&
+        data.toUid is string && isValidId(data.toUid) &&
+        data.toName is string && data.toName.size() >= 1 && data.toName.size() <= 24 &&
+        data.status in ['pending', 'accepted', 'declined'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
     // =========================================================================
     // Collection: /admins/{userId} — Exclusive Console-Managed GM Registry
     // =========================================================================
@@ -939,6 +980,7 @@ service cloud.firestore {
       allow get: if isVerified() && isValidId(guildId) && (
         existing().recruiting == true ||
         request.auth.uid in existing().memberUids ||
+        exists(/databases/$(database)/documents/guildInvites/$('ginv_' + guildId + '_' + request.auth.uid)) ||
         isAdmin()
       );
       allow list: if isVerified() && (
@@ -1008,8 +1050,12 @@ service cloud.firestore {
                   'emblemColor', 'emblemPhotoUrl', 'notice', 'recruiting', 'skillPoints', 'skills', 'members', 'memberUids', 'chatMessages', 'updatedAt'
                 ]))
             )) ||
-          // Tier 3: Authenticated player joining an open recruiting guild (strictly as 'member')
-          (existing().recruiting == true &&
+          // Tier 3: Authenticated player joining an open recruiting guild OR via a valid pending Guild Invite (strictly as 'member')
+          ((existing().recruiting == true ||
+              (exists(/databases/$(database)/documents/guildInvites/$('ginv_' + guildId + '_' + request.auth.uid)) &&
+                get(/databases/$(database)/documents/guildInvites/$('ginv_' + guildId + '_' + request.auth.uid)).data.status == 'pending' &&
+                get(/databases/$(database)/documents/guildInvites/$('ginv_' + guildId + '_' + request.auth.uid)).data.guildId == guildId &&
+                get(/databases/$(database)/documents/guildInvites/$('ginv_' + guildId + '_' + request.auth.uid)).data.toUid == request.auth.uid)) &&
             !(request.auth.uid in existing().memberUids) &&
             request.auth.uid in incoming().memberUids &&
             incoming().memberUids.size() == existing().memberUids.size() + 1 &&
@@ -1313,7 +1359,7 @@ service cloud.firestore {
         incoming().createdAt == request.time &&
         incoming().updatedAt == request.time &&
         exists(/databases/$(database)/documents/parties/$(incoming().partyId)) &&
-        request.auth.uid in get(/databases/$(database)/documents/parties/$(incoming().partyId)).data.memberUids;
+        get(/databases/$(database)/documents/parties/$(incoming().partyId)).data.leaderUid == request.auth.uid;
 
       allow update: if isVerified() &&
         isValidId(inviteId) &&
@@ -1402,6 +1448,79 @@ service cloud.firestore {
 
       allow update: if false;
       allow delete: if false;
+    }
+
+    // =========================================================================
+    // Collection: /globalChat/{messageId} — Server-Wide Cross-Map Global Chat
+    // =========================================================================
+    match /globalChat/{messageId} {
+      allow get: if isVerified() && isValidId(messageId);
+      allow list: if isVerified() && request.query.limit <= 50;
+
+      allow create: if isVerified() &&
+        isValidId(messageId) &&
+        isValidGlobalChatMessage(incoming(), messageId) &&
+        incoming().senderUid == request.auth.uid &&
+        (!incoming().isGmSender || isAdmin()) &&
+        incoming().createdAt == request.time &&
+        exists(/databases/$(database)/documents/players/$(request.auth.uid)) &&
+        isNotBanned();
+
+      allow update: if false;
+      allow delete: if isAdmin() && isValidId(messageId);
+    }
+
+    // =========================================================================
+    // Collection: /guildInvites/{inviteId} — Leader & Sub-Leader Guild Invites
+    // =========================================================================
+    match /guildInvites/{inviteId} {
+      allow get: if isVerified() && isValidId(inviteId) && (
+        existing().toUid == request.auth.uid ||
+        existing().fromUid == request.auth.uid ||
+        isAdmin()
+      );
+      allow list: if isVerified() && (
+        existing().toUid == request.auth.uid ||
+        existing().fromUid == request.auth.uid
+      );
+
+      allow create: if isVerified() &&
+        isValidId(inviteId) &&
+        isValidGuildInvite(incoming(), inviteId) &&
+        inviteId == ('ginv_' + incoming().guildId + '_' + incoming().toUid) &&
+        incoming().fromUid == request.auth.uid &&
+        incoming().toUid != request.auth.uid &&
+        incoming().status == 'pending' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isNotBanned() &&
+        exists(/databases/$(database)/documents/guilds/$(incoming().guildId)) && (
+          get(/databases/$(database)/documents/guilds/$(incoming().guildId)).data.masterUid == request.auth.uid ||
+          (request.auth.uid in get(/databases/$(database)/documents/guilds/$(incoming().guildId)).data.members &&
+            get(/databases/$(database)/documents/guilds/$(incoming().guildId)).data.members[request.auth.uid].role == 'submaster')
+        );
+
+      allow update: if isVerified() &&
+        isValidId(inviteId) &&
+        isValidGuildInvite(incoming(), inviteId) &&
+        existing().toUid == request.auth.uid &&
+        existing().status == 'pending' &&
+        incoming().status in ['accepted', 'declined'] &&
+        incoming().inviteId == existing().inviteId &&
+        incoming().guildId == existing().guildId &&
+        incoming().fromUid == existing().fromUid &&
+        incoming().toUid == existing().toUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+
+      allow delete: if isVerified() && isValidId(inviteId) && (
+        existing().toUid == request.auth.uid ||
+        existing().fromUid == request.auth.uid ||
+        (exists(/databases/$(database)/documents/guilds/$(existing().guildId)) &&
+          get(/databases/$(database)/documents/guilds/$(existing().guildId)).data.masterUid == request.auth.uid) ||
+        isAdmin()
+      );
     }
   }
 }

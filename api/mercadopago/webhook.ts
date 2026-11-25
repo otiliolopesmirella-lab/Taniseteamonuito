@@ -1,9 +1,14 @@
 import crypto from 'node:crypto';
 import {
+  creditApprovedMercadoPagoPayment,
+  isFirestoreAutoCreditConfigured,
+} from '../_lib/mpFirestoreCredit.js';
+import {
   getQueryParam,
   isValidPaymentId,
   readJsonBody,
   sendJson,
+  type MpPaymentRecord,
   type VercelApiRequest,
   type VercelApiResponse,
 } from '../_lib/mpShared.js';
@@ -56,7 +61,11 @@ export default async function handler(
   res.setHeader('X-Content-Type-Options', 'nosniff');
 
   if (req.method === 'GET') {
-    sendJson(res, 200, { ok: true, service: 'mercadopago-webhook' });
+    sendJson(res, 200, {
+      ok: true,
+      service: 'mercadopago-webhook',
+      autoCreditConfigured: isFirestoreAutoCreditConfigured(),
+    });
     return;
   }
 
@@ -80,7 +89,8 @@ export default async function handler(
       ? (body.data as Record<string, unknown>)
       : null;
   const bodyDataId =
-    bodyData && (typeof bodyData.id === 'string' || typeof bodyData.id === 'number')
+    bodyData &&
+    (typeof bodyData.id === 'string' || typeof bodyData.id === 'number')
       ? String(bodyData.id)
       : '';
   const dataId = queryDataId || bodyDataId;
@@ -104,20 +114,30 @@ export default async function handler(
     }
   }
 
+  let credited = false;
+  let alreadyCredited = false;
   const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN?.trim();
   if (accessToken && isValidPaymentId(dataId)) {
     try {
       // Never trust webhook body alone — always re-verify directly with Mercado Pago API
-      await fetch(
+      const mpRes = await fetch(
         `https://api.mercadopago.com/v1/payments/${encodeURIComponent(dataId)}`,
         {
           headers: { Authorization: `Bearer ${accessToken}` },
         }
       );
+      if (mpRes.ok) {
+        const payment = (await mpRes.json()) as MpPaymentRecord;
+        if (payment && payment.status === 'approved') {
+          const creditRes = await creditApprovedMercadoPagoPayment(payment);
+          credited = creditRes.credited;
+          alreadyCredited = creditRes.alreadyCredited;
+        }
+      }
     } catch {
-      // Acknowledge receipt so Mercado Pago does not storm retries on transient network blips
+      // Acknowledge receipt cleanly; client polling & login reconciliation provide automatic retry
     }
   }
 
-  sendJson(res, 200, { received: true });
+  sendJson(res, 200, { received: true, credited, alreadyCredited });
 }

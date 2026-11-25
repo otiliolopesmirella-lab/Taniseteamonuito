@@ -1,12 +1,19 @@
 import {
   AlertTriangle,
   Bell,
-  Bug,
   Compass,
   CornerUpLeft,
+  Eye,
   Mail,
+  Maximize,
+  Minimize,
+  Music2,
+  RotateCcw,
   Settings,
+  Sliders,
+  Terminal,
   Trash2,
+  Volume2,
   Wrench,
   X,
 } from 'lucide-react';
@@ -27,7 +34,10 @@ import {
 } from '../../services/hudGameService';
 import type { ServerExpRatePct } from '../../services/serverConfigService';
 import type { RemoteWorldPlayer } from '../../services/worldPresenceService';
-import type { AppPreferences } from '../../types/auth';
+import {
+  DEFAULT_APP_PREFERENCES,
+  type AppPreferences,
+} from '../../types/auth';
 import type { TamerCharacter, TamerId } from '../../types/character';
 import type { DigimonFormId, DigimonFormProfile } from '../../types/digimon';
 import type {
@@ -147,6 +157,8 @@ interface HudWindowsOverlayProps {
   onAdminGrantAllDatas: (quantityEach: number) => void;
   onAdminGrantAllEggs: (eggHatchLevel: number) => void;
   onAdminGrantCurrency: (bitsDelta: number, dCoinDelta: number) => void;
+  gmInfiniteDCoin?: boolean;
+  onAdminToggleInfiniteDCoin?: (enabled: boolean) => void;
   onAdminClearInventory: () => void;
   onAdminSwitchTamer?: (tamerId: TamerId) => void;
   onOpenSelectionFlow?: (screen: 'character-select' | 'digimon-select') => void;
@@ -173,7 +185,6 @@ interface HudWindowsOverlayProps {
   onOpenDwCoinShop?: () => void;
   isGM: boolean;
   cloudIsGm?: boolean;
-  onOpenFeedback?: () => void;
   onConfirmExit: () => void;
   onClose: () => void;
 }
@@ -223,6 +234,8 @@ export function HudWindowsOverlay({
   onAdminGrantAllDatas,
   onAdminGrantAllEggs,
   onAdminGrantCurrency,
+  gmInfiniteDCoin = false,
+  onAdminToggleInfiniteDCoin,
   onAdminClearInventory,
   onAdminSwitchTamer,
   onOpenSelectionFlow,
@@ -249,7 +262,6 @@ export function HudWindowsOverlay({
   onOpenDwCoinShop,
   isGM: isGmProp,
   cloudIsGm = false,
-  onOpenFeedback,
   onConfirmExit,
   onClose,
 }: HudWindowsOverlayProps) {
@@ -359,6 +371,8 @@ export function HudWindowsOverlay({
         onGrantAllDatas={onAdminGrantAllDatas}
         onGrantAllEggs={onAdminGrantAllEggs}
         onGrantCurrency={onAdminGrantCurrency}
+        gmInfiniteDCoin={gmInfiniteDCoin}
+        onToggleInfiniteDCoin={onAdminToggleInfiniteDCoin}
         onClearInventory={onAdminClearInventory}
         onSwitchTamer={onAdminSwitchTamer}
         onOpenSelectionFlow={onOpenSelectionFlow}
@@ -586,107 +600,323 @@ export function HudWindowsOverlay({
 
 
 
-          {activeWindow === 'settings' && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between rounded-xl border border-cyan-400/25 bg-[#041232] px-3 py-2.5">
-                <div>
-                  <p className="font-bold text-white">Efeitos sonoros</p>
-                  <p className="text-[11px] text-slate-300">
-                    Áudio de botões, portais e ações
+          {activeWindow === 'settings' && (() => {
+            const isFullscreen =
+              typeof document !== 'undefined' &&
+              Boolean(document.fullscreenElement);
+
+            const toggleFullscreen = () => {
+              if (typeof document === 'undefined') return;
+              playDigitalTone('click', preferences.soundEnabled);
+              if (document.fullscreenElement) {
+                void document.exitFullscreen?.().catch(() => {});
+              } else {
+                void document.documentElement
+                  .requestFullscreen?.()
+                  .catch(() => {});
+              }
+            };
+
+            const renderSwitch = (
+              label: string,
+              description: string,
+              checked: boolean,
+              onToggle: () => void
+            ) => (
+              <div className="flex items-center justify-between gap-2.5 rounded-xl border border-cyan-400/25 bg-[#041232] px-3 py-2">
+                <div className="min-w-0">
+                  <p className="font-bold text-white">{label}</p>
+                  <p className="text-[10.5px] leading-snug text-slate-300">
+                    {description}
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => {
-                    const next = !preferences.soundEnabled;
-                    onUpdatePreferences({ ...preferences, soundEnabled: next });
-                    if (next) playDigitalTone('confirm', true);
-                  }}
-                  className={`min-h-[36px] min-w-[72px] rounded-lg border px-2.5 text-[11px] font-extrabold ${
-                    preferences.soundEnabled
+                  role="switch"
+                  aria-checked={checked}
+                  onClick={onToggle}
+                  className={`min-h-[34px] min-w-[68px] shrink-0 rounded-lg border px-2.5 text-[10.5px] font-extrabold transition-colors ${
+                    checked
                       ? 'border-cyan-300 bg-cyan-500/25 text-cyan-200'
-                      : 'border-slate-600 bg-slate-800 text-slate-300'
+                      : 'border-slate-600 bg-slate-800/80 text-slate-300'
                   }`}
                 >
-                  {preferences.soundEnabled ? 'ATIVO' : 'MUDO'}
+                  {checked ? 'ATIVO' : 'DESL.'}
                 </button>
               </div>
+            );
 
-              <div className="flex items-center justify-between rounded-xl border border-cyan-400/25 bg-[#041232] px-3 py-2.5">
-                <div>
-                  <p className="font-bold text-white">Animações e partículas</p>
-                  <p className="text-[11px] text-slate-300">
-                    Efeitos visuais da interface
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    onUpdatePreferences({
-                      ...preferences,
-                      animationsEnabled: !preferences.animationsEnabled,
-                    })
-                  }
-                  className={`min-h-[36px] min-w-[72px] rounded-lg border px-2.5 text-[11px] font-extrabold ${
-                    preferences.animationsEnabled
-                      ? 'border-cyan-300 bg-cyan-500/25 text-cyan-200'
-                      : 'border-slate-600 bg-slate-800 text-slate-300'
-                  }`}
-                >
-                  {preferences.animationsEnabled ? 'ATIVO' : 'DESL.'}
-                </button>
-              </div>
+            return (
+              <div className="space-y-3.5">
+                {/* Section 1: Audio & Music */}
+                <section className="space-y-2">
+                  <h3 className="flex items-center gap-1.5 text-[10.5px] font-black uppercase tracking-wider text-cyan-300">
+                    <Volume2 className="h-3.5 w-3.5" />
+                    <span>Áudio e Música</span>
+                  </h3>
 
-              <div className="rounded-xl border border-cyan-400/25 bg-[#041232] p-3">
-                <p className="mb-2 flex items-center gap-1.5 font-bold text-white">
-                  <Settings className="h-3.5 w-3.5 text-cyan-300" />
-                  Qualidade Gráfica
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {(['alta', 'equilibrada'] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() =>
+                  {renderSwitch(
+                    'Efeitos sonoros (SFX)',
+                    'Cliques, ataques, drops, portais e convites',
+                    preferences.soundEnabled,
+                    () => {
+                      const next = !preferences.soundEnabled;
+                      onUpdatePreferences({ ...preferences, soundEnabled: next });
+                      if (next) playDigitalTone('confirm', true);
+                    }
+                  )}
+
+                  {renderSwitch(
+                    'Música de fundo',
+                    'Trilha sonora do DATS Center e tela de seleção',
+                    preferences.musicEnabled,
+                    () => {
+                      const next = !preferences.musicEnabled;
+                      onUpdatePreferences({ ...preferences, musicEnabled: next });
+                      playDigitalTone('click', preferences.soundEnabled);
+                    }
+                  )}
+
+                  <div className="rounded-xl border border-cyan-400/25 bg-[#041232] px-3 py-2.5">
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 font-bold text-white">
+                        <Music2 className="h-3.5 w-3.5 text-cyan-300" />
+                        <span>Volume da música</span>
+                      </span>
+                      <span className="font-extrabold tabular-nums text-amber-300">
+                        {preferences.musicEnabled
+                          ? `${preferences.musicVolume}%`
+                          : 'Mudo'}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      disabled={!preferences.musicEnabled}
+                      value={preferences.musicVolume}
+                      onChange={(e) =>
                         onUpdatePreferences({
                           ...preferences,
-                          graphicsQuality: mode,
+                          musicVolume: Number(e.target.value),
                         })
                       }
-                      className={`min-h-[36px] rounded-lg border text-[11px] font-extrabold ${
-                        preferences.graphicsQuality === mode
-                          ? 'border-amber-300 bg-amber-500/20 text-amber-200'
-                          : 'border-cyan-400/25 bg-[#071f54] text-slate-300'
-                      }`}
+                      aria-label="Volume da música"
+                      className="h-2 w-full cursor-pointer accent-cyan-400 disabled:cursor-not-allowed disabled:opacity-45"
+                    />
+                  </div>
+                </section>
+
+                {/* Section 2: Graphics & Combat */}
+                <section className="space-y-2">
+                  <h3 className="flex items-center gap-1.5 text-[10.5px] font-black uppercase tracking-wider text-cyan-300">
+                    <Sliders className="h-3.5 w-3.5" />
+                    <span>Gráficos e Combate</span>
+                  </h3>
+
+                  <div className="rounded-xl border border-cyan-400/25 bg-[#041232] p-2.5">
+                    <p className="mb-2 flex items-center gap-1.5 font-bold text-white">
+                      <Settings className="h-3.5 w-3.5 text-cyan-300" />
+                      <span>Qualidade gráfica</span>
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['alta', 'equilibrada'] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => {
+                            playDigitalTone('click', preferences.soundEnabled);
+                            onUpdatePreferences({
+                              ...preferences,
+                              graphicsQuality: mode,
+                            });
+                          }}
+                          className={`min-h-[36px] rounded-lg border text-[11px] font-extrabold transition-colors ${
+                            preferences.graphicsQuality === mode
+                              ? 'border-amber-300 bg-amber-500/20 text-amber-200'
+                              : 'border-cyan-400/25 bg-[#071f54] text-slate-300'
+                          }`}
+                        >
+                          {mode === 'alta' ? 'Alta Fidelidade' : 'Econômica'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {renderSwitch(
+                    'Animações e partículas',
+                    'Efeitos visuais extras na interface e cenário',
+                    preferences.animationsEnabled,
+                    () => {
+                      playDigitalTone('click', preferences.soundEnabled);
+                      onUpdatePreferences({
+                        ...preferences,
+                        animationsEnabled: !preferences.animationsEnabled,
+                      });
+                    }
+                  )}
+
+                  {renderSwitch(
+                    'Números de dano e EXP',
+                    'Textos flutuantes de dano, críticos e experiência',
+                    preferences.showFloatingDamage,
+                    () => {
+                      playDigitalTone('click', preferences.soundEnabled);
+                      onUpdatePreferences({
+                        ...preferences,
+                        showFloatingDamage: !preferences.showFloatingDamage,
+                      });
+                    }
+                  )}
+                </section>
+
+                {/* Section 3: Interface & Map */}
+                <section className="space-y-2">
+                  <h3 className="flex items-center gap-1.5 text-[10.5px] font-black uppercase tracking-wider text-cyan-300">
+                    <Eye className="h-3.5 w-3.5" />
+                    <span>Interface e Mapa</span>
+                  </h3>
+
+                  {renderSwitch(
+                    'Nomes dos jogadores',
+                    'Exibir placas de nome acima dos Tamers no mapa',
+                    preferences.showPlayerNames,
+                    () => {
+                      playDigitalTone('click', preferences.soundEnabled);
+                      onUpdatePreferences({
+                        ...preferences,
+                        showPlayerNames: !preferences.showPlayerNames,
+                      });
+                    }
+                  )}
+
+                  {renderSwitch(
+                    'Balões de chat no mapa',
+                    'Mostrar falas locais acima dos personagens próximos',
+                    preferences.showChatBubbles,
+                    () => {
+                      playDigitalTone('click', preferences.soundEnabled);
+                      onUpdatePreferences({
+                        ...preferences,
+                        showChatBubbles: !preferences.showChatBubbles,
+                      });
+                    }
+                  )}
+
+                  {renderSwitch(
+                    'Indicadores fora da tela',
+                    'Setas de distância para jogadores no mesmo mapa',
+                    preferences.showOffscreenPointers,
+                    () => {
+                      playDigitalTone('click', preferences.soundEnabled);
+                      onUpdatePreferences({
+                        ...preferences,
+                        showOffscreenPointers:
+                          !preferences.showOffscreenPointers,
+                      });
+                    }
+                  )}
+
+                  <div className="rounded-xl border border-cyan-400/25 bg-[#041232] p-2.5">
+                    <p className="mb-2 font-bold text-white">
+                      Tamanho do minimapa
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(
+                        [
+                          { id: 'compacto', label: 'Compacto' },
+                          { id: 'padrao', label: 'Padrão' },
+                        ] as const
+                      ).map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => {
+                            playDigitalTone('click', preferences.soundEnabled);
+                            onUpdatePreferences({
+                              ...preferences,
+                              minimapSize: opt.id,
+                            });
+                          }}
+                          className={`min-h-[34px] rounded-lg border text-[11px] font-extrabold transition-colors ${
+                            preferences.minimapSize === opt.id
+                              ? 'border-cyan-300 bg-cyan-500/25 text-cyan-100'
+                              : 'border-cyan-400/25 bg-[#071f54] text-slate-300'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </section>
+
+                {/* Section 4: Commands & App Utilities */}
+                <section className="space-y-2">
+                  <h3 className="flex items-center gap-1.5 text-[10.5px] font-black uppercase tracking-wider text-cyan-300">
+                    <Terminal className="h-3.5 w-3.5" />
+                    <span>Comandos Rápidos e Sistema</span>
+                  </h3>
+
+                  <div className="space-y-1 rounded-xl border border-cyan-400/25 bg-[#041232] px-3 py-2.5 text-[10.5px] text-slate-200">
+                    <p>
+                      <span className="font-black text-amber-300">
+                        /invite Nome
+                      </span>{' '}
+                      — Convida um jogador online para sua Party (ou clique no
+                      jogador).
+                    </p>
+                    <p>
+                      <span className="font-black text-indigo-300">
+                        /ginvite Nome
+                      </span>{' '}
+                      — Líder e Sub-Líder podem convidar um jogador para a
+                      Guilda.
+                    </p>
+                    <p className="text-slate-300">
+                      Canais do chat: <strong>Global</strong> (todo servidor),{' '}
+                      <strong>Mapa</strong> (jogadores próximos),{' '}
+                      <strong>Guilda</strong> e <strong>Party</strong>.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={toggleFullscreen}
+                      className="flex min-h-[38px] items-center justify-center gap-1.5 rounded-xl border border-cyan-400/45 bg-[#072056] px-2.5 text-[11px] font-extrabold text-cyan-100 hover:bg-[#0b2f7a] active:scale-95"
                     >
-                      {mode === 'alta' ? 'Alta Fidelidade' : 'Econômica'}
+                      {isFullscreen ? (
+                        <Minimize className="h-3.5 w-3.5" />
+                      ) : (
+                        <Maximize className="h-3.5 w-3.5" />
+                      )}
+                      <span>{isFullscreen ? 'Sair Tela Cheia' : 'Tela Cheia'}</span>
                     </button>
-                  ))}
-                </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        playDigitalTone('confirm', true);
+                        onUpdatePreferences({ ...DEFAULT_APP_PREFERENCES });
+                      }}
+                      className="flex min-h-[38px] items-center justify-center gap-1.5 rounded-xl border border-amber-300/45 bg-amber-500/15 px-2.5 text-[11px] font-extrabold text-amber-200 hover:bg-amber-500/25 active:scale-95"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      <span>Restaurar Padrões</span>
+                    </button>
+                  </div>
+
+                  <PWAInstallButton
+                    variant="compact"
+                    soundEnabled={preferences.soundEnabled}
+                    showInstalledState
+                  />
+                </section>
               </div>
-
-              <PWAInstallButton
-                variant="compact"
-                soundEnabled={preferences.soundEnabled}
-                showInstalledState
-              />
-
-              {onOpenFeedback && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    playDigitalTone('click', preferences.soundEnabled);
-                    onClose();
-                    onOpenFeedback();
-                  }}
-                  className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-[#ffe259] to-[#e66f00] px-3.5 py-2 text-xs font-extrabold tracking-wide text-[#081226] shadow-[0_0_14px_rgba(255,174,0,0.4)] transition-transform active:scale-[0.98]"
-                >
-                  <Bug className="h-4 w-4 shrink-0" />
-                  <span>REPORTAR BUG / FEEDBACK ALFA</span>
-                </button>
-              )}
-            </div>
-          )}
+            );
+          })()}
 
           {activeWindow === 'messenger' && (
             <div className="space-y-2.5 rounded-xl border border-cyan-400/30 bg-[#041232] p-4 text-center">

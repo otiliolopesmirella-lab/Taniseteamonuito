@@ -292,8 +292,10 @@ export function GmPlayersTab({
                 {[
                   { label: '+100M Bits', bits: 100_000, dCoin: 0 },
                   { label: '+10 DL Din', bits: 0, dCoin: 10 },
-                  { label: '+50 DL Din', bits: 0, dCoin: 50 },
+                  { label: '+30 DL Din', bits: 0, dCoin: 30 },
+                  { label: '+60 DL Din', bits: 0, dCoin: 60 },
                   { label: '+100 DL Din', bits: 0, dCoin: 100 },
+                  { label: '+200 DL Din', bits: 0, dCoin: 200 },
                 ].map((preset) => (
                   <button
                     key={preset.label}

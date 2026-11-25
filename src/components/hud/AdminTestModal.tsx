@@ -150,6 +150,8 @@ interface AdminTestModalProps {
   onGrantAllDatas: (quantityEach: number) => void;
   onGrantAllEggs: (eggHatchLevel: number) => void;
   onGrantCurrency: (bitsDelta: number, dCoinDelta: number) => void;
+  gmInfiniteDCoin?: boolean;
+  onToggleInfiniteDCoin?: (enabled: boolean) => void;
   onClearInventory: () => void;
   onSwitchTamer?: (tamerId: TamerId) => void;
   onOpenSelectionFlow?: (screen: 'character-select' | 'digimon-select') => void;
@@ -263,6 +265,8 @@ function AdminTestModalInner({
   onGrantAllDatas,
   onGrantAllEggs,
   onGrantCurrency,
+  gmInfiniteDCoin = false,
+  onToggleInfiniteDCoin,
   onClearInventory,
   onSwitchTamer,
   onOpenSelectionFlow,
@@ -768,8 +772,14 @@ function AdminTestModalInner({
             <GmEconomyTab
               snapshot={serverSnapshot}
               loading={snapshotLoading}
+              gmDCoin={dCoin}
+              gmInfiniteDCoin={gmInfiniteDCoin}
+              onToggleGmInfiniteDCoin={onToggleInfiniteDCoin}
+              onGrantSelfDCoin={(amount) => onGrantCurrency(0, amount)}
+              onAdjustPlayerCurrency={handleAdjustPlayerCurrency}
               onApproveOrder={handleApproveOrder}
               onCancelOrder={handleCancelOrder}
+              onRefreshSnapshot={loadServerSnapshot}
             />
           )}
 
@@ -1683,6 +1693,26 @@ function AdminTestModalInner({
                     <Gem className="h-3.5 w-3.5 shrink-0" />
                     <span>+5.000 DL Din</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onToggleInfiniteDCoin
+                        ? onToggleInfiniteDCoin(!gmInfiniteDCoin)
+                        : onGrantCurrency(0, 999_999_999)
+                    }
+                    className={`col-span-2 flex min-h-[42px] items-center justify-center gap-1.5 rounded-xl border px-2 text-[11px] font-black transition active:scale-95 sm:col-span-5 ${
+                      gmInfiniteDCoin
+                        ? 'border-emerald-300 bg-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.45)]'
+                        : 'border-amber-300 bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 hover:brightness-110'
+                    }`}
+                  >
+                    <Gem className="h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      {gmInfiniteDCoin
+                        ? '∞ Modo DL Din Infinito ATIVO (999.999.999) · Clique para Desligar'
+                        : '∞ Ativar DL Din Infinito na Conta GM (999.999.999)'}
+                    </span>
+                  </button>
                 </div>
               </div>
 
@@ -1909,6 +1939,7 @@ export const AdminTestModal = memo(
     prev.serverExpRatePct === next.serverExpRatePct &&
     prev.bits === next.bits &&
     prev.dCoin === next.dCoin &&
+    prev.gmInfiniteDCoin === next.gmInfiniteDCoin &&
     prev.inventory === next.inventory &&
     prev.unlockedSlots === next.unlockedSlots &&
     prev.partyCount === next.partyCount &&

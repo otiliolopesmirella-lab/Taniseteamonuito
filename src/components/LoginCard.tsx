@@ -6,6 +6,7 @@ import {
   Eye,
   EyeOff,
   Loader2,
+  Play,
   UserPlus,
 } from 'lucide-react';
 import {
@@ -23,12 +24,14 @@ interface LoginCardProps {
   soundEnabled: boolean;
   onOpenModal: (section: ModalSection) => void;
   onLoginSuccess?: (user: AuthUserSummary) => void;
+  onQuickEnter?: () => void;
 }
 
 export function LoginCard({
   soundEnabled,
   onOpenModal,
   onLoginSuccess,
+  onQuickEnter,
 }: LoginCardProps) {
   const initialStored = getStoredRememberPreference();
 
@@ -305,6 +308,29 @@ export function LoginCard({
               <span className="truncate drop-shadow">Criar Conta</span>
             </button>
           </div>
+
+          {/* 7. Botão Temporário ENTRAR DIRETO (TESTE) */}
+          {onQuickEnter && (
+            <div className="absolute left-[14.2%] top-[81.4%] flex h-[6.6%] min-h-[42px] w-[71.6%] rounded-2xl border border-emerald-300/50 bg-[linear-gradient(180deg,rgba(4,40,34,0.96)_0%,rgba(2,20,22,0.98)_100%)] p-1 shadow-[0_0_18px_rgba(16,185,129,0.32)]">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  playDigitalTone('confirm', soundEnabled);
+                  onQuickEnter();
+                }}
+                aria-label="Entrar direto no jogo em modo de teste"
+                className="flex h-full w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-emerald-200/80 bg-[linear-gradient(180deg,#10b981_0%,#047857_58%,#064e3b_100%)] px-3 text-xs font-extrabold tracking-wide text-white shadow-[0_0_12px_rgba(16,185,129,0.38)] transition-all duration-150 hover:border-amber-300/90 hover:brightness-110 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:cursor-wait disabled:opacity-75 sm:text-sm"
+              >
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-emerald-100/60 bg-emerald-300/20 text-emerald-50 shadow-sm">
+                  <Play className="h-3 w-3 fill-current" aria-hidden="true" />
+                </span>
+                <span className="truncate drop-shadow">
+                  Entrar Direto (Teste)
+                </span>
+              </button>
+            </div>
+          )}
 
           {/* Inline floating status / validation feedback banner (only appears when needed) */}
           {statusFeedback && (

@@ -1,4 +1,8 @@
 import {
+  creditApprovedMercadoPagoPayment,
+  isFirestoreAutoCreditConfigured,
+} from '../_lib/mpFirestoreCredit.js';
+import {
   applyCorsHeaders,
   getQueryParam,
   isValidOrderId,
@@ -7,27 +11,10 @@ import {
   sendJson,
   SERVER_DWCOIN_PACKS,
   verifyFirebaseRequest,
+  type MpPaymentRecord,
   type VercelApiRequest,
   type VercelApiResponse,
 } from '../_lib/mpShared.js';
-
-interface MpPaymentRecord {
-  id?: number | string;
-  status?: string;
-  status_detail?: string;
-  external_reference?: string;
-  transaction_amount?: number;
-  date_approved?: string | null;
-  date_created?: string | null;
-  payment_method_id?: string;
-  metadata?: {
-    order_id?: string;
-    owner_uid?: string;
-    pack_id?: string;
-    dw_coin_amount?: number;
-    price_cents?: number;
-  };
-}
 
 interface MpCheckResult {
   found: boolean;
@@ -39,13 +26,20 @@ interface MpCheckResult {
   amountPaid: number | null;
   paidAt: string | null;
   paymentMethodId: string | null;
+  dwCoinAmount: number | null;
+  credited: boolean;
+  alreadyCredited: boolean;
+  nextBalance: number | null;
+  autoCreditConfigured: boolean;
+  creditErrorCode?: string;
 }
 
 function evaluatePaymentRecord(
   payment: MpPaymentRecord | null,
   expectedOrderId: string,
   requesterUid: string,
-  requesterIsGm: boolean
+  requesterIsGm: boolean,
+  autoCreditConfigured: boolean
 ): MpCheckResult {
   if (!payment || !payment.id) {
     return {
@@ -58,6 +52,11 @@ function evaluatePaymentRecord(
       amountPaid: null,
       paidAt: null,
       paymentMethodId: null,
+      dwCoinAmount: null,
+      credited: false,
+      alreadyCredited: false,
+      nextBalance: null,
+      autoCreditConfigured,
     };
   }
 
@@ -72,6 +71,11 @@ function evaluatePaymentRecord(
       amountPaid: null,
       paidAt: null,
       paymentMethodId: null,
+      dwCoinAmount: null,
+      credited: false,
+      alreadyCredited: false,
+      nextBalance: null,
+      autoCreditConfigured,
     };
   }
 
@@ -87,6 +91,11 @@ function evaluatePaymentRecord(
       amountPaid: null,
       paidAt: null,
       paymentMethodId: null,
+      dwCoinAmount: null,
+      credited: false,
+      alreadyCredited: false,
+      nextBalance: null,
+      autoCreditConfigured,
     };
   }
 
@@ -121,6 +130,11 @@ function evaluatePaymentRecord(
       typeof payment.payment_method_id === 'string'
         ? payment.payment_method_id
         : null,
+    dwCoinAmount: officialPack?.dwCoinAmount ?? null,
+    credited: false,
+    alreadyCredited: false,
+    nextBalance: null,
+    autoCreditConfigured,
   };
 }
 
@@ -157,6 +171,45 @@ async function fetchPaymentByOrderOrId(
   // Prioritize an approved payment if multiple attempts exist for the same order
   const approved = list.find((p) => p.status === 'approved');
   return approved ?? list[0];
+}
+
+async function evaluateAndAutoCreditOrder(params: {
+  accessToken: string;
+  orderId: string;
+  paymentId: string | null;
+  requesterUid: string;
+  requesterIsGm: boolean;
+}): Promise<MpCheckResult> {
+  const autoCreditConfigured = isFirestoreAutoCreditConfigured();
+  const payment = await fetchPaymentByOrderOrId(
+    params.accessToken,
+    params.orderId,
+    params.paymentId
+  );
+  const evaluated = evaluatePaymentRecord(
+    payment,
+    params.orderId,
+    params.requesterUid,
+    params.requesterIsGm,
+    autoCreditConfigured
+  );
+
+  if (evaluated.approved && payment) {
+    try {
+      const creditRes = await creditApprovedMercadoPagoPayment(payment);
+      evaluated.autoCreditConfigured = creditRes.autoCreditConfigured;
+      evaluated.credited = creditRes.credited;
+      evaluated.alreadyCredited = creditRes.alreadyCredited;
+      evaluated.nextBalance = creditRes.nextBalance;
+      if (creditRes.errorCode) {
+        evaluated.creditErrorCode = creditRes.errorCode;
+      }
+    } catch {
+      evaluated.creditErrorCode = 'AUTO_CREDIT_FAILED';
+    }
+  }
+
+  return evaluated;
 }
 
 export default async function handler(
@@ -197,6 +250,8 @@ export default async function handler(
     return;
   }
 
+  const autoCreditConfigured = isFirestoreAutoCreditConfigured();
+
   // GM Batch Check: POST { orderIds: string[] }
   if (req.method === 'POST') {
     if (!user.isGm) {
@@ -224,13 +279,13 @@ export default async function handler(
     await Promise.all(
       validIds.map(async (orderId) => {
         try {
-          const payment = await fetchPaymentByOrderOrId(accessToken, orderId, null);
-          results[orderId] = evaluatePaymentRecord(
-            payment,
+          results[orderId] = await evaluateAndAutoCreditOrder({
+            accessToken,
             orderId,
-            user.uid,
-            true
-          );
+            paymentId: null,
+            requesterUid: user.uid,
+            requesterIsGm: true,
+          });
         } catch {
           results[orderId] = {
             found: false,
@@ -242,12 +297,17 @@ export default async function handler(
             amountPaid: null,
             paidAt: null,
             paymentMethodId: null,
+            dwCoinAmount: null,
+            credited: false,
+            alreadyCredited: false,
+            nextBalance: null,
+            autoCreditConfigured,
           };
         }
       })
     );
 
-    sendJson(res, 200, { ok: true, results });
+    sendJson(res, 200, { ok: true, autoCreditConfigured, results });
     return;
   }
 
@@ -261,17 +321,13 @@ export default async function handler(
   }
 
   try {
-    const payment = await fetchPaymentByOrderOrId(
+    const evaluated = await evaluateAndAutoCreditOrder({
       accessToken,
       orderId,
-      paymentId
-    );
-    const evaluated = evaluatePaymentRecord(
-      payment,
-      orderId,
-      user.uid,
-      user.isGm
-    );
+      paymentId,
+      requesterUid: user.uid,
+      requesterIsGm: user.isGm,
+    });
     sendJson(res, 200, { ok: true, ...evaluated });
   } catch {
     sendJson(res, 502, {

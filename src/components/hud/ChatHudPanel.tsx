@@ -1,8 +1,12 @@
-import { memo, useEffect, useRef, useState, type FormEvent } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   CornerDownLeft,
+  Globe,
+  MapPin,
   MessageSquare,
-  Settings,
+  Minus,
+  Shield,
+  Users,
   X,
 } from 'lucide-react';
 import type { ChatChannel, ChatMessage } from '../../types/hud';
@@ -15,12 +19,47 @@ interface ChatHudPanelProps {
   onChatFocusChange: (focused: boolean) => void;
 }
 
-const CHANNELS: ReadonlyArray<{ id: ChatChannel; label: string }> = [
-  { id: 'all', label: 'Tudo' },
-  { id: 'party', label: 'Party' },
-  { id: 'guild', label: 'Guild' },
-  { id: 'whisper', label: 'Sussurro' },
-  { id: 'system', label: 'Sistema' },
+const CHANNELS: ReadonlyArray<{
+  id: ChatChannel;
+  label: string;
+  activeClass: string;
+  dotClass: string;
+}> = [
+  {
+    id: 'global',
+    label: 'Global',
+    activeClass:
+      'border-[#7eeeff] bg-gradient-to-b from-[#25a8ff] to-[#0a5be0] text-white shadow-[0_-2px_10px_rgba(56,232,255,0.45)]',
+    dotClass: 'bg-cyan-300',
+  },
+  {
+    id: 'map',
+    label: 'Mapa',
+    activeClass:
+      'border-emerald-300 bg-gradient-to-b from-emerald-500 to-emerald-700 text-white shadow-[0_-2px_10px_rgba(16,185,129,0.45)]',
+    dotClass: 'bg-emerald-300',
+  },
+  {
+    id: 'guild',
+    label: 'Guilda',
+    activeClass:
+      'border-indigo-300 bg-gradient-to-b from-indigo-500 to-indigo-700 text-white shadow-[0_-2px_10px_rgba(129,140,248,0.45)]',
+    dotClass: 'bg-indigo-300',
+  },
+  {
+    id: 'party',
+    label: 'Party',
+    activeClass:
+      'border-amber-300 bg-gradient-to-b from-amber-500 to-orange-600 text-slate-950 shadow-[0_-2px_10px_rgba(251,191,36,0.45)]',
+    dotClass: 'bg-amber-300',
+  },
+  {
+    id: 'system',
+    label: 'Sistema',
+    activeClass:
+      'border-sky-300 bg-gradient-to-b from-sky-600 to-slate-800 text-white shadow-[0_-2px_10px_rgba(56,189,248,0.35)]',
+    dotClass: 'bg-sky-300',
+  },
 ] as const;
 
 export const ChatHudPanel = memo(function ChatHudPanel({
@@ -33,14 +72,66 @@ export const ChatHudPanel = memo(function ChatHudPanel({
   const [draft, setDraft] = useState('');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [desktopMinimized, setDesktopMinimized] = useState(false);
+  const [unreadByChannel, setUnreadByChannel] = useState<
+    Record<ChatChannel, number>
+  >({
+    global: 0,
+    map: 0,
+    guild: 0,
+    party: 0,
+    system: 0,
+  });
+
+  const seenIdsRef = useRef<Set<string>>(new Set());
+  const initializedRef = useRef(false);
   const mobileListRef = useRef<HTMLDivElement | null>(null);
   const desktopListRef = useRef<HTMLDivElement | null>(null);
   const mobileInputRef = useRef<HTMLInputElement | null>(null);
   const desktopInputRef = useRef<HTMLInputElement | null>(null);
 
-  const visibleMessages = messages.filter((m) =>
-    activeChannel === 'all' ? m.channel !== 'system' : m.channel === activeChannel
+  // Strict per-channel isolation: each tab shows ONLY its own channel messages
+  const visibleMessages = useMemo(
+    () => messages.filter((m) => m.channel === activeChannel),
+    [messages, activeChannel]
   );
+
+  // Track unread badge counts for inactive channels (or while mobile chat is closed)
+  useEffect(() => {
+    if (!initializedRef.current) {
+      for (const m of messages) seenIdsRef.current.add(m.id);
+      initializedRef.current = true;
+      return;
+    }
+
+    const deltas: Partial<Record<ChatChannel, number>> = {};
+    let hasNew = false;
+
+    for (const m of messages) {
+      if (seenIdsRef.current.has(m.id)) continue;
+      seenIdsRef.current.add(m.id);
+      if (m.channel !== activeChannel) {
+        deltas[m.channel] = (deltas[m.channel] ?? 0) + 1;
+        hasNew = true;
+      }
+    }
+
+    if (hasNew) {
+      setUnreadByChannel((prev) => ({
+        global: Math.min(99, prev.global + (deltas.global ?? 0)),
+        map: Math.min(99, prev.map + (deltas.map ?? 0)),
+        guild: Math.min(99, prev.guild + (deltas.guild ?? 0)),
+        party: Math.min(99, prev.party + (deltas.party ?? 0)),
+        system: Math.min(99, prev.system + (deltas.system ?? 0)),
+      }));
+    }
+  }, [messages, activeChannel]);
+
+  // Clear unread indicator when opening a channel
+  useEffect(() => {
+    setUnreadByChannel((prev) =>
+      prev[activeChannel] === 0 ? prev : { ...prev, [activeChannel]: 0 }
+    );
+  }, [activeChannel]);
 
   useEffect(() => {
     if (mobileListRef.current) {
@@ -50,6 +141,12 @@ export const ChatHudPanel = memo(function ChatHudPanel({
       desktopListRef.current.scrollTop = desktopListRef.current.scrollHeight;
     }
   }, [visibleMessages.length, activeChannel, mobileOpen, desktopMinimized]);
+
+  const totalUnread =
+    unreadByChannel.global +
+    unreadByChannel.map +
+    unreadByChannel.guild +
+    unreadByChannel.party;
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -64,11 +161,59 @@ export const ChatHudPanel = memo(function ChatHudPanel({
     if (msg.tone === 'loot') return 'text-emerald-300';
     if (msg.tone === 'combat') return 'text-orange-200';
     if (msg.tone === 'warning') return 'text-rose-300';
-    if (msg.channel === 'system') return 'text-cyan-300';
-    if (msg.channel === 'party') return 'text-sky-300';
-    if (msg.channel === 'guild') return 'text-emerald-300';
-    if (msg.channel === 'whisper') return 'text-fuchsia-300';
+    if (msg.channel === 'system') return 'text-cyan-200';
+    if (msg.channel === 'party') return 'text-amber-200';
+    if (msg.channel === 'guild') return 'text-indigo-200';
+    if (msg.channel === 'map') return 'text-emerald-100';
     return 'text-white';
+  }
+
+  function getPlaceholder(): string {
+    if (activeChannel === 'global') {
+      return 'Falar no Global (todos os mapas) ou /invite Nome...';
+    }
+    if (activeChannel === 'map') {
+      return 'Falar só com quem está perto neste mapa...';
+    }
+    if (activeChannel === 'guild') {
+      return 'Mensagem exclusiva para sua Guilda...';
+    }
+    if (activeChannel === 'party') {
+      return 'Mensagem exclusiva para sua Party...';
+    }
+    return 'Use Global, Mapa, Guilda ou Party para conversar...';
+  }
+
+  function getEmptyStateText(): string {
+    if (activeChannel === 'global') {
+      return 'Chat Global — todos os jogadores online em qualquer mapa podem conversar aqui. Dica: use /invite Nome para convidar para Party.';
+    }
+    if (activeChannel === 'map') {
+      return 'Chat do Mapa — apenas jogadores próximos a você neste mesmo mapa recebem suas mensagens.';
+    }
+    if (activeChannel === 'guild') {
+      return 'Chat exclusivo da Guilda — somente membros da sua Guilda leem e enviam mensagens aqui.';
+    }
+    if (activeChannel === 'party') {
+      return 'Chat exclusivo da Party — somente membros da sua Party conversam aqui. Clique em um player ou digite /invite Nome para convidar.';
+    }
+    return 'Nenhum aviso do sistema registrado ainda.';
+  }
+
+  function renderChannelBadgeIcon() {
+    if (activeChannel === 'global') {
+      return <Globe className="h-3.5 w-3.5 shrink-0 text-cyan-300" />;
+    }
+    if (activeChannel === 'map') {
+      return <MapPin className="h-3.5 w-3.5 shrink-0 text-emerald-300" />;
+    }
+    if (activeChannel === 'guild') {
+      return <Shield className="h-3.5 w-3.5 shrink-0 text-indigo-300" />;
+    }
+    if (activeChannel === 'party') {
+      return <Users className="h-3.5 w-3.5 shrink-0 text-amber-300" />;
+    }
+    return <MessageSquare className="h-3.5 w-3.5 shrink-0 text-sky-300" />;
   }
 
   function renderChatBox(isMobile: boolean) {
@@ -81,23 +226,31 @@ export const ChatHudPanel = memo(function ChatHudPanel({
         onTouchStart={(e) => e.stopPropagation()}
         className="pointer-events-auto flex w-full flex-col"
       >
-        {/* Top 5 Glossy Pill Tabs + Close/Minimize Button */}
-        <div className="flex items-end justify-between px-1 select-none">
+        {/* Channel Tabs Row */}
+        <div className="flex items-end justify-between px-0.5 select-none">
           <div className="flex min-w-0 items-end gap-0.5 overflow-x-auto">
             {CHANNELS.map((tab) => {
               const active = activeChannel === tab.id;
+              const unread = unreadByChannel[tab.id];
               return (
                 <button
                   key={tab.id}
                   type="button"
                   onClick={() => onChangeChannel(tab.id)}
-                  className={`shrink-0 rounded-t-xl border-x border-t px-2 py-1 text-[10px] font-extrabold transition-all sm:px-2.5 ${
+                  className={`relative flex shrink-0 items-center gap-1 rounded-t-xl border-x border-t px-2 py-1 text-[10px] font-extrabold transition-all sm:px-2.5 ${
                     active
-                      ? 'border-[#7eeeff] bg-gradient-to-b from-[#25a8ff] to-[#0a5be0] text-white shadow-[0_-2px_10px_rgba(56,232,255,0.45)]'
-                      : 'border-cyan-400/55 bg-gradient-to-b from-[#0b44a8] to-[#052161] text-cyan-100/90 hover:text-white'
+                      ? tab.activeClass
+                      : 'border-cyan-400/50 bg-gradient-to-b from-[#0b44a8] to-[#052161] text-cyan-100/90 hover:text-white'
                   }`}
                 >
-                  {tab.label}
+                  <span>{tab.label}</span>
+                  {!active && unread > 0 && (
+                    <span
+                      className={`inline-flex h-3.5 min-w-[14px] items-center justify-center rounded-full px-1 text-[8.5px] font-black text-slate-950 ${tab.dotClass}`}
+                    >
+                      {unread > 9 ? '9+' : unread}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -111,7 +264,7 @@ export const ChatHudPanel = memo(function ChatHudPanel({
                 onChatFocusChange(false);
                 setMobileOpen(false);
               } else {
-                setDesktopMinimized((v) => !v);
+                setDesktopMinimized(true);
               }
             }}
             title={isMobile ? 'Fechar chat' : 'Minimizar chat'}
@@ -121,34 +274,29 @@ export const ChatHudPanel = memo(function ChatHudPanel({
             {isMobile ? (
               <X className="h-4 w-4" />
             ) : (
-              <Settings className="h-3.5 w-3.5" />
+              <Minus className="h-3.5 w-3.5" />
             )}
           </button>
         </div>
 
         {/* Main Chat Container */}
         <div className="dmo-frame overflow-hidden rounded-xl rounded-tl-none shadow-[0_8px_28px_rgba(2,10,32,0.88)]">
-          {/* Checkered Translucent Message Box */}
+          {/* Message Feed */}
           <div
             ref={activeListRef}
-            className="dmo-chat-bg h-[112px] space-y-1 overflow-y-auto px-2.5 py-2 text-[11.5px] leading-snug sm:h-[120px] sm:text-[11px]"
+            className="dmo-chat-bg h-[126px] space-y-1 overflow-y-auto px-2.5 py-2 text-[11.5px] leading-snug sm:h-[136px] sm:text-[11px]"
           >
             {visibleMessages.length === 0 ? (
-              <p className="py-2 text-[10.5px] italic text-cyan-200/70">
-                {activeChannel === 'guild'
-                  ? 'Chat da Guilda — participe ou crie uma Guilda no Menu para conversar aqui.'
-                  : activeChannel === 'party'
-                    ? 'Chat da Party — clique em um Tamer no mapa ou digite /invite+Nome para montar uma Party de até 4 jogadores!'
-                    : activeChannel === 'whisper'
-                      ? 'Canal Sussurro — use a aba Amigos ou "Tudo" para conversar com os jogadores.'
-                      : activeChannel === 'system'
-                        ? 'Nenhum aviso importante registrado.'
-                        : 'Nenhuma mensagem no chat ainda. Use /invite+Nome para convidar para Party!'}
+              <p className="py-2 text-[10.5px] leading-relaxed text-cyan-200/75">
+                {getEmptyStateText()}
               </p>
             ) : (
               visibleMessages.map((msg) => (
-                <div key={msg.id} className={`break-words ${getMessageColor(msg)}`}>
-                  <span className="mr-1 text-[9.5px] font-bold text-cyan-300/75">
+                <div
+                  key={msg.id}
+                  className={`break-words ${getMessageColor(msg)}`}
+                >
+                  <span className="mr-1 text-[9.5px] font-bold text-cyan-300/70">
                     [{msg.timestamp}]
                   </span>
                   {msg.mapTag ? (
@@ -164,7 +312,15 @@ export const ChatHudPanel = memo(function ChatHudPanel({
                   {msg.sender ? (
                     <span
                       className={`mr-1 font-extrabold ${
-                        msg.isGmSender ? 'text-amber-300' : 'text-amber-200'
+                        msg.isGmSender
+                          ? 'text-amber-300'
+                          : msg.channel === 'guild'
+                            ? 'text-indigo-300'
+                            : msg.channel === 'party'
+                              ? 'text-amber-300'
+                              : msg.channel === 'map'
+                                ? 'text-emerald-300'
+                                : 'text-cyan-200'
                       }`}
                     >
                       {msg.sender}:
@@ -176,29 +332,18 @@ export const ChatHudPanel = memo(function ChatHudPanel({
             )}
           </div>
 
-          {/* Bottom Input Row — Mobile-optimized 16px input font (prevents iOS zoom) + touch-safe */}
+          {/* Input Row */}
           <form
             onSubmit={handleSubmit}
             onPointerDown={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
-            className="flex items-center gap-1.5 border-t border-cyan-400/50 bg-gradient-to-b from-[#072a78] to-[#03133d] px-2 py-1.5"
+            className="flex items-center gap-1.5 border-t border-cyan-400/45 bg-gradient-to-b from-[#072a78] to-[#03133d] px-2 py-1.5"
           >
-            {/* Yellow Smiley Circle */}
             <span
               aria-hidden="true"
-              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-amber-200 bg-gradient-to-b from-[#fff176] to-[#f59e0b] shadow select-none"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-cyan-400/40 bg-[#04143a] select-none"
             >
-              <svg viewBox="0 0 24 24" className="h-4 w-4">
-                <circle cx="9" cy="10" r="1.6" fill="#291400" />
-                <circle cx="15" cy="10" r="1.6" fill="#291400" />
-                <path
-                  d="M8 14.2c1.2 1.8 6.8 1.8 8 0"
-                  fill="none"
-                  stroke="#291400"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-              </svg>
+              {renderChannelBadgeIcon()}
             </span>
 
             <input
@@ -221,8 +366,8 @@ export const ChatHudPanel = memo(function ChatHudPanel({
                   activeInputRef.current?.blur();
                 }
               }}
-              placeholder="Digite sua mensagem..."
-              className="dmo-well h-9 min-w-0 flex-1 select-text rounded-md px-2.5 text-[16px] font-medium text-white placeholder:text-sky-200/65 focus:border-cyan-300 focus:outline-none md:h-7 md:text-[11px]"
+              placeholder={getPlaceholder()}
+              className="dmo-well h-9 min-w-0 flex-1 select-text rounded-md px-2.5 text-[16px] font-medium text-white placeholder:text-sky-200/60 focus:border-cyan-300 focus:outline-none md:h-7 md:text-[11px]"
             />
 
             <button
@@ -242,11 +387,11 @@ export const ChatHudPanel = memo(function ChatHudPanel({
 
   return (
     <>
-      {/* Mobile Chat: anchored slightly above the virtual joystick in the bottom-left corner */}
+      {/* Mobile Chat Button / Drawer */}
       <div
         onPointerDown={(e) => e.stopPropagation()}
         onTouchStart={(e) => e.stopPropagation()}
-        className="pointer-events-auto relative z-40 h-8 w-24 md:hidden"
+        className="pointer-events-auto relative z-40 h-8 w-28 md:hidden"
       >
         {!mobileOpen ? (
           <button
@@ -260,16 +405,21 @@ export const ChatHudPanel = memo(function ChatHudPanel({
             className="dmo-frame flex h-8 items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-1 text-[11px] font-extrabold text-cyan-100 shadow-[0_0_14px_rgba(56,232,255,0.3)] active:scale-95"
           >
             <MessageSquare className="h-3.5 w-3.5 text-cyan-300" />
-            <span>Chat ({visibleMessages.length})</span>
+            <span>Chat</span>
+            {totalUnread > 0 && (
+              <span className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-400 px-1 text-[9px] font-black text-slate-950">
+                {totalUnread > 9 ? '9+' : totalUnread}
+              </span>
+            )}
           </button>
         ) : (
-          <div className="absolute bottom-0 left-0 z-50 w-[min(324px,calc(100vw-1rem))]">
+          <div className="absolute bottom-0 left-0 z-50 w-[min(340px,calc(100vw-1rem))]">
             {renderChatBox(true)}
           </div>
         )}
       </div>
 
-      {/* Desktop Chat: bottom-left corner */}
+      {/* Desktop Chat Panel */}
       <div
         onPointerDown={(e) => e.stopPropagation()}
         className="pointer-events-auto hidden md:block"
@@ -278,13 +428,18 @@ export const ChatHudPanel = memo(function ChatHudPanel({
           <button
             type="button"
             onClick={() => setDesktopMinimized(false)}
-            className="dmo-frame flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-extrabold text-cyan-100"
+            className="dmo-frame flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-extrabold text-cyan-100 hover:brightness-110"
           >
             <MessageSquare className="h-3.5 w-3.5 text-cyan-300" />
             <span>Abrir Chat</span>
+            {totalUnread > 0 && (
+              <span className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-amber-400 px-1 text-[9px] font-black text-slate-950">
+                {totalUnread > 9 ? '9+' : totalUnread}
+              </span>
+            )}
           </button>
         ) : (
-          <div className="w-[336px] lg:w-[366px]">{renderChatBox(false)}</div>
+          <div className="w-[356px] lg:w-[392px]">{renderChatBox(false)}</div>
         )}
       </div>
     </>

@@ -3,7 +3,6 @@ import {
   deleteDoc,
   doc,
   getDoc,
-  getDocFromServer,
   getDocs,
   limit,
   orderBy,
@@ -759,49 +758,63 @@ export async function adjustPlayerCurrencyForGm(input: {
   }
 
   const playerRef = doc(db, 'players', input.targetUid);
-  const snap = await getDocFromServer(playerRef);
-  if (!snap.exists()) {
-    throw new Error('Conta do jogador não encontrada no Firestore.');
-  }
-
-  const data = snap.data() ?? {};
-  const username = String(data.username ?? 'Tamer');
-  const tam =
-    data.tamerSelection && typeof data.tamerSelection === 'object'
-      ? (data.tamerSelection as Record<string, unknown>)
-      : null;
-  const tamerName = String(tam?.tamerName ?? username);
-
-  const built = buildValidHudStatePatch(
-    data.hudState,
-    input.bitsDelta,
-    input.dCoinDelta
-  );
+  let username = 'Tamer';
+  let tamerName = 'Tamer';
+  let prevDCoin = 0;
+  let nextBits = 0;
+  let nextDCoin = 0;
 
   try {
-    await updateDoc(playerRef, {
-      hudState: built.nextHudState,
-      updatedAt: serverTimestamp(),
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(playerRef);
+      if (!snap.exists()) {
+        throw new Error('Conta do jogador não encontrada no Firestore.');
+      }
+
+      const data = snap.data() ?? {};
+      username = String(data.username ?? 'Tamer');
+      const tam =
+        data.tamerSelection && typeof data.tamerSelection === 'object'
+          ? (data.tamerSelection as Record<string, unknown>)
+          : null;
+      tamerName = String(tam?.tamerName ?? username);
+
+      const built = buildValidHudStatePatch(
+        data.hudState,
+        input.bitsDelta,
+        input.dCoinDelta
+      );
+      prevDCoin = built.prevDCoin;
+      nextBits = built.nextBits;
+      nextDCoin = built.nextDCoin;
+
+      tx.update(playerRef, {
+        hudState: built.nextHudState,
+        updatedAt: serverTimestamp(),
+      });
     });
   } catch (error) {
+    if (error instanceof Error && error.message.includes('não encontrada')) {
+      throw error;
+    }
     handleFirestoreError(error, OperationType.UPDATE, `players/${input.targetUid}`);
   }
 
   if (input.dCoinDelta !== 0) {
-    const actualDelta = built.nextDCoin - built.prevDCoin;
+    const actualDelta = nextDCoin - prevDCoin;
     if (actualDelta !== 0) {
       await recordDwCoinAdminTransaction({
         targetUid: input.targetUid,
         username,
         tamerName,
         type: actualDelta > 0 ? 'gm_grant' : 'gm_deduct',
-        dwCoinAmount: Math.abs(actualDelta),
+        dwCoinAmount: Math.min(100_000_000, Math.abs(actualDelta)),
         itemKey: actualDelta > 0 ? 'gm_grant' : 'gm_deduct',
         itemName:
           input.reason?.trim().slice(0, 64) ||
           (actualDelta > 0 ? 'Crédito Manual GM' : 'Remoção Manual GM'),
         category: 'gm',
-        balanceAfter: built.nextDCoin,
+        balanceAfter: nextDCoin,
       });
     }
   }
@@ -809,12 +822,12 @@ export async function adjustPlayerCurrencyForGm(input: {
   const summaryParts: string[] = [];
   if (input.bitsDelta !== 0) {
     summaryParts.push(
-      `Bits ${input.bitsDelta > 0 ? '+' : ''}${input.bitsDelta} (saldo ${built.nextBits})`
+      `Bits ${input.bitsDelta > 0 ? '+' : ''}${input.bitsDelta} (saldo ${nextBits})`
     );
   }
   if (input.dCoinDelta !== 0) {
     summaryParts.push(
-      `DL Din ${input.dCoinDelta > 0 ? '+' : ''}${input.dCoinDelta} (saldo ${built.nextDCoin})`
+      `DL Din ${input.dCoinDelta > 0 ? '+' : ''}${input.dCoinDelta} (saldo ${nextDCoin})`
     );
   }
   if (input.reason?.trim()) {
@@ -830,8 +843,8 @@ export async function adjustPlayerCurrencyForGm(input: {
   });
 
   return {
-    nextBits: built.nextBits,
-    nextDCoin: built.nextDCoin,
+    nextBits,
+    nextDCoin,
   };
 }
 
@@ -886,14 +899,17 @@ export async function approveDwCoinOrderForGm(input: {
   let dwCoinAmount = 0;
   let packId = '';
   let priceBrlLabel = '';
+  let username = 'Tamer';
+  let tamerName = 'Tamer';
+  let nextDCoin = 0;
 
   try {
     await runTransaction(db, async (tx) => {
-      const snap = await tx.get(orderRef);
-      if (!snap.exists()) {
+      const orderSnap = await tx.get(orderRef);
+      if (!orderSnap.exists()) {
         throw new Error('Pedido não encontrado.');
       }
-      const d = snap.data() ?? {};
+      const d = orderSnap.data() ?? {};
       if (d.status !== 'pending') {
         throw new Error('Este pedido não está mais pendente.');
       }
@@ -901,8 +917,30 @@ export async function approveDwCoinOrderForGm(input: {
       dwCoinAmount = typeof d.dwCoinAmount === 'number' ? d.dwCoinAmount : 0;
       packId = String(d.packId ?? '');
       priceBrlLabel = String(d.priceBrlLabel ?? '');
+
+      const playerRef = doc(db, 'players', ownerUid);
+      const playerSnap = await tx.get(playerRef);
+      if (!playerSnap.exists()) {
+        throw new Error('A conta do jogador não foi encontrada no Firestore.');
+      }
+
+      const playerData = playerSnap.data() ?? {};
+      username = String(playerData.username ?? 'Tamer');
+      const tam =
+        playerData.tamerSelection && typeof playerData.tamerSelection === 'object'
+          ? (playerData.tamerSelection as Record<string, unknown>)
+          : null;
+      tamerName = String(tam?.tamerName ?? username);
+
+      const built = buildValidHudStatePatch(playerData.hudState, 0, dwCoinAmount);
+      nextDCoin = built.nextDCoin;
+
       tx.update(orderRef, {
         status: 'approved',
+        updatedAt: serverTimestamp(),
+      });
+      tx.update(playerRef, {
+        hudState: built.nextHudState,
         updatedAt: serverTimestamp(),
       });
     });
@@ -910,34 +948,12 @@ export async function approveDwCoinOrderForGm(input: {
     if (
       error instanceof Error &&
       (error.message.includes('não encontrado') ||
+        error.message.includes('não encontrada') ||
         error.message.includes('não está mais pendente'))
     ) {
       throw error;
     }
     handleFirestoreError(error, OperationType.UPDATE, orderPath);
-  }
-
-  const playerRef = doc(db, 'players', ownerUid);
-  const playerSnap = await getDocFromServer(playerRef);
-  if (!playerSnap.exists()) {
-    throw new Error('Pedido aprovado, mas a conta do jogador não foi encontrada.');
-  }
-  const playerData = playerSnap.data() ?? {};
-  const username = String(playerData.username ?? 'Tamer');
-  const tam =
-    playerData.tamerSelection && typeof playerData.tamerSelection === 'object'
-      ? (playerData.tamerSelection as Record<string, unknown>)
-      : null;
-  const tamerName = String(tam?.tamerName ?? username);
-
-  const built = buildValidHudStatePatch(playerData.hudState, 0, dwCoinAmount);
-  try {
-    await updateDoc(playerRef, {
-      hudState: built.nextHudState,
-      updatedAt: serverTimestamp(),
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, `players/${ownerUid}`);
   }
 
   await recordDwCoinAdminTransaction({
@@ -949,7 +965,7 @@ export async function approveDwCoinOrderForGm(input: {
     itemKey: packId || 'recharge',
     itemName: `Recarga ${dwCoinAmount} DL Din (${priceBrlLabel || packId})`,
     category: 'recarga',
-    balanceAfter: built.nextDCoin,
+    balanceAfter: nextDCoin,
   });
 
   await logGmAction({
@@ -962,7 +978,7 @@ export async function approveDwCoinOrderForGm(input: {
 
   return {
     dwCoinCredited: dwCoinAmount,
-    nextBalance: built.nextDCoin,
+    nextBalance: nextDCoin,
   };
 }
 

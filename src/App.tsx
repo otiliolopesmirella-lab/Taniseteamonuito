@@ -4,7 +4,6 @@
  */
 
 import { useEffect, useState } from 'react';
-import { AlphaFeedbackModal } from './components/AlphaFeedbackModal';
 import { CharacterSelectScreen } from './components/CharacterSelectScreen';
 import { DigimonSelectScreen } from './components/DigimonSelectScreen';
 import { LoginCard } from './components/LoginCard';
@@ -20,13 +19,16 @@ import {
 } from './services/authService';
 import { flushPendingCloudSaves } from './services/cloudSaveService';
 import { isCurrentAuthUserBootstrappedGm } from './services/gmRoleService';
-import type {
-  AppPreferences,
-  AuthUserSummary,
-  ModalSection,
+import {
+  loadAppPreferences,
+  saveAppPreferences,
+  type AppPreferences,
+  type AuthUserSummary,
+  type ModalSection,
 } from './types/auth';
 import type { SavedCharacterSelection, TamerId } from './types/character';
 import type { SavedStarterDigimon, StarterDigimonId } from './types/digimon';
+import { getTamerSprites } from './sprites/tamerSprites';
 import { selectionThemePlayer } from './utils/soundFx';
 
 type AppScreen = 'login' | 'character-select' | 'digimon-select' | 'world';
@@ -40,13 +42,13 @@ export default function App() {
   const [selectedDigimon, setSelectedDigimon] =
     useState<SavedStarterDigimon | null>(null);
   const [activeModal, setActiveModal] = useState<ModalSection | null>(null);
-  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
-  const [feedbackContext, setFeedbackContext] = useState<string>('login');
-  const [preferences, setPreferences] = useState<AppPreferences>({
-    soundEnabled: true,
-    animationsEnabled: true,
-    graphicsQuality: 'alta',
-  });
+  const [preferences, setPreferences] = useState<AppPreferences>(() =>
+    loadAppPreferences()
+  );
+
+  useEffect(() => {
+    saveAppPreferences(preferences);
+  }, [preferences]);
 
   const showMotion =
     preferences.animationsEnabled && preferences.graphicsQuality === 'alta';
@@ -74,17 +76,23 @@ export default function App() {
 
   // Keep "Vem Comigo" playing continuously across Tamer Select -> Starter Digimon Select,
   // stopping smoothly only once the player finishes selection and spawns in DATS (or returns to login).
+  const selectionMusicActive = preferences.musicEnabled && preferences.musicVolume > 0;
+
+  useEffect(() => {
+    selectionThemePlayer.setVolumeMultiplier(preferences.musicVolume / 100);
+  }, [preferences.musicVolume]);
+
   useEffect(() => {
     if (isSelectionPhase) {
-      selectionThemePlayer.start(preferences.soundEnabled);
+      selectionThemePlayer.start(selectionMusicActive);
     } else {
       selectionThemePlayer.stop();
     }
-  }, [isSelectionPhase, preferences.soundEnabled]);
+  }, [isSelectionPhase, selectionMusicActive]);
 
   useEffect(() => {
-    selectionThemePlayer.setMuted(!preferences.soundEnabled);
-  }, [preferences.soundEnabled]);
+    selectionThemePlayer.setMuted(!selectionMusicActive);
+  }, [selectionMusicActive]);
 
   useEffect(() => {
     return () => {
@@ -97,11 +105,6 @@ export default function App() {
       ...prev,
       soundEnabled: !prev.soundEnabled,
     }));
-  }
-
-  function handleOpenFeedback(contextOverride?: string) {
-    setFeedbackContext(contextOverride ?? activeScreen);
-    setFeedbackModalOpen(true);
   }
 
   function handleEnterAccount(user: AuthUserSummary) {
@@ -121,7 +124,8 @@ export default function App() {
     }
 
     // Unlock & kick off theme music synchronously inside the login click gesture
-    selectionThemePlayer.start(preferences.soundEnabled);
+    selectionThemePlayer.setVolumeMultiplier(preferences.musicVolume / 100);
+    selectionThemePlayer.start(selectionMusicActive);
     if (savedChar) {
       setSelectedTamer(savedChar);
       setSelectedDigimon(null);
@@ -132,6 +136,50 @@ export default function App() {
     setSelectedTamer(null);
     setSelectedDigimon(null);
     setActiveScreen('character-select');
+  }
+
+  // Temporary quick-entry local test mode (does not alter Firebase or real accounts)
+  function handleQuickDevEnter() {
+    const testUsername = 'ModoTeste';
+    const existingChar = getSavedCharacterForAccount(testUsername);
+    const existingStarter = getSavedStarterDigimonForAccount(testUsername);
+    const nowIso = new Date().toISOString();
+
+    const fallbackSprites = getTamerSprites('kai');
+    const tamer: SavedCharacterSelection = existingChar ?? {
+      accountUsername: testUsername,
+      characterId: 'kai',
+      tamerName: 'TamerTeste',
+      spritesheetMeta: {
+        frameWidth: fallbackSprites.frameWidth,
+        frameHeight: fallbackSprites.frameHeight,
+        columns: fallbackSprites.columns,
+        rows: fallbackSprites.rows,
+        directions: fallbackSprites.directions,
+      },
+      updatedAt: nowIso,
+    };
+
+    const starter: SavedStarterDigimon = existingStarter ?? {
+      accountUsername: testUsername,
+      digimonId: 'agumon',
+      digimonName: 'Agumon',
+      element: 'Fogo',
+      chosenAt: nowIso,
+    };
+
+    selectionThemePlayer.stop();
+    setActiveModal(null);
+    setAuthenticatedUser({
+      uid: 'local_quick_test',
+      username: testUsername,
+      persistence: 'session',
+      authProvider: 'password',
+      isGM: false,
+    });
+    setSelectedTamer(tamer);
+    setSelectedDigimon(starter);
+    setActiveScreen('world');
   }
 
   function handleEnterWorld(selection: SavedCharacterSelection) {
@@ -224,6 +272,7 @@ export default function App() {
             soundEnabled={preferences.soundEnabled}
             onOpenModal={(section) => setActiveModal(section)}
             onLoginSuccess={handleEnterAccount}
+            onQuickEnter={handleQuickDevEnter}
           />
         ) : activeScreen === 'character-select' ? (
           <CharacterSelectScreen
@@ -256,7 +305,6 @@ export default function App() {
               isGM={isVerifiedGmAccount}
               cloudIsGm={isCloudVerifiedGm}
               onUpdatePreferences={setPreferences}
-              onOpenFeedback={handleOpenFeedback}
               onAdminSwitchStarter={
                 isVerifiedGmAccount ? handleAdminSwitchStarter : undefined
               }
@@ -283,19 +331,7 @@ export default function App() {
         preferences={preferences}
         onUpdatePreferences={setPreferences}
         onAccountCreated={handleEnterAccount}
-        onOpenFeedback={() => handleOpenFeedback(activeScreen)}
         onClose={() => setActiveModal(null)}
-      />
-
-      {/* Alpha Version Bug Report & Player Feedback Modal (saved to Firestore) */}
-      <AlphaFeedbackModal
-        open={feedbackModalOpen}
-        username={authenticatedUser?.username}
-        tamerName={selectedTamer?.tamerName}
-        screenContext={feedbackContext}
-        soundEnabled={preferences.soundEnabled}
-        isGM={isCloudVerifiedGm}
-        onClose={() => setFeedbackModalOpen(false)}
       />
 
       {/* Non-intrusive offline connectivity toast */}
