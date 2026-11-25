@@ -26,7 +26,10 @@ import {
 } from '../../services/archiveService';
 import { isCurrentAuthUserBootstrappedGm } from '../../services/gmRoleService';
 import type { GuildRecord } from '../../services/guildService';
-import type { AutoHuntConfig } from '../../services/autoHuntService';
+import {
+  isAutoFarmVipActive,
+  type AutoHuntConfig,
+} from '../../services/autoHuntService';
 import {
   computeDerivedDigimonAttributes,
   computeTamerAttributes,
@@ -52,6 +55,7 @@ import type {
   TamerRuntimeStats,
 } from '../../types/hud';
 import { playDigitalTone } from '../../utils/soundFx';
+import { DiscordInviteButton } from '../DiscordInviteButton';
 import { PWAInstallButton } from '../PWAInstallButton';
 import { AdminTestModal } from './AdminTestModal';
 import { AutoHuntModal } from './AutoHuntModal';
@@ -471,7 +475,9 @@ export function HudWindowsOverlay({
         digimonDs={digimonStats.ds}
         digimonMaxDs={digimonStats.maxDs}
         inventory={inventory}
-        autoFarmVipUnlocked={Boolean(hudAccount.autoFarmVipUnlocked || isGM)}
+        autoFarmVipUnlocked={isAutoFarmVipActive(hudAccount, isGM)}
+        autoFarmVipUntilMs={hudAccount.autoFarmVipUntilMs ?? null}
+        isGM={isGM}
         dCoinBalance={dCoin}
         onUnlockAutoFarmVip={onUnlockAutoFarmVip}
         onOpenDwCoinShop={onOpenDwCoinShop}
@@ -912,6 +918,11 @@ export function HudWindowsOverlay({
                     variant="compact"
                     soundEnabled={preferences.soundEnabled}
                     showInstalledState
+                  />
+
+                  <DiscordInviteButton
+                    variant="settings"
+                    soundEnabled={preferences.soundEnabled}
                   />
                 </section>
               </div>

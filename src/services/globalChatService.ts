@@ -26,6 +26,7 @@ export interface GlobalChatMessageRecord {
 
 const VALID_MAPS = new Set<SharedWorldMapId>([
   'dats-center',
+  'd-terminal',
   'hunting-plains',
   'data-forest',
   'digi-mountain',

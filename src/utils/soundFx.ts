@@ -66,10 +66,66 @@ export const SELECTION_THEME_MUSIC_URL =
   '/assets/aistudio/Digimon_Data_Squad_-_Vem_Comigo__Daniel_Quirino__MP3_160K__6db659da.mp3';
 
 export const DATS_CENTER_MUSIC_URL =
-  '/assets/aistudio/Digimon_Masters_Online_Soundtrack_-_DATS_Center_MP3_160K__f3e6ac69.mp3';
+  '/assets/aistudio/Digimon_Masters_Online_Soundtrack_-_DATS_Center_MP3_160K__1_f3e6ac69.mp3';
+
+export const MAP_BGM_TRACKS: Record<
+  string,
+  { url: string; targetVol: number; label: string }
+> = {
+  'dats-center': {
+    url: '/assets/aistudio/Digimon_Masters_Online_Soundtrack_-_DATS_Center_MP3_160K__1_f3e6ac69.mp3',
+    targetVol: 0.34,
+    label: 'DATS Center',
+  },
+  'd-terminal': {
+    url: '/assets/aistudio/Digimon_Masters_Online_OST_-_Enchant_Room_MP3_160K__32583078.mp3',
+    targetVol: 0.34,
+    label: 'Enchant Room',
+  },
+  'hunting-plains': {
+    url: '/assets/aistudio/Digimon_Masters_Online_OST_-_Digital_Wasteland__1__MP3_160K__323d418f.mp3',
+    targetVol: 0.33,
+    label: 'Digital Wasteland',
+  },
+  'data-forest': {
+    url: '/assets/aistudio/Digimon_Masters_Online_OST_-_Snow_Town_Ice_MP3_128K__187adc6a.mp3',
+    targetVol: 0.34,
+    label: 'Forest Exploration',
+  },
+  'digi-mountain': {
+    url: '/assets/aistudio/Digimon_Masters_Online_Soundtrack_-_Wasteland_2_Battle_MP3_160K__f8ced9a5.mp3',
+    targetVol: 0.31,
+    label: 'Wasteland Battle',
+  },
+  'digital-desert': {
+    url: '/assets/aistudio/Digimon_Masters_Online_OST_-_Digital_Western_Battle_MP3_160K__185c8991.mp3',
+    targetVol: 0.31,
+    label: 'Digital Western Battle',
+  },
+  'data-sea': {
+    url: '/assets/aistudio/Digimon_Masters_Online_OST_-_Digital_Wasteland__1__MP3_160K__323d418f.mp3',
+    targetVol: 0.33,
+    label: 'Digital Wasteland',
+  },
+  'digimon-island': {
+    url: '/assets/aistudio/Digimon_Masters_Online_Soundtrack_-_Wasteland_2_Battle_MP3_160K__f8ced9a5.mp3',
+    targetVol: 0.31,
+    label: 'Wasteland Battle',
+  },
+  'dark-area': {
+    url: '/assets/aistudio/Digimon_Masters_Online_OST_-_Dark_Tower_MP3_160K__9003d14c.mp3',
+    targetVol: 0.35,
+    label: 'Dark Tower',
+  },
+  'virtual-world': {
+    url: '/assets/aistudio/Digimon_Masters_Online_OST_-_Battle__Myotismon__MP3_160K__b118c12d.mp3',
+    targetVol: 0.31,
+    label: 'Battle: Myotismon',
+  },
+};
 
 const SELECTION_THEME_TARGET_VOL = 0.42;
-const DATS_CENTER_TARGET_VOL = 0.36;
+const DATS_CENTER_TARGET_VOL = 0.34;
 
 class LoopingBgmController {
   private audio: HTMLAudioElement | null = null;
@@ -244,6 +300,65 @@ class LoopingBgmController {
   }
 }
 
+class WorldMapBgmManager {
+  private readonly controllers = new Map<string, LoopingBgmController>();
+  private activeTrackUrl: string | null = null;
+  private volumeMultiplier = 1;
+  private muted = false;
+
+  private getController(url: string, targetVol: number): LoopingBgmController {
+    let ctrl = this.controllers.get(url);
+    if (!ctrl) {
+      ctrl = new LoopingBgmController(url, targetVol);
+      ctrl.setVolumeMultiplier(this.volumeMultiplier);
+      ctrl.setMuted(this.muted);
+      this.controllers.set(url, ctrl);
+    }
+    return ctrl;
+  }
+
+  playForMap(mapId: string, musicEnabled: boolean): void {
+    const spec = MAP_BGM_TRACKS[mapId] ?? MAP_BGM_TRACKS['dats-center'];
+    this.muted = !musicEnabled;
+
+    if (this.activeTrackUrl && this.activeTrackUrl !== spec.url) {
+      const prev = this.controllers.get(this.activeTrackUrl);
+      prev?.stop();
+    }
+
+    const next = this.getController(spec.url, spec.targetVol);
+    next.setVolumeMultiplier(this.volumeMultiplier);
+    this.activeTrackUrl = spec.url;
+    next.start(musicEnabled);
+  }
+
+  setVolumeMultiplier(multiplier: number): void {
+    this.volumeMultiplier = Math.max(0, Math.min(1, multiplier));
+    if (this.activeTrackUrl) {
+      this.controllers
+        .get(this.activeTrackUrl)
+        ?.setVolumeMultiplier(this.volumeMultiplier);
+    }
+  }
+
+  setMuted(muted: boolean): void {
+    this.muted = muted;
+    if (this.activeTrackUrl) {
+      this.controllers.get(this.activeTrackUrl)?.setMuted(muted);
+    }
+  }
+
+  stop(): void {
+    if (this.activeTrackUrl) {
+      this.controllers.get(this.activeTrackUrl)?.stop();
+      this.activeTrackUrl = null;
+    }
+    for (const ctrl of this.controllers.values()) {
+      ctrl.stop();
+    }
+  }
+}
+
 export const selectionThemePlayer = new LoopingBgmController(
   SELECTION_THEME_MUSIC_URL,
   SELECTION_THEME_TARGET_VOL
@@ -253,6 +368,8 @@ export const datsCenterMusicPlayer = new LoopingBgmController(
   DATS_CENTER_MUSIC_URL,
   DATS_CENTER_TARGET_VOL
 );
+
+export const worldBgmPlayer = new WorldMapBgmManager();
 
 export const EVOLUTION_AUDIO_TRACKS = {
   /** Voice pronouncing "EVOLUTION!" triggered at exact 2.0s mark */

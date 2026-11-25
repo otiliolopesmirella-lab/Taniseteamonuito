@@ -64,6 +64,7 @@ import { MUDFRIGIMON_CONSUMABLES } from '../../data/mudfrigimonShopCatalog';
 import type { PlayableMapId } from '../../data/worldMapCatalog';
 import { DATA_FOREST_MAP_ID } from '../../maps/dataForestMap';
 import { DATS_MAP_ID } from '../../maps/datsCenterMap';
+import { D_TERMINAL_MAP_ID } from '../../maps/dTerminalMap';
 import { DIGI_MOUNTAIN_MAP_ID } from '../../maps/digiMountainMap';
 import { DIGITAL_DESERT_MAP_ID } from '../../maps/digitalDesertMap';
 import { DATA_SEA_MAP_ID } from '../../maps/dataSeaMap';
@@ -1880,6 +1881,7 @@ function AdminTestModalInner({
                 <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-5">
                   {[
                     { id: DATS_MAP_ID as PlayableMapId, label: 'DATS Center', sub: 'Safe' },
+                    { id: D_TERMINAL_MAP_ID as PlayableMapId, label: 'D-Terminal', sub: 'Estação' },
                     { id: HUNTING_MAP_ID as PlayableMapId, label: 'Planície', sub: 'Lv. 1–10' },
                     { id: DATA_FOREST_MAP_ID as PlayableMapId, label: 'Floresta', sub: 'Lv. 10–20' },
                     { id: DIGI_MOUNTAIN_MAP_ID as PlayableMapId, label: 'Montanha', sub: 'Lv. 20–30' },
@@ -1906,7 +1908,9 @@ function AdminTestModalInner({
                         }`}
                       >
                         <span className="flex items-center gap-1 text-[10.5px] font-black leading-tight">
-                          {dest.id !== DATS_MAP_ID && <Swords className="h-3 w-3 text-amber-300" />}
+                          {dest.id !== DATS_MAP_ID && dest.id !== D_TERMINAL_MAP_ID && (
+                            <Swords className="h-3 w-3 text-amber-300" />
+                          )}
                           {dest.label}
                         </span>
                         <span className="mt-0.5 text-[9px] font-bold text-cyan-200/85">

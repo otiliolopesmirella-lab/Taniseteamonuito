@@ -221,8 +221,11 @@ export function GmEconomyTab({
           `${autoCreditedCount} pedido(s) confirmado(s) no Mercado Pago e creditado(s) AUTOMATICAMENTE nas contas dos jogadores!`
         );
       } else if (awaitingManualCount > 0) {
+        const firstErr = values.find(
+          (r) => r.approved && !r.credited && !r.alreadyCredited && r.creditErrorCode
+        )?.creditErrorCode;
         setMpNotice(
-          `${awaitingManualCount} pedido(s) confirmado(s) como PAGO no Mercado Pago! Clique em "Creditar ${awaitingManualCount} Pago(s) no MP" abaixo para entregar agora.`
+          `${awaitingManualCount} pedido(s) confirmado(s) como PAGO no Mercado Pago! Clique em "Creditar ${awaitingManualCount} Pago(s) no MP" abaixo para entregar agora.${firstErr ? ` (Diagnóstico: ${firstErr})` : ''}`
         );
       } else {
         setMpNotice(

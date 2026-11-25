@@ -42,6 +42,28 @@ import {
   type DatsInteractionPoint,
 } from '../maps/datsCenterMap';
 import {
+  drawDimensionalPortalGate,
+  drawDimensionalPortalGround,
+} from '../maps/portalRenderer';
+import {
+  buildDTerminalDepthProps,
+  buildDTerminalStaticLayer,
+  D_TERMINAL_COLLIDERS,
+  D_TERMINAL_CONDUCTOR_NPC,
+  D_TERMINAL_INTERACTION_POINTS,
+  D_TERMINAL_MAP_ID,
+  D_TERMINAL_RETURN_PORTAL,
+  D_TERMINAL_SPAWN_POINT,
+  D_TERMINAL_WORLD_H,
+  D_TERMINAL_WORLD_W,
+  drawDTerminalGroundAnimations,
+  PAWNCHESSMON_BLACK_SPRITE_URL,
+} from '../maps/dTerminalMap';
+import {
+  getPortalsForMap,
+  type MapPortalLink,
+} from '../maps/mapPortals';
+import {
   buildHuntingDepthProps,
   buildHuntingFieldStaticLayer,
   createInitialWildMonsters,
@@ -54,7 +76,6 @@ import {
   HUNTING_COLLIDERS,
   HUNTING_INTERACTION_POINTS,
   HUNTING_MAP_ID,
-  HUNTING_RETURN_PORTAL,
   HUNTING_SPAWN_POINT,
   HUNTING_WORLD_H,
   HUNTING_WORLD_W,
@@ -70,7 +91,6 @@ import {
   DATA_FOREST_FRIENDLY_NPCS,
   DATA_FOREST_INTERACTION_POINTS,
   DATA_FOREST_MAP_ID,
-  DATA_FOREST_RETURN_PORTAL,
   DATA_FOREST_SPAWN_POINT,
   DATA_FOREST_WORLD_H,
   DATA_FOREST_WORLD_W,
@@ -87,7 +107,6 @@ import {
   DIGI_MOUNTAIN_FRIENDLY_NPCS,
   DIGI_MOUNTAIN_INTERACTION_POINTS,
   DIGI_MOUNTAIN_MAP_ID,
-  DIGI_MOUNTAIN_RETURN_PORTAL,
   DIGI_MOUNTAIN_SPAWN_POINT,
   DIGI_MOUNTAIN_WORLD_H,
   DIGI_MOUNTAIN_WORLD_W,
@@ -104,7 +123,6 @@ import {
   DIGITAL_DESERT_FRIENDLY_NPCS,
   DIGITAL_DESERT_INTERACTION_POINTS,
   DIGITAL_DESERT_MAP_ID,
-  DIGITAL_DESERT_RETURN_PORTAL,
   DIGITAL_DESERT_SPAWN_POINT,
   DIGITAL_DESERT_WORLD_H,
   DIGITAL_DESERT_WORLD_W,
@@ -121,7 +139,6 @@ import {
   DATA_SEA_FRIENDLY_NPCS,
   DATA_SEA_INTERACTION_POINTS,
   DATA_SEA_MAP_ID,
-  DATA_SEA_RETURN_PORTAL,
   DATA_SEA_SPAWN_POINT,
   DATA_SEA_WORLD_H,
   DATA_SEA_WORLD_W,
@@ -138,7 +155,6 @@ import {
   DIGIMON_ISLAND_FRIENDLY_NPCS,
   DIGIMON_ISLAND_INTERACTION_POINTS,
   DIGIMON_ISLAND_MAP_ID,
-  DIGIMON_ISLAND_RETURN_PORTAL,
   DIGIMON_ISLAND_SPAWN_POINT,
   DIGIMON_ISLAND_WORLD_H,
   DIGIMON_ISLAND_WORLD_W,
@@ -155,7 +171,6 @@ import {
   DARK_AREA_FRIENDLY_NPCS,
   DARK_AREA_INTERACTION_POINTS,
   DARK_AREA_MAP_ID,
-  DARK_AREA_RETURN_PORTAL,
   DARK_AREA_SPAWN_POINT,
   DARK_AREA_WORLD_H,
   DARK_AREA_WORLD_W,
@@ -172,7 +187,6 @@ import {
   VIRTUAL_WORLD_FRIENDLY_NPCS,
   VIRTUAL_WORLD_INTERACTION_POINTS,
   VIRTUAL_WORLD_MAP_ID,
-  VIRTUAL_WORLD_RETURN_PORTAL,
   VIRTUAL_WORLD_SPAWN_POINT,
   VIRTUAL_WORLD_WORLD_H,
   VIRTUAL_WORLD_WORLD_W,
@@ -301,7 +315,11 @@ import {
 } from '../services/globalChatService';
 import {
   AUTO_FARM_VIP_COST_DWCOIN,
+  AUTO_FARM_VIP_DURATION_DAYS,
+  AUTO_FARM_VIP_DURATION_MS,
   AUTO_FARM_VIP_XP_BONUS_PCT,
+  formatAutoFarmVipExpiryDate,
+  isAutoFarmVipActive,
   loadAutoHuntConfig,
   pickBestRecoveryItem,
   saveAutoHuntConfig,
@@ -329,7 +347,6 @@ import {
   type PartyInviteRecord,
   type PartyRecord,
 } from '../services/partyService';
-import { createIncubatorWorldSpriteRenderer } from '../three/digimonIncubator3D';
 import {
   DIGIMON_FRAME_COUNT,
   drawDigimonAttackPoseFrame,
@@ -350,6 +367,7 @@ import {
   DATS_FIXED_NPCS,
   drawFixedWorldNpc,
   isPointInsideNpcHitbox,
+  MIKI_MARKET_NPC,
   MUDFRIGIMON_NPC,
   preloadFixedNpcSprite,
   type FixedWorldNpc,
@@ -414,7 +432,6 @@ import {
   type InWorldSwapAnimationState,
 } from '../utils/inWorldSwapFx';
 import {
-  datsCenterMusicPlayer,
   playDigiEggCollectPing,
   playDigiEggDropSound,
   playDigitalTone,
@@ -423,6 +440,7 @@ import {
   playIncubatorSuccessSound,
   playInWorldDigivolutionSound,
   playPartnerSwapSound,
+  worldBgmPlayer,
 } from '../utils/soundFx';
 import { ActiveDigimonHudPanel } from './hud/ActiveDigimonHudPanel';
 import {
@@ -449,6 +467,21 @@ import {
   MudfrigimonShopModal,
   type MudfrigimonPurchaseResult,
 } from './hud/MudfrigimonShopModal';
+import {
+  PlayerMarketModal,
+  type MarketActionResult,
+} from './hud/PlayerMarketModal';
+import {
+  buildInventoryPayloadFromMarketListing,
+  cancelPlayerMarketListing,
+  claimMarketListingPayout,
+  createPlayerMarketListing,
+  purchasePlayerMarketListing,
+  subscribeGlobalPlayerMarket,
+  subscribeSellerMarketListings,
+  type PlayerMarketListingRecord,
+} from '../services/playerMarketService';
+import { isItemNonSellable } from '../data/itemsCatalog';
 import { NpcDialogueModal } from './hud/NpcDialogueModal';
 import { RemotePlayerInspectorCard } from './hud/OnlinePlayersPanel';
 import { PartyHudPanel } from './hud/PartyHudPanel';
@@ -462,6 +495,7 @@ import {
 
 type ActiveWorldMapId =
   | typeof DATS_MAP_ID
+  | typeof D_TERMINAL_MAP_ID
   | typeof HUNTING_MAP_ID
   | typeof DATA_FOREST_MAP_ID
   | typeof DIGI_MOUNTAIN_MAP_ID
@@ -560,6 +594,13 @@ function getMapDimensions(mapId: ActiveWorldMapId): {
       minY: 348,
     };
   }
+  if (mapId === D_TERMINAL_MAP_ID) {
+    return {
+      worldW: D_TERMINAL_WORLD_W,
+      worldH: D_TERMINAL_WORLD_H,
+      minY: 220,
+    };
+  }
   return {
     worldW: DATS_WORLD_W,
     worldH: DATS_WORLD_H,
@@ -619,6 +660,9 @@ function getMapDisplayLabel(mapId: ActiveWorldMapId, short = false): string {
   }
   if (mapId === HUNTING_MAP_ID) {
     return short ? 'Planície' : 'Planície Digital';
+  }
+  if (mapId === D_TERMINAL_MAP_ID) {
+    return short ? 'D-Terminal' : 'D-Terminal';
   }
   return short ? 'DATS' : 'DATS Center';
 }
@@ -892,13 +936,14 @@ export function TamerWorldCanvas({
       ),
     [starterDigimon.digimonId, hudAccount.digimon.activeFormId]
   );
+  const activeStarterId: StarterDigimonId = activeFormProfile.starterId;
   const activeFormRef = useRef<DigimonFormProfile>(activeFormProfile);
   activeFormRef.current = activeFormProfile;
 
   const runtimeMetaRef = useRef({
     characterId: selection.characterId,
     tamerName: selection.tamerName,
-    starterDigimonId: starterDigimon.digimonId,
+    starterDigimonId: activeStarterId,
     accentHex: character.theme.accentHex,
     graphicsQuality: preferences.graphicsQuality,
     animationsEnabled: preferences.animationsEnabled,
@@ -910,7 +955,7 @@ export function TamerWorldCanvas({
   runtimeMetaRef.current = {
     characterId: selection.characterId,
     tamerName: selection.tamerName,
-    starterDigimonId: starterDigimon.digimonId,
+    starterDigimonId: activeStarterId,
     accentHex: character.theme.accentHex,
     graphicsQuality: preferences.graphicsQuality,
     animationsEnabled: preferences.animationsEnabled,
@@ -921,8 +966,8 @@ export function TamerWorldCanvas({
   };
 
   const evoStatus = useMemo(
-    () => getNextEvolutionInfo(starterDigimon.digimonId, hudAccount.digimon),
-    [starterDigimon.digimonId, hudAccount.digimon]
+    () => getNextEvolutionInfo(activeStarterId, hudAccount.digimon),
+    [activeStarterId, hudAccount.digimon]
   );
 
   // HUD Overlay & Drawer States
@@ -933,6 +978,17 @@ export function TamerWorldCanvas({
   const [activeNpcDialogue, setActiveNpcDialogue] =
     useState<FixedWorldNpc | null>(null);
   const [mudfrigimonShopOpen, setMudfrigimonShopOpen] = useState(false);
+  const [playerMarketOpen, setPlayerMarketOpen] = useState(false);
+  const [marketGlobalListings, setMarketGlobalListings] = useState<
+    PlayerMarketListingRecord[]
+  >([]);
+  const [marketSellerListings, setMarketSellerListings] = useState<
+    PlayerMarketListingRecord[]
+  >([]);
+  const marketPayoutNoticeShownRef = useRef(false);
+  const marketActorUid =
+    auth.currentUser?.uid ??
+    `local_${(selection.accountUsername || 'guest').trim().toLowerCase()}`;
   const [hatchShowcase, setHatchShowcase] = useState<HatchShowcaseData | null>(
     null
   );
@@ -950,10 +1006,43 @@ export function TamerWorldCanvas({
   )
     .trim()
     .toLowerCase()}`;
+  const tutorialRewardsStorageKey = `dmo_richard_tutorial_rewards_v2:${(
+    selection.accountUsername || 'guest'
+  )
+    .trim()
+    .toLowerCase()}`;
+  const [tutorialRewardsClaimed, setTutorialRewardsClaimed] = useState<{
+    supplies: boolean;
+    eggPack: boolean;
+  }>(() => {
+    try {
+      const raw = window.localStorage.getItem(tutorialRewardsStorageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<{
+          supplies: boolean;
+          eggPack: boolean;
+        }>;
+        return {
+          supplies: parsed.supplies === true,
+          eggPack: parsed.eggPack === true,
+        };
+      }
+    } catch {
+      // Ignore storage access errors
+    }
+    return { supplies: false, eggPack: false };
+  });
+  const tutorialRewardsClaimedRef = useRef(tutorialRewardsClaimed);
+  tutorialRewardsClaimedRef.current = tutorialRewardsClaimed;
   const [hoveredNpcId, setHoveredNpcId] = useState<string | null>(null);
   const hoveredNpcIdRef = useRef<string | null>(null);
   const pendingIncubatorWalkRef = useRef(false);
   const pendingArchiveWalkRef = useRef(false);
+  const pendingPortalWalkRef = useRef(false);
+  const pendingConductorWalkRef = useRef(false);
+  const pendingTargetPortalRef = useRef<MapPortalLink | null>(null);
+  const nearbyPortalRef = useRef<MapPortalLink | null>(null);
+  const pendingDatsPointIdRef = useRef<string | null>(null);
   const activeHudWindowRef = useRef<HudWindowId>(null);
   activeHudWindowRef.current = activeHudWindow;
   const overlayLayerRef = useRef({
@@ -964,7 +1053,7 @@ export function TamerWorldCanvas({
     inventory: false,
   });
   overlayLayerRef.current = {
-    mudShop: mudfrigimonShopOpen,
+    mudShop: mudfrigimonShopOpen || playerMarketOpen,
     npc: activeNpcDialogue !== null,
     station: activeStationModal !== null,
     hud:
@@ -974,6 +1063,37 @@ export function TamerWorldCanvas({
       beginnerTutorialOpen,
     inventory: inventoryOpen,
   };
+
+  // Real-time Player Market subscription when Miki's Market modal is open
+  useEffect(() => {
+    if (!playerMarketOpen) return;
+    return subscribeGlobalPlayerMarket((rows) => {
+      setMarketGlobalListings(rows);
+    });
+  }, [playerMarketOpen]);
+
+  // Always track seller's own listings so unclaimed Bits from offline/live sales notify the player
+  useEffect(() => {
+    return subscribeSellerMarketListings(marketActorUid, (rows) => {
+      setMarketSellerListings(rows);
+      const unclaimed = rows.filter(
+        (l) => l.status === 'sold' && !l.payoutClaimed
+      );
+      if (unclaimed.length > 0 && !marketPayoutNoticeShownRef.current) {
+        marketPayoutNoticeShownRef.current = true;
+        const totalBits = unclaimed.reduce((sum, l) => sum + l.priceBits, 0);
+        pushChatMessage(
+          'system',
+          `[Mercado] Você vendeu ${unclaimed.length} ${
+            unclaimed.length === 1 ? 'item' : 'itens'
+          }! Fale com a Miki no DATS Center para resgatar ${formatDigitalCurrency(
+            totalBits
+          )}.`,
+          { tone: 'loot' }
+        );
+      }
+    });
+  }, [marketActorUid]);
 
   // Auto-open Richard Sampson's Beginner Tutorial once for brand-new Lv.1 players arriving in DATS
   useEffect(() => {
@@ -1064,7 +1184,7 @@ export function TamerWorldCanvas({
 
   useEffect(() => {
     const loaded = loadAutoHuntConfig(autoHuntStorageKey);
-    const hasVip = hudAccountRef.current.autoFarmVipUnlocked === true || isGM;
+    const hasVip = isAutoFarmVipActive(hudAccountRef.current, isGM);
     const safeLoaded = !hasVip && loaded.enabled ? { ...loaded, enabled: false } : loaded;
     autoHuntConfigRef.current = safeLoaded;
     setAutoHuntConfig(safeLoaded);
@@ -1073,19 +1193,76 @@ export function TamerWorldCanvas({
     }
   }, [autoHuntStorageKey, isGM]);
 
+  // Legacy migration: accounts that unlocked VIP before 30-day expiration receive a fresh 30-day window
   useEffect(() => {
-    const hasVip = hudAccount.autoFarmVipUnlocked === true || isGM;
+    if (isGM) return;
+    if (
+      hudAccount.autoFarmVipUnlocked === true &&
+      (hudAccount.autoFarmVipUntilMs == null || hudAccount.autoFarmVipUntilMs <= 0)
+    ) {
+      const migratedUntilMs = Date.now() + AUTO_FARM_VIP_DURATION_MS;
+      const migrated: AccountHudPersistence = {
+        ...hudAccountRef.current,
+        autoFarmVipUntilMs: migratedUntilMs,
+        updatedAt: new Date().toISOString(),
+      };
+      hudAccountRef.current = migrated;
+      setHudAccount(migrated);
+      saveAccountHudState(migrated, true);
+    }
+  }, [hudAccount.autoFarmVipUnlocked, hudAccount.autoFarmVipUntilMs, isGM]);
+
+  useEffect(() => {
+    const hasVip = isAutoFarmVipActive(hudAccount, isGM);
     if (!hasVip && autoHuntConfigRef.current.enabled) {
       const disabledCfg: AutoHuntConfig = { ...autoHuntConfigRef.current, enabled: false };
       autoHuntConfigRef.current = disabledCfg;
       setAutoHuntConfig(disabledCfg);
       saveAutoHuntConfig(autoHuntStorageKey, disabledCfg);
     }
-  }, [hudAccount.autoFarmVipUnlocked, isGM, autoHuntStorageKey]);
+  }, [hudAccount.autoFarmVipUnlocked, hudAccount.autoFarmVipUntilMs, isGM, autoHuntStorageKey]);
+
+  // Live 30-day expiry watcher: pauses Auto Farm automatically when 30 days end mid-session
+  useEffect(() => {
+    if (isGM) return;
+    const untilMs = hudAccount.autoFarmVipUntilMs;
+    if (typeof untilMs !== 'number' || untilMs <= 0) return;
+
+    const checkExpiry = () => {
+      if (Date.now() < untilMs) return;
+      if (autoHuntConfigRef.current.enabled) {
+        const disabledCfg: AutoHuntConfig = {
+          ...autoHuntConfigRef.current,
+          enabled: false,
+        };
+        autoHuntConfigRef.current = disabledCfg;
+        setAutoHuntConfig(disabledCfg);
+        saveAutoHuntConfig(autoHuntStorageKey, disabledCfg);
+        pushNotification(
+          'VIP Auto Farm Expirado',
+          `Seu acesso de ${AUTO_FARM_VIP_DURATION_DAYS} dias chegou ao fim. Renove por ${AUTO_FARM_VIP_COST_DWCOIN} DL Din na aba Auto para continuar usando.`
+        );
+        pushChatMessage(
+          'system',
+          `[VIP AUTO FARM] Seu plano de ${AUTO_FARM_VIP_DURATION_DAYS} dias expirou. Renove por ${AUTO_FARM_VIP_COST_DWCOIN} DL Din para reativar.`,
+          { tone: 'warning' }
+        );
+      }
+      setHudAccount((prev) => ({ ...prev }));
+    };
+
+    if (Date.now() >= untilMs) {
+      checkExpiry();
+      return;
+    }
+
+    const timer = window.setInterval(checkExpiry, 30000);
+    return () => window.clearInterval(timer);
+  }, [hudAccount.autoFarmVipUntilMs, isGM, autoHuntStorageKey]);
 
   const handleUpdateAutoHuntConfig = useCallback(
     (next: AutoHuntConfig) => {
-      const hasVip = hudAccountRef.current.autoFarmVipUnlocked === true || isGM;
+      const hasVip = isAutoFarmVipActive(hudAccountRef.current, isGM);
       const gatedNext = !hasVip && next.enabled ? { ...next, enabled: false } : next;
       autoHuntConfigRef.current = gatedNext;
       setAutoHuntConfig(gatedNext);
@@ -1306,7 +1483,8 @@ export function TamerWorldCanvas({
 
   const handleUnlockAutoFarmVip = useCallback((): { ok: boolean; message: string } => {
     const cur = hudAccountRef.current;
-    if (cur.autoFarmVipUnlocked === true || isGM) {
+    const nowMs = Date.now();
+    if (isAutoFarmVipActive(cur, isGM, nowMs)) {
       const enabledCfg: AutoHuntConfig = { ...autoHuntConfigRef.current, enabled: true };
       autoHuntConfigRef.current = enabledCfg;
       setAutoHuntConfig(enabledCfg);
@@ -1320,15 +1498,19 @@ export function TamerWorldCanvas({
     if (cur.dCoin < AUTO_FARM_VIP_COST_DWCOIN) {
       return {
         ok: false,
-        message: `Saldo insuficiente! Você precisa de ${AUTO_FARM_VIP_COST_DWCOIN} DL Din para desbloquear o VIP Auto Farm.`,
+        message: `Saldo insuficiente! Você precisa de ${AUTO_FARM_VIP_COST_DWCOIN} DL Din para ativar o VIP Auto Farm por ${AUTO_FARM_VIP_DURATION_DAYS} dias.`,
       };
     }
 
     const nextDCoin = cur.dCoin - AUTO_FARM_VIP_COST_DWCOIN;
+    const nextVipUntilMs =
+      Math.max(nowMs, cur.autoFarmVipUntilMs ?? 0) + AUTO_FARM_VIP_DURATION_MS;
+    const expiryDateStr = formatAutoFarmVipExpiryDate(nextVipUntilMs);
     const nextAcc: AccountHudPersistence = {
       ...cur,
       dCoin: nextDCoin,
       autoFarmVipUnlocked: true,
+      autoFarmVipUntilMs: nextVipUntilMs,
       updatedAt: new Date().toISOString(),
     };
     commitHudAccount(nextAcc, true);
@@ -1336,8 +1518,8 @@ export function TamerWorldCanvas({
     void recordDwCoinSpendTransaction({
       username: selection.accountUsername || actorUid,
       tamerName: selection.tamerName,
-      itemKey: 'vip_auto_farm',
-      itemName: `VIP Auto Farm (+${AUTO_FARM_VIP_XP_BONUS_PCT}% EXP)`,
+      itemKey: 'vip_auto_farm_30d',
+      itemName: `VIP Auto Farm ${AUTO_FARM_VIP_DURATION_DAYS}D (+${AUTO_FARM_VIP_XP_BONUS_PCT}% EXP)`,
       category: 'vip',
       dwCoinAmount: AUTO_FARM_VIP_COST_DWCOIN,
       balanceAfter: nextDCoin,
@@ -1349,18 +1531,18 @@ export function TamerWorldCanvas({
     saveAutoHuntConfig(autoHuntStorageKey, enabledCfg);
 
     pushNotification(
-      'VIP Auto Farm Ativado!',
-      `Auto Farm liberado por ${AUTO_FARM_VIP_COST_DWCOIN} DL Din! Ganhe +${AUTO_FARM_VIP_XP_BONUS_PCT}% EXP enquanto o Auto Farm estiver ativo.`
+      `VIP Auto Farm Ativado (${AUTO_FARM_VIP_DURATION_DAYS}D)!`,
+      `Auto Farm liberado por ${AUTO_FARM_VIP_DURATION_DAYS} dias${expiryDateStr ? ` (até ${expiryDateStr})` : ''} por ${AUTO_FARM_VIP_COST_DWCOIN} DL Din! +${AUTO_FARM_VIP_XP_BONUS_PCT}% EXP ativo enquanto ligado.`
     );
     pushChatMessage(
       'system',
-      `[VIP AUTO FARM] Desbloqueado por ${AUTO_FARM_VIP_COST_DWCOIN} DL Din! +${AUTO_FARM_VIP_XP_BONUS_PCT}% EXP ativo enquanto o Auto Farm estiver ligado.`,
+      `[VIP AUTO FARM] Ativado por ${AUTO_FARM_VIP_DURATION_DAYS} dias (${AUTO_FARM_VIP_COST_DWCOIN} DL Din${expiryDateStr ? ` · até ${expiryDateStr}` : ''})! +${AUTO_FARM_VIP_XP_BONUS_PCT}% EXP ativo enquanto ligado.`,
       { tone: 'loot' }
     );
 
     return {
       ok: true,
-      message: `VIP Auto Farm liberado com sucesso! +${AUTO_FARM_VIP_XP_BONUS_PCT}% EXP ativo enquanto o Auto Farm estiver ligado.`,
+      message: `VIP Auto Farm ativado por ${AUTO_FARM_VIP_DURATION_DAYS} dias${expiryDateStr ? ` (válido até ${expiryDateStr})` : ''}! +${AUTO_FARM_VIP_XP_BONUS_PCT}% EXP ativo enquanto ligado.`,
     };
   }, [
     actorUid,
@@ -1464,10 +1646,22 @@ export function TamerWorldCanvas({
         if (cloudBits === null || cloudDCoin === null) return;
 
         const cloudAutoFarmVip = cloudHud.autoFarmVipUnlocked === true;
-        if (cloudAutoFarmVip && hudAccountRef.current.autoFarmVipUnlocked !== true) {
+        const cloudAutoFarmVipUntilMs =
+          typeof cloudHud.autoFarmVipUntilMs === 'number' &&
+          Number.isFinite(cloudHud.autoFarmVipUntilMs) &&
+          cloudHud.autoFarmVipUntilMs > 0
+            ? Math.round(cloudHud.autoFarmVipUntilMs)
+            : null;
+        const curVipUntilMs = hudAccountRef.current.autoFarmVipUntilMs ?? 0;
+        if (
+          (cloudAutoFarmVip && hudAccountRef.current.autoFarmVipUnlocked !== true) ||
+          (cloudAutoFarmVipUntilMs != null && cloudAutoFarmVipUntilMs > curVipUntilMs)
+        ) {
           const syncedVipState: AccountHudPersistence = {
             ...hudAccountRef.current,
-            autoFarmVipUnlocked: true,
+            autoFarmVipUnlocked: hudAccountRef.current.autoFarmVipUnlocked === true || cloudAutoFarmVip,
+            autoFarmVipUntilMs:
+              Math.max(curVipUntilMs, cloudAutoFarmVipUntilMs ?? 0) || null,
             updatedAt: new Date().toISOString(),
           };
           hudAccountRef.current = syncedVipState;
@@ -1487,6 +1681,8 @@ export function TamerWorldCanvas({
               ...cur,
               dCoin: cloudDCoin,
               autoFarmVipUnlocked: cur.autoFarmVipUnlocked === true || cloudAutoFarmVip,
+              autoFarmVipUntilMs:
+                Math.max(cur.autoFarmVipUntilMs ?? 0, cloudAutoFarmVipUntilMs ?? 0) || null,
               updatedAt: new Date().toISOString(),
             };
             hudAccountRef.current = syncedState;
@@ -1533,6 +1729,8 @@ export function TamerWorldCanvas({
           bits: nextBits,
           dCoin: nextDCoin,
           autoFarmVipUnlocked: cur.autoFarmVipUnlocked === true || cloudAutoFarmVip,
+          autoFarmVipUntilMs:
+            Math.max(cur.autoFarmVipUntilMs ?? 0, cloudAutoFarmVipUntilMs ?? 0) || null,
           updatedAt: new Date().toISOString(),
         };
         hudAccountRef.current = nextState;
@@ -1905,7 +2103,7 @@ export function TamerWorldCanvas({
         const playerXpBoostPct = getActiveXpBoostBonusPct(prevAcc.xpBoostUntilMs);
         const autoFarmVipXpBonusPct =
           autoHuntConfigRef.current.enabled &&
-          (prevAcc.autoFarmVipUnlocked === true || isGM)
+          isAutoFarmVipActive(prevAcc, isGM)
             ? AUTO_FARM_VIP_XP_BONUS_PCT
             : 0;
         const gainedDigimonExp = applyServerExpMultiplier(
@@ -2123,28 +2321,24 @@ export function TamerWorldCanvas({
     minimapEnemies: [],
   }));
 
-  // Play DATS Center soundtrack in loop while inside DATS Center; obey musicEnabled & musicVolume settings
-  const datsMusicActive = preferences.musicEnabled && preferences.musicVolume > 0;
+  // Play dedicated DMO soundtrack per map in loop; obey musicEnabled & musicVolume settings
+  const worldMusicActive = preferences.musicEnabled && preferences.musicVolume > 0;
 
   useEffect(() => {
-    datsCenterMusicPlayer.setVolumeMultiplier(preferences.musicVolume / 100);
+    worldBgmPlayer.setVolumeMultiplier(preferences.musicVolume / 100);
   }, [preferences.musicVolume]);
 
   useEffect(() => {
-    if (liveSnapshot.mapId === DATS_MAP_ID) {
-      datsCenterMusicPlayer.start(datsMusicActive);
-    } else {
-      datsCenterMusicPlayer.stop();
-    }
-  }, [liveSnapshot.mapId, datsMusicActive]);
+    worldBgmPlayer.playForMap(liveSnapshot.mapId, worldMusicActive);
+  }, [liveSnapshot.mapId, worldMusicActive]);
 
   useEffect(() => {
-    datsCenterMusicPlayer.setMuted(!datsMusicActive);
-  }, [datsMusicActive]);
+    worldBgmPlayer.setMuted(!worldMusicActive);
+  }, [worldMusicActive]);
 
   useEffect(() => {
     return () => {
-      datsCenterMusicPlayer.stop();
+      worldBgmPlayer.stop();
     };
   }, []);
 
@@ -2570,7 +2764,7 @@ export function TamerWorldCanvas({
           const playerXpBoostPct = getActiveXpBoostBonusPct(prevAcc.xpBoostUntilMs);
           const autoFarmVipXpBonusPct =
             autoHuntConfigRef.current.enabled &&
-            (prevAcc.autoFarmVipUnlocked === true || isGM)
+            isAutoFarmVipActive(prevAcc, isGM)
               ? AUTO_FARM_VIP_XP_BONUS_PCT
               : 0;
           const gainedDigimonExp = applyServerExpMultiplier(
@@ -2606,6 +2800,7 @@ export function TamerWorldCanvas({
             });
           }
 
+          const activeLineStarterId = activeFormRef.current.starterId;
           const tamerRes = applyExpToTamer(
             prevAcc.tamer,
             gainedTamerExp,
@@ -2614,7 +2809,7 @@ export function TamerWorldCanvas({
           const digiRes = applyExpToDigimon(
             prevAcc.digimon,
             gainedDigimonExp,
-            starterDigimon.digimonId
+            activeLineStarterId
           );
 
           const dropRes = rollAndApplyDigimonDrops(
@@ -2696,13 +2891,13 @@ export function TamerWorldCanvas({
           if (digiRes.newlyUnlockedForms.length > 0) {
             for (const unlocked of digiRes.newlyUnlockedForms) {
               const evoCost = getFormEvoluterCost(
-                starterDigimon.digimonId,
+                activeLineStarterId,
                 unlocked.id
               );
               const needsEvoUnlock =
                 evoCost > 0 &&
                 !isEvolutionSlotUnlockedByEvoluter(
-                  starterDigimon.digimonId,
+                  activeLineStarterId,
                   unlocked.id,
                   digiRes.next
                 );
@@ -2823,6 +3018,135 @@ export function TamerWorldCanvas({
     saveAccountHudState(finalNext, immediateLocalSave || dCoinChangedLocally, {
       syncDCoinToCloud: dCoinChangedLocally,
     });
+  }
+
+  function persistTutorialRewardsState(nextState: {
+    supplies: boolean;
+    eggPack: boolean;
+  }) {
+    tutorialRewardsClaimedRef.current = nextState;
+    setTutorialRewardsClaimed(nextState);
+    try {
+      window.localStorage.setItem(
+        tutorialRewardsStorageKey,
+        JSON.stringify(nextState)
+      );
+    } catch {
+      // Ignore storage restrictions
+    }
+  }
+
+  function handleClaimTutorialSupplies(): boolean {
+    if (tutorialRewardsClaimedRef.current.supplies) return false;
+    const breadPayload = createInventoryPayloadFromCatalog(
+      'food_premium_bread',
+      200
+    );
+    const vitaminPayload = createInventoryPayloadFromCatalog(
+      'vitamin_high_b',
+      200
+    );
+    if (!breadPayload || !vitaminPayload) return false;
+
+    const acc = hudAccountRef.current;
+    const safeSlotLimit = Math.max(
+      getUnlockedInventorySlots(acc),
+      acc.inventory.length + 2
+    );
+    const step1 = addInventoryItem(acc.inventory, breadPayload, safeSlotLimit);
+    const step2 = addInventoryItem(step1.next, vitaminPayload, safeSlotLimit);
+
+    commitHudAccount(
+      {
+        ...acc,
+        inventory: step2.next,
+      },
+      true
+    );
+    persistTutorialRewardsState({
+      ...tutorialRewardsClaimedRef.current,
+      supplies: true,
+    });
+    playDigitalTone('confirm', soundEnabled);
+    pushChatMessage(
+      'system',
+      '[DATS · Richard Sampson] Kit de Boas-Vindas entregue! Você recebeu 200× Premium Bread (+1.600 HP) e 200× High Vitamin B (+800 DS) na sua Mochila.',
+      { tone: 'loot' }
+    );
+    pushNotification(
+      'Suprimentos DATS Recebidos',
+      '200× Premium Bread e 200× High Vitamin B adicionados ao seu Inventário.'
+    );
+    return true;
+  }
+
+  function handleClaimTutorialEggPack(): boolean {
+    if (tutorialRewardsClaimedRef.current.eggPack) return false;
+    const baseEggPayload = createInventoryPayloadFromCatalog(
+      'digiegg_demimeramon',
+      1
+    );
+    const fireDataPayload = createInventoryPayloadFromCatalog('data_fire', 21);
+    if (!baseEggPayload || !fireDataPayload) return false;
+
+    const tutorialEggPayload = {
+      ...baseEggPayload,
+      eggData: {
+        ...(baseEggPayload.eggData ?? {
+          speciesName: 'DemiMeramon',
+          rarity: 'Especial',
+          dataType: 'fire' as const,
+          requiredDataKey: 'data_fire',
+          requiredDataQuantity: 7,
+          hatchedFormId: 'demimeramon' as const,
+        }),
+        hatchLevel: 0,
+        maxHatchLevel: 5,
+        guaranteedUpToLevel: 3,
+        isTutorialGift: true,
+        preUnlockedFormIds: [
+          'demimeramon',
+          'meramon',
+          'skullmeramon',
+          'boltmon',
+        ] as DigimonFormId[],
+      },
+    };
+
+    const acc = hudAccountRef.current;
+    const safeSlotLimit = Math.max(
+      getUnlockedInventorySlots(acc),
+      acc.inventory.length + 2
+    );
+    const step1 = addInventoryItem(
+      acc.inventory,
+      tutorialEggPayload,
+      safeSlotLimit
+    );
+    const step2 = addInventoryItem(step1.next, fireDataPayload, safeSlotLimit);
+
+    commitHudAccount(
+      {
+        ...acc,
+        inventory: step2.next,
+      },
+      true
+    );
+    persistTutorialRewardsState({
+      ...tutorialRewardsClaimedRef.current,
+      eggPack: true,
+    });
+    playIncubatorSuccessSound(soundEnabled);
+    pushChatMessage(
+      'system',
+      '[DATS · Richard Sampson] Presente de Chocagem entregue! Você recebeu 1× DigiEgg: DemiMeramon (3/5 Garantido · Ultimate e Mega já abertas!) + 21× DATA FIRE.',
+      { tone: 'loot' }
+    );
+    pushNotification(
+      'DigiEgg Especial Recebido',
+      '1× Ovo DemiMeramon (3/5 Garantido) + 21× DATA FIRE adicionados à Mochila.'
+    );
+    return true;
   }
 
   const handleUpdateTamerPhoto = useCallback(
@@ -3038,6 +3362,10 @@ export function TamerWorldCanvas({
   function travelToMap(targetMap: ActiveWorldMapId) {
     const sim = simRef.current;
     setActiveStationModal(null);
+    pendingPortalWalkRef.current = false;
+    pendingConductorWalkRef.current = false;
+    pendingTargetPortalRef.current = null;
+    nearbyPortalRef.current = null;
     sim.tapTarget = null;
     sim.keyOrder = [];
     sim.combatEffects = [];
@@ -3205,6 +3533,24 @@ export function TamerWorldCanvas({
         'Você chegou à Planície Digital (Nv. 1–10)! Caçe Drimogemon, Gotsumon, Kiwimon, Hawkmon e Monodramon para dropar DATA e DigiEggs Mercenários.',
         { tone: 'info' }
       );
+    } else if (targetMap === D_TERMINAL_MAP_ID) {
+      sim.mapId = D_TERMINAL_MAP_ID;
+      sim.x = D_TERMINAL_SPAWN_POINT.x;
+      sim.y = D_TERMINAL_SPAWN_POINT.y;
+      sim.camX = sim.x;
+      sim.camY = sim.y - 56;
+      sim.dir = D_TERMINAL_SPAWN_POINT.facingDir;
+      sim.enemies = [];
+      sim.partner = createInitialPartnerRuntime(
+        sim.x,
+        sim.y,
+        D_TERMINAL_SPAWN_POINT.facingDir
+      );
+      pushChatMessage(
+        'system',
+        'Você chegou ao D-Terminal (Estação Trailmon)! Fale com o Condutor PawnChessmon (Black) em frente ao trem para escolher seu destino no Mundo Digital.',
+        { tone: 'info' }
+      );
     } else {
       sim.mapId = DATS_MAP_ID;
       sim.x = 800;
@@ -3212,6 +3558,7 @@ export function TamerWorldCanvas({
       sim.camX = sim.x;
       sim.camY = sim.y - 56;
       sim.dir = 'N';
+      sim.enemies = [];
       sim.partner = createInitialPartnerRuntime(sim.x, sim.y, 'N');
       pushChatMessage(
         'system',
@@ -3236,6 +3583,25 @@ export function TamerWorldCanvas({
 
     persistProgress();
     playDigitalTone('confirm', soundEnabled);
+  }
+
+  function attemptPortalTravel(portal: MapPortalLink) {
+    const account = hudAccountRef.current;
+    const unlocked =
+      isGM ||
+      portal.minLevel <= 1 ||
+      account.tamer.level >= portal.minLevel ||
+      account.digimon.level >= portal.minLevel;
+    if (!unlocked) {
+      playDigitalTone('error', soundEnabled);
+      pushChatMessage(
+        'system',
+        `O portal para ${portal.title} exige Tamer ou Digimon nível ${portal.minLevel}+.`,
+        { tone: 'warning' }
+      );
+      return;
+    }
+    travelToMap(portal.targetMapId);
   }
 
   function handleMeetPlayer(target: RemoteWorldPlayer) {
@@ -3269,8 +3635,8 @@ export function TamerWorldCanvas({
 
   function openNearbyStation() {
     const sim = simRef.current;
-    if (isCombatWorldMap(sim.mapId) && sim.nearReturnPortal) {
-      travelToMap(DATS_MAP_ID);
+    if (nearbyPortalRef.current) {
+      attemptPortalTravel(nearbyPortalRef.current);
       return;
     }
 
@@ -3282,18 +3648,20 @@ export function TamerWorldCanvas({
         : sim.mapId === DARK_AREA_MAP_ID
           ? DARK_AREA_INTERACTION_POINTS
           : sim.mapId === DIGIMON_ISLAND_MAP_ID
-          ? DIGIMON_ISLAND_INTERACTION_POINTS
-        : sim.mapId === DATA_SEA_MAP_ID
-          ? DATA_SEA_INTERACTION_POINTS
-          : sim.mapId === DIGITAL_DESERT_MAP_ID
-            ? DIGITAL_DESERT_INTERACTION_POINTS
-            : sim.mapId === DIGI_MOUNTAIN_MAP_ID
-              ? DIGI_MOUNTAIN_INTERACTION_POINTS
-              : sim.mapId === DATA_FOREST_MAP_ID
-                ? DATA_FOREST_INTERACTION_POINTS
-                : sim.mapId === HUNTING_MAP_ID
-                  ? HUNTING_INTERACTION_POINTS
-                  : DATS_INTERACTION_POINTS;
+            ? DIGIMON_ISLAND_INTERACTION_POINTS
+            : sim.mapId === DATA_SEA_MAP_ID
+              ? DATA_SEA_INTERACTION_POINTS
+              : sim.mapId === DIGITAL_DESERT_MAP_ID
+                ? DIGITAL_DESERT_INTERACTION_POINTS
+                : sim.mapId === DIGI_MOUNTAIN_MAP_ID
+                  ? DIGI_MOUNTAIN_INTERACTION_POINTS
+                  : sim.mapId === DATA_FOREST_MAP_ID
+                    ? DATA_FOREST_INTERACTION_POINTS
+                    : sim.mapId === HUNTING_MAP_ID
+                      ? HUNTING_INTERACTION_POINTS
+                      : sim.mapId === D_TERMINAL_MAP_ID
+                        ? D_TERMINAL_INTERACTION_POINTS
+                        : DATS_INTERACTION_POINTS;
     const found = activePoints.find((p) => p.id === ptId);
     if (!found) return;
     if (!sim.discoveredZones.has(found.id)) {
@@ -3301,9 +3669,17 @@ export function TamerWorldCanvas({
     }
     persistProgress();
     playDigitalTone('confirm', soundEnabled);
+    if (found.id === 'digital-world-portal') {
+      travelToMap(D_TERMINAL_MAP_ID);
+      return;
+    }
     if (found.id === DATS_INCUBATOR_STATION.id) {
       pendingIncubatorWalkRef.current = false;
       pendingArchiveWalkRef.current = false;
+      pendingPortalWalkRef.current = false;
+      pendingConductorWalkRef.current = false;
+      pendingTargetPortalRef.current = null;
+      pendingDatsPointIdRef.current = null;
       sim.tapTarget = null;
       sim.keyOrder = [];
       setActiveStationModal(null);
@@ -3313,6 +3689,10 @@ export function TamerWorldCanvas({
     if (found.id === DATS_ARCHIVE_STATION.id) {
       pendingIncubatorWalkRef.current = false;
       pendingArchiveWalkRef.current = false;
+      pendingPortalWalkRef.current = false;
+      pendingConductorWalkRef.current = false;
+      pendingTargetPortalRef.current = null;
+      pendingDatsPointIdRef.current = null;
       sim.tapTarget = null;
       sim.keyOrder = [];
       setActiveStationModal(null);
@@ -3324,7 +3704,17 @@ export function TamerWorldCanvas({
       sim.keyOrder = [];
       setActiveStationModal(null);
       setActiveNpcDialogue(null);
+      setPlayerMarketOpen(false);
       setMudfrigimonShopOpen(true);
+      return;
+    }
+    if (found.id === 'dats-player-market-npc') {
+      sim.tapTarget = null;
+      sim.keyOrder = [];
+      setActiveStationModal(null);
+      setActiveNpcDialogue(null);
+      setMudfrigimonShopOpen(false);
+      setPlayerMarketOpen(true);
       return;
     }
     setActiveStationModal(found);
@@ -3398,12 +3788,12 @@ export function TamerWorldCanvas({
         typeof targetFormOrId === 'string' ? targetFormOrId : targetFormOrId.id;
       const currentAcc = hudAccountRef.current;
       const currentForm = resolveActiveFormProfile(
-        starterDigimon.digimonId,
+        activeFormRef.current.starterId,
         currentAcc.digimon.activeFormId
       );
       const res = evolveDigimonAccountState(
         currentAcc,
-        starterDigimon.digimonId,
+        currentForm.starterId,
         targetId
       );
       if (res.needsEvoluter) {
@@ -3459,7 +3849,7 @@ export function TamerWorldCanvas({
         );
       }
     },
-    [pushChatMessage, soundEnabled, starterDigimon.digimonId]
+    [pushChatMessage, soundEnabled]
   );
 
   const handleConfirmUnlockEvolution = useCallback(
@@ -3467,7 +3857,7 @@ export function TamerWorldCanvas({
       const currentAcc = hudAccountRef.current;
       const res = unlockDigimonEvolutionWithEvoluters(
         currentAcc,
-        starterDigimon.digimonId,
+        activeFormRef.current.starterId,
         targetFormId
       );
       if (!res.ok || !res.unlockedForm) {
@@ -3501,7 +3891,6 @@ export function TamerWorldCanvas({
       pushChatMessage,
       pushNotification,
       soundEnabled,
-      starterDigimon.digimonId,
     ]
   );
 
@@ -3509,13 +3898,14 @@ export function TamerWorldCanvas({
     (targetLevel: number) => {
       if (!isGM) return;
       const prevAcc = hudAccountRef.current;
+      const currentStarterId = activeFormRef.current.starterId;
       const res = setDigimonLevelForTesting(
         prevAcc.digimon,
-        starterDigimon.digimonId,
+        currentStarterId,
         targetLevel
       );
       const nextForm = resolveActiveFormProfile(
-        starterDigimon.digimonId,
+        currentStarterId,
         res.next.activeFormId
       );
       commitHudAccount({
@@ -3540,13 +3930,13 @@ export function TamerWorldCanvas({
       if (res.newlyUnlockedForms.length > 0) {
         for (const unlocked of res.newlyUnlockedForms) {
           const evoCost = getFormEvoluterCost(
-            starterDigimon.digimonId,
+            nextForm.starterId,
             unlocked.id
           );
           const needsEvoUnlock =
             evoCost > 0 &&
             !isEvolutionSlotUnlockedByEvoluter(
-              starterDigimon.digimonId,
+              nextForm.starterId,
               unlocked.id,
               res.next
             );
@@ -3569,20 +3959,21 @@ export function TamerWorldCanvas({
         }
       }
     },
-    [isGM, pushChatMessage, pushNotification, soundEnabled, starterDigimon.digimonId]
+    [isGM, pushChatMessage, pushNotification, soundEnabled]
   );
 
   const handleAdminAddDigimonExp = useCallback(
     (expAmount: number) => {
       if (!isGM) return;
       const prevAcc = hudAccountRef.current;
+      const currentStarterId = activeFormRef.current.starterId;
       const res = applyExpToDigimon(
         prevAcc.digimon,
         expAmount,
-        starterDigimon.digimonId
+        currentStarterId
       );
       const activeFormNow = resolveActiveFormProfile(
-        starterDigimon.digimonId,
+        currentStarterId,
         res.next.activeFormId
       );
       commitHudAccount({
@@ -3599,13 +3990,13 @@ export function TamerWorldCanvas({
       if (res.newlyUnlockedForms.length > 0) {
         for (const unlocked of res.newlyUnlockedForms) {
           const evoCost = getFormEvoluterCost(
-            starterDigimon.digimonId,
+            activeFormNow.starterId,
             unlocked.id
           );
           const needsEvoUnlock =
             evoCost > 0 &&
             !isEvolutionSlotUnlockedByEvoluter(
-              starterDigimon.digimonId,
+              activeFormNow.starterId,
               unlocked.id,
               res.next
             );
@@ -3628,7 +4019,7 @@ export function TamerWorldCanvas({
         }
       }
     },
-    [isGM, pushChatMessage, pushNotification, soundEnabled, starterDigimon.digimonId]
+    [isGM, pushChatMessage, pushNotification, soundEnabled]
   );
 
   const handleAdminRestoreVitals = useCallback(() => {
@@ -3828,7 +4219,7 @@ export function TamerWorldCanvas({
       if (!isGM) return;
       const prevAcc = hudAccountRef.current;
       const currentForm = resolveActiveFormProfile(
-        starterDigimon.digimonId,
+        activeFormRef.current.starterId,
         prevAcc.digimon.activeFormId
       );
       const qProf = getHatchQualityProfile(grade);
@@ -4181,6 +4572,11 @@ export function TamerWorldCanvas({
     };
   }, [selection.characterId, starterDigimon.digimonId]);
 
+  // Always preload active Digimon sprites whenever the player swaps partners or evolves
+  useEffect(() => {
+    void preloadDigimonPartnerAssets(activeFormProfile.id);
+  }, [activeFormProfile.id]);
+
   useEffect(() => {
     if (liveSnapshot.mapId === DIGI_MOUNTAIN_MAP_ID) {
       void preloadWildDigimonSpritesForMap(DIGI_MOUNTAIN_MAP_ID);
@@ -4255,6 +4651,7 @@ export function TamerWorldCanvas({
       if (k === 'escape') {
         if (overlayLayerRef.current.mudShop) {
           setMudfrigimonShopOpen(false);
+          setPlayerMarketOpen(false);
         } else if (overlayLayerRef.current.npc) {
           setActiveNpcDialogue(null);
         } else if (overlayLayerRef.current.station) {
@@ -4280,9 +4677,9 @@ export function TamerWorldCanvas({
       }
       if (k === 'e' || k === 'enter') {
         const sim = simRef.current;
-        if (isCombatWorldMap(sim.mapId) && sim.nearReturnPortal) {
+        if (nearbyPortalRef.current) {
           e.preventDefault();
-          travelToMap(DATS_MAP_ID);
+          attemptPortalTravel(nearbyPortalRef.current);
           return;
         }
         if (sim.nearbyPointId) {
@@ -4296,6 +4693,10 @@ export function TamerWorldCanvas({
       if (!dir) return;
       pendingIncubatorWalkRef.current = false;
       pendingArchiveWalkRef.current = false;
+      pendingPortalWalkRef.current = false;
+      pendingConductorWalkRef.current = false;
+      pendingTargetPortalRef.current = null;
+      pendingDatsPointIdRef.current = null;
       setActiveStationModal(null);
       setActiveNpcDialogue(null);
       const order = simRef.current.keyOrder;
@@ -4334,10 +4735,11 @@ export function TamerWorldCanvas({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Lazily build each heavy map layer & 3D incubator ONLY when first visited (saves ~50MB VRAM & seconds of freeze)
-    let incubatorWorldRenderer: ReturnType<typeof createIncubatorWorldSpriteRenderer> | null = null;
+    // Lazily build each heavy map layer ONLY when first visited (saves ~50MB VRAM & seconds of freeze)
     let datsGroundCanvas: HTMLCanvasElement | null = null;
     let datsDepthProps: ReturnType<typeof buildDatsDepthProps> | null = null;
+    let dTerminalGroundCanvas: HTMLCanvasElement | null = null;
+    let dTerminalDepthProps: ReturnType<typeof buildDTerminalDepthProps> | null = null;
     let huntingGroundCanvas: HTMLCanvasElement | null = null;
     let huntingDepthProps: ReturnType<typeof buildHuntingDepthProps> | null = null;
     let dataForestGroundCanvas: HTMLCanvasElement | null = null;
@@ -4356,23 +4758,36 @@ export function TamerWorldCanvas({
     let virtualWorldDepthProps: ReturnType<typeof buildVirtualWorldDepthProps> | null = null;
 
     function ensureDatsAssets() {
-      if (!incubatorWorldRenderer) {
-        incubatorWorldRenderer = createIncubatorWorldSpriteRenderer();
-      }
       if (!datsGroundCanvas) {
         datsGroundCanvas = buildDatsCenterStaticLayer();
       }
       if (!datsDepthProps) {
-        const incRenderer = incubatorWorldRenderer;
         datsDepthProps = buildDatsDepthProps({
-          getIncubatorCanvas: (el) => incRenderer.getCanvas(el),
           isIncubatorNearby: () =>
             simRef.current.nearbyPointId === DATS_INCUBATOR_STATION.id,
           isArchiveNearby: () =>
             simRef.current.nearbyPointId === DATS_ARCHIVE_STATION.id,
+          isPortalNearby: () =>
+            simRef.current.nearbyPointId === 'digital-world-portal',
         });
       }
       return { ground: datsGroundCanvas, props: datsDepthProps };
+    }
+
+    function ensureDTerminalAssets() {
+      if (!dTerminalGroundCanvas) {
+        dTerminalGroundCanvas = buildDTerminalStaticLayer();
+      }
+      if (!dTerminalDepthProps) {
+        dTerminalDepthProps = buildDTerminalDepthProps({
+          isConductorNearby: () =>
+            simRef.current.nearbyPointId === D_TERMINAL_CONDUCTOR_NPC.id,
+          isConductorHovered: () =>
+            hoveredNpcIdRef.current === D_TERMINAL_CONDUCTOR_NPC.id,
+          isReturnPortalNearby: () => simRef.current.nearReturnPortal,
+        });
+      }
+      return { ground: dTerminalGroundCanvas, props: dTerminalDepthProps };
     }
 
     function ensureHuntingAssets() {
@@ -4467,10 +4882,14 @@ export function TamerWorldCanvas({
           datsGroundCanvas = null;
         }
         datsDepthProps = null;
-        if (incubatorWorldRenderer) {
-          incubatorWorldRenderer.dispose();
-          incubatorWorldRenderer = null;
+      }
+      if (nextMapId !== D_TERMINAL_MAP_ID) {
+        if (dTerminalGroundCanvas) {
+          dTerminalGroundCanvas.width = 0;
+          dTerminalGroundCanvas.height = 0;
+          dTerminalGroundCanvas = null;
         }
+        dTerminalDepthProps = null;
       }
       if (nextMapId !== HUNTING_MAP_ID) {
         if (huntingGroundCanvas) {
@@ -4626,6 +5045,7 @@ export function TamerWorldCanvas({
       const { w: viewW, h: viewH } = syncCanvasSize();
       const sim = simRef.current;
       releaseInactiveMapLayers(sim.mapId);
+      const isDTerminal = sim.mapId === D_TERMINAL_MAP_ID;
       const isVirtualWorld = sim.mapId === VIRTUAL_WORLD_MAP_ID;
       const isDarkArea = sim.mapId === DARK_AREA_MAP_ID;
       const isDigimonIsland = sim.mapId === DIGIMON_ISLAND_MAP_ID;
@@ -4649,18 +5069,20 @@ export function TamerWorldCanvas({
         : isDarkArea
           ? DARK_AREA_COLLIDERS
           : isDigimonIsland
-          ? DIGIMON_ISLAND_COLLIDERS
-        : isDataSea
-          ? DATA_SEA_COLLIDERS
-          : isDigitalDesert
-            ? DIGITAL_DESERT_COLLIDERS
-            : isDigiMountain
-              ? DIGI_MOUNTAIN_COLLIDERS
-              : isDataForest
-                ? DATA_FOREST_COLLIDERS
-                : isHunting
-                  ? HUNTING_COLLIDERS
-                  : DATS_COLLIDERS;
+            ? DIGIMON_ISLAND_COLLIDERS
+            : isDataSea
+              ? DATA_SEA_COLLIDERS
+              : isDigitalDesert
+                ? DIGITAL_DESERT_COLLIDERS
+                : isDigiMountain
+                  ? DIGI_MOUNTAIN_COLLIDERS
+                  : isDataForest
+                    ? DATA_FOREST_COLLIDERS
+                    : isHunting
+                      ? HUNTING_COLLIDERS
+                      : isDTerminal
+                        ? D_TERMINAL_COLLIDERS
+                        : DATS_COLLIDERS;
 
       const isEvolving = isEvolvingRef.current;
 
@@ -5474,7 +5896,7 @@ export function TamerWorldCanvas({
 
       const canRunAutoFarm =
         autoCfg.enabled &&
-        (hudAccountRef.current.autoFarmVipUnlocked === true || isGM);
+        isAutoFarmVipActive(hudAccountRef.current, isGM);
       if (
         canRunAutoFarm &&
         autoCfg.targetSpecies.length > 0 &&
@@ -5840,7 +6262,7 @@ export function TamerWorldCanvas({
             const playerXpBoostPct = getActiveXpBoostBonusPct(prevAcc.xpBoostUntilMs);
             const autoFarmVipXpBonusPct =
               autoHuntConfigRef.current.enabled &&
-              (prevAcc.autoFarmVipUnlocked === true || isGM)
+              isAutoFarmVipActive(prevAcc, isGM)
                 ? AUTO_FARM_VIP_XP_BONUS_PCT
                 : 0;
             const gainedDigimonExp = applyServerExpMultiplier(
@@ -5985,15 +6407,16 @@ export function TamerWorldCanvas({
               );
             }
             if (digiRes.newlyUnlockedForms.length > 0) {
+              const activeLineStarterId = runtimeMetaRef.current.starterDigimonId;
               for (const unlocked of digiRes.newlyUnlockedForms) {
                 const evoCost = getFormEvoluterCost(
-                  starterDigimon.digimonId,
+                  activeLineStarterId,
                   unlocked.id
                 );
                 const needsEvoUnlock =
                   evoCost > 0 &&
                   !isEvolutionSlotUnlockedByEvoluter(
-                    starterDigimon.digimonId,
+                    activeLineStarterId,
                     unlocked.id,
                     digiRes.next
                   );
@@ -6086,9 +6509,51 @@ export function TamerWorldCanvas({
         sim.eggDropFx.length = writeIdx;
       }
 
-      // 3. Detect proximity to interaction points, Return Portal & Exploration Zones
+      // 3. Detect proximity to interaction points, Interconnected Portals & Exploration Zones
       let closestPt: DatsInteractionPoint | null = null;
-      if (!isCombatMap) {
+      if (isDTerminal) {
+        const dtPortals = getPortalsForMap(D_TERMINAL_MAP_ID);
+        const dtReturnPortal = dtPortals[0] ?? null;
+        const nearDtReturn =
+          dtReturnPortal !== null &&
+          Math.hypot(sim.x - dtReturnPortal.x, sim.y - dtReturnPortal.y) <=
+            dtReturnPortal.radius;
+
+        nearbyPortalRef.current = nearDtReturn ? dtReturnPortal : null;
+        sim.nearReturnPortal = nearDtReturn;
+
+        const distConductor = Math.hypot(
+          sim.x - D_TERMINAL_CONDUCTOR_NPC.x,
+          sim.y - D_TERMINAL_CONDUCTOR_NPC.y
+        );
+        const nearConductor = distConductor <= D_TERMINAL_CONDUCTOR_NPC.radius;
+        sim.nearbyPointId =
+          !nearDtReturn && nearConductor ? D_TERMINAL_CONDUCTOR_NPC.id : null;
+
+        if (
+          pendingTargetPortalRef.current &&
+          nearDtReturn &&
+          !overlayLayerRef.current.hud
+        ) {
+          const targetPortal = pendingTargetPortalRef.current;
+          pendingTargetPortalRef.current = null;
+          sim.tapTarget = null;
+          sim.keyOrder = [];
+          attemptPortalTravel(targetPortal);
+        } else if (
+          pendingConductorWalkRef.current &&
+          nearConductor &&
+          !overlayLayerRef.current.hud &&
+          !overlayLayerRef.current.station
+        ) {
+          pendingConductorWalkRef.current = false;
+          sim.tapTarget = null;
+          sim.keyOrder = [];
+          setActiveStationModal(D_TERMINAL_INTERACTION_POINTS[0]);
+          playDigitalTone('confirm', soundEnabled);
+        }
+      } else if (!isCombatMap) {
+        nearbyPortalRef.current = null;
         let closestDist = Infinity;
         for (const pt of DATS_INTERACTION_POINTS) {
           const d = Math.hypot(sim.x - pt.x, sim.y - pt.y);
@@ -6128,23 +6593,28 @@ export function TamerWorldCanvas({
           setActiveStationModal(null);
           setActiveHudWindow('archive');
           playDigitalTone('confirm', soundEnabled);
+        } else if (
+          pendingPortalWalkRef.current &&
+          closestPt?.id === 'digital-world-portal' &&
+          !overlayLayerRef.current.hud
+        ) {
+          pendingPortalWalkRef.current = false;
+          sim.tapTarget = null;
+          sim.keyOrder = [];
+          travelToMap(D_TERMINAL_MAP_ID);
+        } else if (
+          pendingDatsPointIdRef.current &&
+          closestPt?.id === pendingDatsPointIdRef.current &&
+          !overlayLayerRef.current.hud &&
+          !overlayLayerRef.current.station
+        ) {
+          pendingDatsPointIdRef.current = null;
+          sim.tapTarget = null;
+          sim.keyOrder = [];
+          setActiveStationModal(closestPt);
+          playDigitalTone('confirm', soundEnabled);
         }
       } else {
-        const activeReturnPortal = isVirtualWorld
-          ? VIRTUAL_WORLD_RETURN_PORTAL
-          : isDarkArea
-            ? DARK_AREA_RETURN_PORTAL
-            : isDigimonIsland
-              ? DIGIMON_ISLAND_RETURN_PORTAL
-              : isDataSea
-                ? DATA_SEA_RETURN_PORTAL
-                : isDigitalDesert
-                  ? DIGITAL_DESERT_RETURN_PORTAL
-                  : isDigiMountain
-                    ? DIGI_MOUNTAIN_RETURN_PORTAL
-                    : isDataForest
-                      ? DATA_FOREST_RETURN_PORTAL
-                      : HUNTING_RETURN_PORTAL;
         const activeInteractionPts = isVirtualWorld
           ? VIRTUAL_WORLD_INTERACTION_POINTS
           : isDarkArea
@@ -6161,9 +6631,35 @@ export function TamerWorldCanvas({
                       ? DATA_FOREST_INTERACTION_POINTS
                       : HUNTING_INTERACTION_POINTS;
 
-        sim.nearReturnPortal =
-          Math.hypot(sim.x - activeReturnPortal.x, sim.y - activeReturnPortal.y) <=
-          activeReturnPortal.radius;
+        const mapPortals = getPortalsForMap(sim.mapId);
+        let nearestPortal: MapPortalLink | null = null;
+        let nearestPortalDist = Infinity;
+        for (const portal of mapPortals) {
+          const d = Math.hypot(sim.x - portal.x, sim.y - portal.y);
+          if (d <= portal.radius && d < nearestPortalDist) {
+            nearestPortalDist = d;
+            nearestPortal = portal;
+          }
+        }
+        nearbyPortalRef.current = nearestPortal;
+        sim.nearReturnPortal = nearestPortal !== null;
+
+        if (
+          pendingTargetPortalRef.current &&
+          !overlayLayerRef.current.hud
+        ) {
+          const targetPortal = pendingTargetPortalRef.current;
+          const distToTarget = Math.hypot(
+            sim.x - targetPortal.x,
+            sim.y - targetPortal.y
+          );
+          if (distToTarget <= targetPortal.radius) {
+            pendingTargetPortalRef.current = null;
+            sim.tapTarget = null;
+            sim.keyOrder = [];
+            attemptPortalTravel(targetPortal);
+          }
+        }
 
         let closestDist = Infinity;
         for (const pt of activeInteractionPts) {
@@ -6180,16 +6676,16 @@ export function TamerWorldCanvas({
           : isDarkArea
             ? getDarkAreaZoneAtPoint(sim.x, sim.y)
             : isDigimonIsland
-            ? getDigimonIslandZoneAtPoint(sim.x, sim.y)
-          : isDataSea
-            ? getDataSeaZoneAtPoint(sim.x, sim.y)
-            : isDigitalDesert
-              ? getDigitalDesertZoneAtPoint(sim.x, sim.y)
-              : isDigiMountain
-                ? getDigiMountainZoneAtPoint(sim.x, sim.y)
-                : isDataForest
-                  ? getDataForestZoneAtPoint(sim.x, sim.y)
-                  : getHuntingZoneAtPoint(sim.x, sim.y);
+              ? getDigimonIslandZoneAtPoint(sim.x, sim.y)
+              : isDataSea
+                ? getDataSeaZoneAtPoint(sim.x, sim.y)
+                : isDigitalDesert
+                  ? getDigitalDesertZoneAtPoint(sim.x, sim.y)
+                  : isDigiMountain
+                    ? getDigiMountainZoneAtPoint(sim.x, sim.y)
+                    : isDataForest
+                      ? getDataForestZoneAtPoint(sim.x, sim.y)
+                      : getHuntingZoneAtPoint(sim.x, sim.y);
         if (activeZone && !sim.discoveredZones.has(activeZone.id)) {
           sim.discoveredZones.add(activeZone.id);
           sim.lastSaveTs = now;
@@ -6443,6 +6939,30 @@ export function TamerWorldCanvas({
         );
         drawHuntingGroundAnimations(ctx!, elapsed, sim.nearReturnPortal);
         activeProps = hf.props;
+      } else if (isDTerminal) {
+        const dtMap = ensureDTerminalAssets();
+        const scaleX = dtMap.ground.width / D_TERMINAL_WORLD_W;
+        const scaleY = dtMap.ground.height / D_TERMINAL_WORLD_H;
+        ctx!.imageSmoothingEnabled = true;
+        ctx!.imageSmoothingQuality = 'medium';
+        ctx!.drawImage(
+          dtMap.ground,
+          visLeft * scaleX,
+          visTop * scaleY,
+          visW * scaleX,
+          visH * scaleY,
+          visLeft,
+          visTop,
+          visW,
+          visH
+        );
+        drawDTerminalGroundAnimations(
+          ctx!,
+          elapsed,
+          sim.nearbyPointId === D_TERMINAL_CONDUCTOR_NPC.id,
+          sim.nearReturnPortal
+        );
+        activeProps = dtMap.props;
       } else {
         const dats = ensureDatsAssets();
         ctx!.imageSmoothingEnabled = true;
@@ -6460,6 +6980,20 @@ export function TamerWorldCanvas({
         );
         drawDatsGroundAnimations(ctx!, elapsed, sim.nearbyPointId);
         activeProps = dats.props;
+      }
+
+      // Unified Interconnected Dimensional Portal Ground Projections on all Combat Maps
+      const activeCombatPortals = isCombatMap ? getPortalsForMap(sim.mapId) : [];
+      for (const portal of activeCombatPortals) {
+        const isNearThisPortal = nearbyPortalRef.current?.id === portal.id;
+        drawDimensionalPortalGround(
+          ctx!,
+          portal.x,
+          portal.y,
+          elapsed,
+          isNearThisPortal,
+          { scale: portal.scale ?? 0.96, theme: portal.theme }
+        );
       }
 
       if (sim.tapTarget) {
@@ -6488,6 +7022,28 @@ export function TamerWorldCanvas({
         });
       }
 
+      for (const portal of activeCombatPortals) {
+        if (portal.y < propMinY || portal.y > propMaxY) continue;
+        const isNearThisPortal = nearbyPortalRef.current?.id === portal.id;
+        drawables.push({
+          sortY: portal.y,
+          draw: () =>
+            drawDimensionalPortalGate(
+              ctx!,
+              portal.x,
+              portal.y,
+              elapsed,
+              isNearThisPortal,
+              {
+                scale: portal.scale ?? 0.96,
+                theme: portal.theme,
+                title: portal.title,
+                subtitle: portal.subtitle,
+              }
+            ),
+        });
+      }
+
       if (isCombatMap) {
         // Frustum-cull wild Digimon outside the active camera viewport for locked 60fps on mobile
         const cullMargin = 220;
@@ -6512,7 +7068,7 @@ export function TamerWorldCanvas({
             draw: () => drawEnemyMonster(ctx!, enemy, elapsed, targeted),
           });
         }
-      } else {
+      } else if (sim.mapId === DATS_MAP_ID) {
         // Fixed Official DATS NPCs (Richard Sampson, MudFrigimon)
         for (const npc of DATS_FIXED_NPCS) {
           drawables.push({
@@ -7496,7 +8052,6 @@ export function TamerWorldCanvas({
       cancelAnimationFrame(rafId);
       resizeObserver?.disconnect();
       window.removeEventListener('resize', refreshBounds);
-      incubatorWorldRenderer?.dispose();
       releaseInactiveMapLayers('__dispose__');
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -7532,21 +8087,79 @@ export function TamerWorldCanvas({
     const worldX = (tapScreenX - rect.width / 2) / cameraZoom + sim.camX;
     const worldY = (tapScreenY - rect.height / 2) / cameraZoom + sim.camY;
 
-    if (!isCombat) {
+    if (sim.mapId === D_TERMINAL_MAP_ID) {
+      // Direct tap on PawnChessmon (Black) — Trailmon Conductor NPC
+      if (
+        Math.abs(worldX - D_TERMINAL_CONDUCTOR_NPC.x) <= 62 &&
+        worldY >= D_TERMINAL_CONDUCTOR_NPC.y - 150 &&
+        worldY <= D_TERMINAL_CONDUCTOR_NPC.y + 26
+      ) {
+        setSelectedRemotePlayer(null);
+        setActiveNpcDialogue(null);
+        pendingTargetPortalRef.current = null;
+        if (sim.nearbyPointId === D_TERMINAL_CONDUCTOR_NPC.id) {
+          setActiveStationModal(D_TERMINAL_INTERACTION_POINTS[0]);
+          playDigitalTone('confirm', soundEnabled);
+        } else {
+          pendingConductorWalkRef.current = true;
+          sim.tapTarget = {
+            x: D_TERMINAL_CONDUCTOR_NPC.standX,
+            y: D_TERMINAL_CONDUCTOR_NPC.standY,
+          };
+          playDigitalTone('click', soundEnabled);
+        }
+        return;
+      }
+
+      // Direct tap on D-Terminal Southern Return Portal -> DATS Center
+      if (
+        Math.abs(worldX - D_TERMINAL_RETURN_PORTAL.x) <= 84 &&
+        worldY >= D_TERMINAL_RETURN_PORTAL.y - 152 &&
+        worldY <= D_TERMINAL_RETURN_PORTAL.y + 38
+      ) {
+        setSelectedRemotePlayer(null);
+        setActiveNpcDialogue(null);
+        pendingConductorWalkRef.current = false;
+        const dtPortal = getPortalsForMap(D_TERMINAL_MAP_ID)[0];
+        if (dtPortal) {
+          if (sim.nearReturnPortal) {
+            attemptPortalTravel(dtPortal);
+          } else {
+            pendingTargetPortalRef.current = dtPortal;
+            sim.tapTarget = { x: dtPortal.x, y: dtPortal.y };
+            playDigitalTone('click', soundEnabled);
+          }
+          return;
+        }
+      }
+    }
+
+    if (sim.mapId === DATS_MAP_ID) {
       const hitFixedNpc = [...DATS_FIXED_NPCS]
         .sort((a, b) => b.y - a.y)
         .find((npc) => isPointInsideNpcHitbox(npc, worldX, worldY));
       if (hitFixedNpc) {
         pendingIncubatorWalkRef.current = false;
         pendingArchiveWalkRef.current = false;
+        pendingPortalWalkRef.current = false;
+        pendingConductorWalkRef.current = false;
+        pendingTargetPortalRef.current = null;
+        pendingDatsPointIdRef.current = null;
         sim.tapTarget = null;
         playDigitalTone('confirm', soundEnabled);
         if (hitFixedNpc.id === MUDFRIGIMON_NPC.id) {
           setActiveNpcDialogue(null);
           setActiveStationModal(null);
+          setPlayerMarketOpen(false);
           setMudfrigimonShopOpen(true);
+        } else if (hitFixedNpc.id === MIKI_MARKET_NPC.id) {
+          setActiveNpcDialogue(null);
+          setActiveStationModal(null);
+          setMudfrigimonShopOpen(false);
+          setPlayerMarketOpen(true);
         } else {
           setMudfrigimonShopOpen(false);
+          setPlayerMarketOpen(false);
           setActiveNpcDialogue(hitFixedNpc);
         }
         return;
@@ -7554,7 +8167,7 @@ export function TamerWorldCanvas({
     }
 
     if (
-      !isCombat &&
+      sim.mapId === DATS_MAP_ID &&
       worldX >= 322 &&
       worldX <= 438 &&
       worldY >= 584 &&
@@ -7563,6 +8176,8 @@ export function TamerWorldCanvas({
       setSelectedRemotePlayer(null);
       setActiveNpcDialogue(null);
       pendingIncubatorWalkRef.current = false;
+      pendingPortalWalkRef.current = false;
+      pendingDatsPointIdRef.current = null;
       if (sim.nearbyPointId === DATS_ARCHIVE_STATION.id) {
         openNearbyStation();
       } else {
@@ -7577,7 +8192,7 @@ export function TamerWorldCanvas({
     }
 
     if (
-      !isCombat &&
+      sim.mapId === DATS_MAP_ID &&
       worldX >= 460 &&
       worldX <= 590 &&
       worldY >= 596 &&
@@ -7586,6 +8201,8 @@ export function TamerWorldCanvas({
       setSelectedRemotePlayer(null);
       setActiveNpcDialogue(null);
       pendingArchiveWalkRef.current = false;
+      pendingPortalWalkRef.current = false;
+      pendingDatsPointIdRef.current = null;
       if (sim.nearbyPointId === DATS_INCUBATOR_STATION.id) {
         openNearbyStation();
       } else {
@@ -7599,22 +8216,92 @@ export function TamerWorldCanvas({
       return;
     }
 
+    // Direct tap on DATS Southern Dimensional Portal -> goes straight to D-Terminal
+    if (
+      sim.mapId === DATS_MAP_ID &&
+      Math.abs(worldX - 800) <= 84 &&
+      worldY >= 1175 &&
+      worldY <= 1368
+    ) {
+      setSelectedRemotePlayer(null);
+      setActiveNpcDialogue(null);
+      pendingIncubatorWalkRef.current = false;
+      pendingArchiveWalkRef.current = false;
+      pendingDatsPointIdRef.current = null;
+      if (sim.nearbyPointId === 'digital-world-portal') {
+        travelToMap(D_TERMINAL_MAP_ID);
+      } else {
+        pendingPortalWalkRef.current = true;
+        sim.tapTarget = { x: 800, y: 1316 };
+        playDigitalTone('click', soundEnabled);
+      }
+      return;
+    }
+
+    // Direct tap on other DATS interactive stations (Entrance, Terminal, etc.)
+    if (sim.mapId === DATS_MAP_ID) {
+      const tappedDatsPt = DATS_INTERACTION_POINTS.find(
+        (pt) =>
+          pt.id !== DATS_ARCHIVE_STATION.id &&
+          pt.id !== DATS_INCUBATOR_STATION.id &&
+          pt.id !== 'digital-world-portal' &&
+          pt.id !== 'dats-mudfrigimon-npc' &&
+          pt.id !== 'dats-player-market-npc' &&
+          Math.hypot(worldX - pt.x, worldY - pt.y) <= 56
+      );
+      if (tappedDatsPt) {
+        setSelectedRemotePlayer(null);
+        setActiveNpcDialogue(null);
+        pendingIncubatorWalkRef.current = false;
+        pendingArchiveWalkRef.current = false;
+        pendingPortalWalkRef.current = false;
+        if (sim.nearbyPointId === tappedDatsPt.id) {
+          openNearbyStation();
+        } else {
+          pendingDatsPointIdRef.current = tappedDatsPt.id;
+          sim.tapTarget = { x: tappedDatsPt.x, y: tappedDatsPt.y };
+          playDigitalTone('click', soundEnabled);
+        }
+        return;
+      }
+    }
+
     if (isCombat) {
+      // Direct tap on any interconnected Dimensional Portal (Back / Next / Hub) on this Combat Map
+      const tappedPortal = getPortalsForMap(sim.mapId).find(
+        (portal) =>
+          Math.abs(worldX - portal.x) <= 78 &&
+          worldY >= portal.y - 148 &&
+          worldY <= portal.y + 36
+      );
+      if (tappedPortal) {
+        setSelectedRemotePlayer(null);
+        setActiveNpcDialogue(null);
+        const dist = Math.hypot(sim.x - tappedPortal.x, sim.y - tappedPortal.y);
+        if (dist <= tappedPortal.radius) {
+          attemptPortalTravel(tappedPortal);
+        } else {
+          pendingTargetPortalRef.current = tappedPortal;
+          sim.tapTarget = { x: tappedPortal.x, y: tappedPortal.y };
+          playDigitalTone('click', soundEnabled);
+        }
+        return;
+      }
       const activeFieldNpcs = isVirtualWorld
         ? VIRTUAL_WORLD_FRIENDLY_NPCS
         : isDarkArea
           ? DARK_AREA_FRIENDLY_NPCS
           : isDigimonIsland
-          ? DIGIMON_ISLAND_FRIENDLY_NPCS
-        : isDataSea
-          ? DATA_SEA_FRIENDLY_NPCS
-          : isDigitalDesert
-            ? DIGITAL_DESERT_FRIENDLY_NPCS
-            : isDigiMountain
-              ? DIGI_MOUNTAIN_FRIENDLY_NPCS
-              : isDataForest
-                ? DATA_FOREST_FRIENDLY_NPCS
-                : FRIENDLY_FIELD_NPCS;
+            ? DIGIMON_ISLAND_FRIENDLY_NPCS
+            : isDataSea
+              ? DATA_SEA_FRIENDLY_NPCS
+              : isDigitalDesert
+                ? DIGITAL_DESERT_FRIENDLY_NPCS
+                : isDigiMountain
+                  ? DIGI_MOUNTAIN_FRIENDLY_NPCS
+                  : isDataForest
+                    ? DATA_FOREST_FRIENDLY_NPCS
+                    : FRIENDLY_FIELD_NPCS;
       const hitFieldNpc = activeFieldNpcs.find(
         (npc) =>
           Math.abs(worldX - npc.x) <= 32 &&
@@ -7684,6 +8371,10 @@ export function TamerWorldCanvas({
 
     pendingIncubatorWalkRef.current = false;
     pendingArchiveWalkRef.current = false;
+    pendingPortalWalkRef.current = false;
+    pendingConductorWalkRef.current = false;
+    pendingTargetPortalRef.current = null;
+    pendingDatsPointIdRef.current = null;
     setSelectedRemotePlayer(null);
     setActiveNpcDialogue(null);
     const nextTapX = Math.max(48, Math.min(worldW - 48, worldX));
@@ -7717,7 +8408,21 @@ export function TamerWorldCanvas({
     const worldY = (e.clientY - rect.top - rect.height / 2) / cameraZoom + sim.camY;
 
     let nextHover: string | null = null;
-    if (sim.mapId === DATS_MAP_ID) {
+    if (sim.mapId === D_TERMINAL_MAP_ID) {
+      if (
+        Math.abs(worldX - D_TERMINAL_CONDUCTOR_NPC.x) <= 62 &&
+        worldY >= D_TERMINAL_CONDUCTOR_NPC.y - 150 &&
+        worldY <= D_TERMINAL_CONDUCTOR_NPC.y + 26
+      ) {
+        nextHover = D_TERMINAL_CONDUCTOR_NPC.id;
+      } else if (
+        Math.abs(worldX - D_TERMINAL_RETURN_PORTAL.x) <= 84 &&
+        worldY >= D_TERMINAL_RETURN_PORTAL.y - 152 &&
+        worldY <= D_TERMINAL_RETURN_PORTAL.y + 38
+      ) {
+        nextHover = 'd-terminal-to-dats';
+      }
+    } else if (sim.mapId === DATS_MAP_ID) {
       const hoveredFixedNpc = [...DATS_FIXED_NPCS]
         .sort((a, b) => b.y - a.y)
         .find((npc) => isPointInsideNpcHitbox(npc, worldX, worldY));
@@ -7737,31 +8442,47 @@ export function TamerWorldCanvas({
         worldY <= 786
       ) {
         nextHover = DATS_INCUBATOR_STATION.id;
+      } else if (
+        Math.abs(worldX - 800) <= 84 &&
+        worldY >= 1175 &&
+        worldY <= 1368
+      ) {
+        nextHover = 'digital-world-portal';
       }
     } else if (isCombatWorldMap(sim.mapId)) {
-      const activeFieldNpcs =
-        sim.mapId === VIRTUAL_WORLD_MAP_ID
-          ? VIRTUAL_WORLD_FRIENDLY_NPCS
-          : sim.mapId === DARK_AREA_MAP_ID
-            ? DARK_AREA_FRIENDLY_NPCS
-            : sim.mapId === DIGIMON_ISLAND_MAP_ID
-            ? DIGIMON_ISLAND_FRIENDLY_NPCS
-          : sim.mapId === DATA_SEA_MAP_ID
-            ? DATA_SEA_FRIENDLY_NPCS
-            : sim.mapId === DIGITAL_DESERT_MAP_ID
-              ? DIGITAL_DESERT_FRIENDLY_NPCS
-              : sim.mapId === DIGI_MOUNTAIN_MAP_ID
-                ? DIGI_MOUNTAIN_FRIENDLY_NPCS
-                : sim.mapId === DATA_FOREST_MAP_ID
-                  ? DATA_FOREST_FRIENDLY_NPCS
-                  : FRIENDLY_FIELD_NPCS;
-      const hitFieldNpc = activeFieldNpcs.find(
-        (npc) =>
-          Math.abs(worldX - npc.x) <= 32 &&
-          worldY >= npc.y - 82 &&
-          worldY <= npc.y + 10
+      const hoveredPortal = getPortalsForMap(sim.mapId).find(
+        (portal) =>
+          Math.abs(worldX - portal.x) <= 78 &&
+          worldY >= portal.y - 148 &&
+          worldY <= portal.y + 36
       );
-      nextHover = hitFieldNpc?.id ?? null;
+      if (hoveredPortal) {
+        nextHover = hoveredPortal.id;
+      } else {
+        const activeFieldNpcs =
+          sim.mapId === VIRTUAL_WORLD_MAP_ID
+            ? VIRTUAL_WORLD_FRIENDLY_NPCS
+            : sim.mapId === DARK_AREA_MAP_ID
+              ? DARK_AREA_FRIENDLY_NPCS
+              : sim.mapId === DIGIMON_ISLAND_MAP_ID
+                ? DIGIMON_ISLAND_FRIENDLY_NPCS
+                : sim.mapId === DATA_SEA_MAP_ID
+                  ? DATA_SEA_FRIENDLY_NPCS
+                  : sim.mapId === DIGITAL_DESERT_MAP_ID
+                    ? DIGITAL_DESERT_FRIENDLY_NPCS
+                    : sim.mapId === DIGI_MOUNTAIN_MAP_ID
+                      ? DIGI_MOUNTAIN_FRIENDLY_NPCS
+                      : sim.mapId === DATA_FOREST_MAP_ID
+                        ? DATA_FOREST_FRIENDLY_NPCS
+                        : FRIENDLY_FIELD_NPCS;
+        const hitFieldNpc = activeFieldNpcs.find(
+          (npc) =>
+            Math.abs(worldX - npc.x) <= 32 &&
+            worldY >= npc.y - 82 &&
+            worldY <= npc.y + 10
+        );
+        nextHover = hitFieldNpc?.id ?? null;
+      }
     }
 
     if (hoveredNpcIdRef.current !== nextHover) {
@@ -7773,6 +8494,10 @@ export function TamerWorldCanvas({
   function updateJoystick(clientX: number, clientY: number) {
     pendingIncubatorWalkRef.current = false;
     pendingArchiveWalkRef.current = false;
+    pendingPortalWalkRef.current = false;
+    pendingConductorWalkRef.current = false;
+    pendingTargetPortalRef.current = null;
+    pendingDatsPointIdRef.current = null;
     const base = joystickBaseRef.current;
     if (!base) return;
     const rect = base.getBoundingClientRect();
@@ -7948,20 +8673,52 @@ export function TamerWorldCanvas({
     );
   }
 
-  function handleDiscardInventoryItem(item: InventoryItem) {
+  function handleDiscardInventoryItem(item: InventoryItem, quantity = 1) {
     const cur = hudAccountRef.current;
     const idx = cur.inventory.findIndex((i) => i.id === item.id);
     if (idx < 0) return;
 
+    const removeCount = Math.max(1, Math.round(quantity));
     const updatedInv = [...cur.inventory];
-    if (updatedInv[idx].quantity > 1) {
+    if (updatedInv[idx].quantity > removeCount) {
       updatedInv[idx] = {
         ...updatedInv[idx],
-        quantity: updatedInv[idx].quantity - 1,
+        quantity: updatedInv[idx].quantity - removeCount,
       };
     } else {
       updatedInv.splice(idx, 1);
     }
+    commitHudAccount({ ...cur, inventory: updatedInv });
+    playDigitalTone('click', soundEnabled);
+  }
+
+  function handleDiscardInventoryItems(
+    requests: Array<{ itemId: string; quantity: number }>
+  ) {
+    if (requests.length === 0) return;
+    const cur = hudAccountRef.current;
+    const removeById = new Map<string, number>();
+    for (const req of requests) {
+      const qty = Math.max(1, Math.round(req.quantity));
+      removeById.set(req.itemId, (removeById.get(req.itemId) ?? 0) + qty);
+    }
+    let changed = false;
+    const updatedInv: InventoryItem[] = [];
+    for (const invItem of cur.inventory) {
+      const toRemove = removeById.get(invItem.id) ?? 0;
+      if (toRemove <= 0) {
+        updatedInv.push(invItem);
+        continue;
+      }
+      changed = true;
+      if (invItem.quantity > toRemove) {
+        updatedInv.push({
+          ...invItem,
+          quantity: invItem.quantity - toRemove,
+        });
+      }
+    }
+    if (!changed) return;
     commitHudAccount({ ...cur, inventory: updatedInv });
     playDigitalTone('click', soundEnabled);
   }
@@ -8157,6 +8914,209 @@ export function TamerWorldCanvas({
     const qtyLabel = safeQty > 1 ? ` x${safeQty}` : '';
     const msg = `Comprou ${item.name}${qtyLabel} por ${formatDigitalCurrency(totalPrice)}! Item enviado ao Inventário.`;
     pushChatMessage('system', `[MudFrigimon] ${msg}`, { tone: 'loot' });
+    return { ok: true, message: msg };
+  }
+
+  async function handleCreateMarketListing(
+    item: InventoryItem,
+    quantity: number,
+    priceBits: number
+  ): Promise<MarketActionResult> {
+    if (isItemNonSellable(item)) {
+      playDigitalTone('error', soundEnabled);
+      return {
+        ok: false,
+        message: 'Este item é vinculado à conta e não pode ser vendido no Mercado.',
+      };
+    }
+
+    const cur = hudAccountRef.current;
+    const invIdx = cur.inventory.findIndex((i) => i.id === item.id);
+    if (invIdx < 0 || cur.inventory[invIdx].quantity < quantity) {
+      playDigitalTone('error', soundEnabled);
+      return {
+        ok: false,
+        message: 'Quantidade insuficiente deste item no inventário.',
+      };
+    }
+
+    const res = await createPlayerMarketListing({
+      sellerUid: marketActorUid,
+      sellerName: selection.tamerName,
+      item: cur.inventory[invIdx],
+      quantity,
+      priceBits,
+    });
+
+    if (!res.ok) {
+      playDigitalTone('error', soundEnabled);
+      return { ok: false, message: res.message };
+    }
+
+    // Deduct the listed stack from player inventory immediately
+    const latest = hudAccountRef.current;
+    const latestIdx = latest.inventory.findIndex((i) => i.id === item.id);
+    if (latestIdx >= 0) {
+      const updatedInv = [...latest.inventory];
+      if (updatedInv[latestIdx].quantity > quantity) {
+        updatedInv[latestIdx] = {
+          ...updatedInv[latestIdx],
+          quantity: updatedInv[latestIdx].quantity - quantity,
+        };
+      } else {
+        updatedInv.splice(latestIdx, 1);
+      }
+      commitHudAccount({ ...latest, inventory: updatedInv }, true);
+    }
+
+    playDigitalTone('confirm', soundEnabled);
+    const qtyTag = quantity > 1 ? `${quantity}x ` : '';
+    const hatchTag =
+      item.category === 'digiegg' && (item.eggData?.hatchLevel ?? 0) > 0
+        ? ` (${item.eggData?.hatchLevel}/5)`
+        : '';
+    const announceText = `[MERCADO] ${qtyTag}${item.name}${hatchTag} por ${formatDigitalCurrency(priceBits)} — Vitrine 2:00 no DATS!`;
+    pushChatMessage('system', announceText, { tone: 'loot' });
+    void sendGlobalChatMessage({
+      senderUid: marketActorUid,
+      senderName: selection.tamerName,
+      isGmSender: isServerGm,
+      mapId: simRef.current.mapId,
+      text: announceText.slice(0, 140),
+    });
+
+    return { ok: true, message: res.message };
+  }
+
+  async function handleBuyMarketListing(
+    listing: PlayerMarketListingRecord
+  ): Promise<MarketActionResult> {
+    const cur = hudAccountRef.current;
+    if (cur.bits < listing.priceBits) {
+      playDigitalTone('error', soundEnabled);
+      return {
+        ok: false,
+        message: `Bits insuficientes! Necessário: ${formatDigitalCurrency(listing.priceBits)}.`,
+      };
+    }
+
+    const unlockedSlots = getUnlockedInventorySlots(cur);
+    const payload = buildInventoryPayloadFromMarketListing(listing);
+    const previewAdd = addInventoryItem(cur.inventory, payload, unlockedSlots);
+    if (!previewAdd.added) {
+      playDigitalTone('error', soundEnabled);
+      return {
+        ok: false,
+        message: `Inventário cheio (${unlockedSlots}/${unlockedSlots} slots). Libere espaço antes de comprar.`,
+      };
+    }
+
+    const res = await purchasePlayerMarketListing({
+      listingId: listing.listingId,
+      buyerUid: marketActorUid,
+      buyerName: selection.tamerName,
+    });
+
+    if (!res.ok || !res.purchasedListing) {
+      playDigitalTone('error', soundEnabled);
+      return { ok: false, message: res.message };
+    }
+
+    const latest = hudAccountRef.current;
+    const finalSlots = getUnlockedInventorySlots(latest);
+    const finalAdd = addInventoryItem(
+      latest.inventory,
+      buildInventoryPayloadFromMarketListing(res.purchasedListing),
+      finalSlots
+    );
+    commitHudAccount(
+      {
+        ...latest,
+        bits: Math.max(0, latest.bits - res.purchasedListing.priceBits),
+        inventory: finalAdd.added ? finalAdd.next : latest.inventory,
+      },
+      true
+    );
+
+    playDigitalTone('confirm', soundEnabled);
+    const qtyTag =
+      res.purchasedListing.quantity > 1
+        ? ` x${res.purchasedListing.quantity}`
+        : '';
+    const msg = `Comprou ${res.purchasedListing.itemName}${qtyTag} de ${res.purchasedListing.sellerName} por ${formatDigitalCurrency(res.purchasedListing.priceBits)}!`;
+    pushChatMessage('system', `[Mercado] ${msg}`, { tone: 'loot' });
+    return { ok: true, message: msg };
+  }
+
+  async function handleCancelMarketListing(
+    listing: PlayerMarketListingRecord
+  ): Promise<MarketActionResult> {
+    const cur = hudAccountRef.current;
+    const unlockedSlots = getUnlockedInventorySlots(cur);
+    const payload = buildInventoryPayloadFromMarketListing(listing);
+    const previewAdd = addInventoryItem(cur.inventory, payload, unlockedSlots);
+    if (!previewAdd.added) {
+      playDigitalTone('error', soundEnabled);
+      return {
+        ok: false,
+        message: `Inventário cheio (${unlockedSlots}/${unlockedSlots} slots). Libere 1 espaço para receber o item de volta.`,
+      };
+    }
+
+    const res = await cancelPlayerMarketListing({
+      listingId: listing.listingId,
+      sellerUid: marketActorUid,
+    });
+    if (!res.ok || !res.cancelledListing) {
+      playDigitalTone('error', soundEnabled);
+      return { ok: false, message: res.message };
+    }
+
+    const latest = hudAccountRef.current;
+    const finalAdd = addInventoryItem(
+      latest.inventory,
+      buildInventoryPayloadFromMarketListing(res.cancelledListing),
+      getUnlockedInventorySlots(latest)
+    );
+    commitHudAccount(
+      {
+        ...latest,
+        inventory: finalAdd.added ? finalAdd.next : latest.inventory,
+      },
+      true
+    );
+    playDigitalTone('click', soundEnabled);
+    pushChatMessage(
+      'system',
+      `[Mercado] Anúncio de ${res.cancelledListing.itemName} retirado e devolvido ao inventário.`,
+      { tone: 'loot' }
+    );
+    return { ok: true, message: res.message };
+  }
+
+  async function handleClaimMarketPayout(
+    listing: PlayerMarketListingRecord
+  ): Promise<MarketActionResult> {
+    const res = await claimMarketListingPayout({
+      listingId: listing.listingId,
+      sellerUid: marketActorUid,
+    });
+    if (!res.ok || !res.priceBits) {
+      playDigitalTone('error', soundEnabled);
+      return { ok: false, message: res.message };
+    }
+
+    const latest = hudAccountRef.current;
+    commitHudAccount(
+      {
+        ...latest,
+        bits: latest.bits + res.priceBits,
+      },
+      true
+    );
+    playDigitalTone('confirm', soundEnabled);
+    const msg = `Resgatou +${formatDigitalCurrency(res.priceBits)} pela venda de ${listing.itemName}!`;
+    pushChatMessage('system', `[Mercado] ${msg}`, { tone: 'loot' });
     return { ok: true, message: msg };
   }
 
@@ -8477,10 +9437,11 @@ export function TamerWorldCanvas({
   }
 
   function handleSwapArchiveSlot(slotIndex: number) {
-    const prevFormId = activeFormRef.current.id;
+    const prevForm = activeFormRef.current;
+    const prevFormId = prevForm.id;
     const res = swapActiveDigimonWithArchiveSlot(
       hudAccountRef.current,
-      starterDigimon.digimonId,
+      prevForm.starterId,
       slotIndex
     );
     if (!res.ok) {
@@ -8492,7 +9453,7 @@ export function TamerWorldCanvas({
     if (res.newStarterId && res.newStarterId !== starterDigimon.digimonId) {
       onAdminSwitchStarter?.(res.newStarterId);
     }
-    commitHudAccount(res.next);
+    commitHudAccount(res.next, true);
     setEvolutionUnlockAlert(null);
     simRef.current.partner.special1Cooldown = 0;
     simRef.current.partner.special2Cooldown = 0;
@@ -8517,10 +9478,11 @@ export function TamerWorldCanvas({
   }
 
   function handleSelectPartyReserve(reserveIndex: 0 | 1) {
-    const prevFormId = activeFormRef.current.id;
+    const prevForm = activeFormRef.current;
+    const prevFormId = prevForm.id;
     const res = swapActiveDigimonWithPartyReserve(
       hudAccountRef.current,
-      starterDigimon.digimonId,
+      prevForm.starterId,
       reserveIndex
     );
     if (!res.ok) {
@@ -8538,7 +9500,7 @@ export function TamerWorldCanvas({
     if (res.newStarterId && res.newStarterId !== starterDigimon.digimonId) {
       onAdminSwitchStarter?.(res.newStarterId);
     }
-    commitHudAccount(res.next);
+    commitHudAccount(res.next, true);
     setEvolutionUnlockAlert(null);
     simRef.current.partner.special1Cooldown = 0;
     simRef.current.partner.special2Cooldown = 0;
@@ -8591,26 +9553,6 @@ export function TamerWorldCanvas({
     setActiveHudWindow((curr) => (curr === win ? null : win));
   }
 
-  const nearbyPoint = liveSnapshot.nearbyPointId
-    ? (liveSnapshot.mapId === VIRTUAL_WORLD_MAP_ID
-        ? VIRTUAL_WORLD_INTERACTION_POINTS
-        : liveSnapshot.mapId === DARK_AREA_MAP_ID
-          ? DARK_AREA_INTERACTION_POINTS
-          : liveSnapshot.mapId === DIGIMON_ISLAND_MAP_ID
-            ? DIGIMON_ISLAND_INTERACTION_POINTS
-            : liveSnapshot.mapId === DATA_SEA_MAP_ID
-              ? DATA_SEA_INTERACTION_POINTS
-              : liveSnapshot.mapId === DIGITAL_DESERT_MAP_ID
-                ? DIGITAL_DESERT_INTERACTION_POINTS
-                : liveSnapshot.mapId === DIGI_MOUNTAIN_MAP_ID
-                  ? DIGI_MOUNTAIN_INTERACTION_POINTS
-                  : liveSnapshot.mapId === DATA_FOREST_MAP_ID
-                    ? DATA_FOREST_INTERACTION_POINTS
-                    : liveSnapshot.mapId === HUNTING_MAP_ID
-                      ? HUNTING_INTERACTION_POINTS
-                      : DATS_INTERACTION_POINTS
-      ).find((p) => p.id === liveSnapshot.nearbyPointId) ?? null
-    : null;
   const unreadNotifs = notifications.filter((n) => !n.read).length;
   const canEnterDataForest =
     isGM || hudAccount.tamer.level >= 10 || hudAccount.digimon.level >= 10;
@@ -8635,18 +9577,20 @@ export function TamerWorldCanvas({
           : liveSnapshot.mapId === DARK_AREA_MAP_ID
             ? 'Área Sombria — Região de Caça Nv. 60 a 70'
             : liveSnapshot.mapId === DIGIMON_ISLAND_MAP_ID
-            ? 'Ilha dos Digimons — Região de Caça Nv. 50 a 60'
-          : liveSnapshot.mapId === DATA_SEA_MAP_ID
-            ? 'Mar de Dados — Região de Caça Nv. 40 a 50'
-            : liveSnapshot.mapId === DIGITAL_DESERT_MAP_ID
-              ? 'Deserto Digital — Região de Caça Nv. 30 a 40'
-              : liveSnapshot.mapId === DIGI_MOUNTAIN_MAP_ID
-                ? 'Montanha Digi — Região de Caça Nv. 20 a 30'
-                : liveSnapshot.mapId === DATA_FOREST_MAP_ID
-                  ? 'Floresta de Dados — Área de Caça e Raid Boss'
-                  : liveSnapshot.mapId === HUNTING_MAP_ID
-                    ? 'Planície Digital — Área de Caça'
-                    : 'DATS Center — Praça Inicial'
+              ? 'Ilha dos Digimons — Região de Caça Nv. 50 a 60'
+              : liveSnapshot.mapId === DATA_SEA_MAP_ID
+                ? 'Mar de Dados — Região de Caça Nv. 40 a 50'
+                : liveSnapshot.mapId === DIGITAL_DESERT_MAP_ID
+                  ? 'Deserto Digital — Região de Caça Nv. 30 a 40'
+                  : liveSnapshot.mapId === DIGI_MOUNTAIN_MAP_ID
+                    ? 'Montanha Digi — Região de Caça Nv. 20 a 30'
+                    : liveSnapshot.mapId === DATA_FOREST_MAP_ID
+                      ? 'Floresta de Dados — Área de Caça e Raid Boss'
+                      : liveSnapshot.mapId === HUNTING_MAP_ID
+                        ? 'Planície Digital — Área de Caça'
+                        : liveSnapshot.mapId === D_TERMINAL_MAP_ID
+                          ? 'D-Terminal — Estação Trailmon'
+                          : 'DATS Center — Praça Inicial'
       }
       className="relative h-dvh w-full overflow-hidden bg-[#030b1f]"
     >
@@ -9005,13 +9949,13 @@ export function TamerWorldCanvas({
       {/* Special Ready-to-Evolve / Evoluter Unlock Announcement Banner when hitting Lv. 15 / 30 / 50 */}
       {evolutionUnlockAlert && (() => {
         const alertEvoCost = getFormEvoluterCost(
-          starterDigimon.digimonId,
+          activeStarterId,
           evolutionUnlockAlert.id
         );
         const alertNeedsEvoluter =
           alertEvoCost > 0 &&
           !isEvolutionSlotUnlockedByEvoluter(
-            starterDigimon.digimonId,
+            activeStarterId,
             evolutionUnlockAlert.id,
             hudAccount.digimon
           );
@@ -9098,7 +10042,7 @@ export function TamerWorldCanvas({
       {/* Visual Item Drop Reward Toasts (DATA, DigiEggs, Consumables) */}
       <DropRewardToastStack toasts={dropToasts} />
 
-      {/* Cyber DMO Inventory Window (centered 2-column grid + side item inspector) */}
+      {/* Clean Mobile-First Inventory Window with Tap-to-Inspect & Attached Trash Mode */}
       {inventoryOpen && (
         <InventoryHudWindow
           open={inventoryOpen}
@@ -9110,38 +10054,9 @@ export function TamerWorldCanvas({
           onUseItem={handleUseInventoryItem}
           onEquipItem={handleEquipInventoryItem}
           onDiscardItem={handleDiscardInventoryItem}
+          onDiscardItems={handleDiscardInventoryItems}
           onSortInventory={handleSortInventory}
         />
-      )}
-
-      {/* Proximity Interaction Button (Portal or DATS NPC) */}
-      {(nearbyPoint || liveSnapshot.nearReturnPortal) && !activeStationModal && (
-        <div
-          onPointerDown={(e) => e.stopPropagation()}
-          className="absolute bottom-[68px] right-2.5 z-25 sm:bottom-[80px] sm:right-4"
-        >
-          <button
-            type="button"
-            onClick={openNearbyStation}
-            className="flex min-h-[46px] max-w-[205px] items-center gap-2 rounded-xl border-2 border-amber-200 bg-[#061c4a]/95 px-3 py-2 text-left shadow-[0_0_22px_rgba(56,232,255,0.45)] transition-transform active:scale-95"
-          >
-            {liveSnapshot.nearReturnPortal ? (
-              <Shield className="h-4 w-4 text-cyan-300" />
-            ) : (
-              renderInteractionIcon(nearbyPoint!.kind)
-            )}
-            <div className="min-w-0">
-              <p className="truncate text-[9.5px] font-bold uppercase tracking-wide text-amber-300">
-                {liveSnapshot.nearReturnPortal ? 'Portal [E]' : 'Interagir [E]'}
-              </p>
-              <p className="truncate text-xs font-extrabold text-white">
-                {liveSnapshot.nearReturnPortal
-                  ? 'Voltar ao DATS'
-                  : nearbyPoint!.badge}
-              </p>
-            </div>
-          </button>
-        </div>
       )}
 
       {/* LOWER HUD LAYER: Bottom-Left GM Button + Chat + Mobile Joystick */}
@@ -9425,7 +10340,7 @@ export function TamerWorldCanvas({
         />
       </div>
 
-      {/* Station / Portal Interaction Modal */}
+      {/* Station / D-Terminal Trailmon Conductor Modal */}
       {activeStationModal && (
         <div
           onClick={() => setActiveStationModal(null)}
@@ -9434,13 +10349,23 @@ export function TamerWorldCanvas({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="animate-dmo-window w-full max-w-[390px] rounded-2xl border-2 border-cyan-300/75 bg-gradient-to-b from-[#071d4d] via-[#041130] to-[#030b20] p-4 text-white shadow-[0_0_32px_rgba(0,190,255,0.45)]"
+            className="animate-dmo-window w-full max-w-[404px] rounded-2xl border-2 border-cyan-300/75 bg-gradient-to-b from-[#071d4d] via-[#041130] to-[#030b20] p-4 text-white shadow-[0_0_32px_rgba(0,190,255,0.45)]"
           >
             <div className="flex items-start justify-between gap-2 border-b border-cyan-400/25 pb-2.5">
-              <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-cyan-300/50 bg-[#07265c]">
-                  {renderInteractionIcon(activeStationModal.kind)}
-                </div>
+              <div className="flex items-center gap-2.5">
+                {activeStationModal.id === D_TERMINAL_CONDUCTOR_NPC.id ? (
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-emerald-300/65 bg-gradient-to-b from-[#0b3b36] to-[#051822] p-0.5 shadow-[0_0_12px_rgba(52,211,153,0.35)]">
+                    <img
+                      src={PAWNCHESSMON_BLACK_SPRITE_URL}
+                      alt="PawnChessmon (Black)"
+                      className="h-full w-full object-contain"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-cyan-300/50 bg-[#07265c]">
+                    {renderInteractionIcon(activeStationModal.kind)}
+                  </div>
+                )}
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-wider text-amber-300">
                     {activeStationModal.badge}
@@ -9460,12 +10385,12 @@ export function TamerWorldCanvas({
               </button>
             </div>
 
-            <p className="mt-3 text-xs leading-relaxed text-sky-100/90">
+            <p className="mt-2.5 text-xs leading-relaxed text-sky-100/90">
               {activeStationModal.description}
             </p>
 
-            {activeStationModal.id === 'digital-world-portal' ? (
-              <div className="mt-4 flex flex-col gap-2">
+            {activeStationModal.id === D_TERMINAL_CONDUCTOR_NPC.id ? (
+              <div className="mt-3.5 flex max-h-[54vh] flex-col gap-2 overflow-y-auto pr-1">
                 <button
                   type="button"
                   onClick={() => travelToMap(HUNTING_MAP_ID)}
@@ -9480,7 +10405,7 @@ export function TamerWorldCanvas({
                     </p>
                   </div>
                   <span className="rounded-md bg-cyan-400/20 px-2 py-0.5 text-[10px] font-black uppercase text-cyan-200">
-                    Viajar
+                    Embarcar
                   </span>
                 </button>
 
@@ -9515,7 +10440,7 @@ export function TamerWorldCanvas({
                         : 'bg-slate-700/50 text-slate-300'
                     }`}
                   >
-                    {canEnterDataForest ? 'Viajar' : 'Nv.10+'}
+                    {canEnterDataForest ? 'Embarcar' : 'Nv.10+'}
                   </span>
                 </button>
 
@@ -9551,7 +10476,7 @@ export function TamerWorldCanvas({
                         : 'bg-slate-700/50 text-slate-300'
                     }`}
                   >
-                    {canEnterDigiMountain ? 'Viajar' : 'Nv.20+'}
+                    {canEnterDigiMountain ? 'Embarcar' : 'Nv.20+'}
                   </span>
                 </button>
 
@@ -9587,7 +10512,7 @@ export function TamerWorldCanvas({
                         : 'bg-slate-700/50 text-slate-300'
                     }`}
                   >
-                    {canEnterDigitalDesert ? 'Viajar' : 'Nv.30+'}
+                    {canEnterDigitalDesert ? 'Embarcar' : 'Nv.30+'}
                   </span>
                 </button>
 
@@ -9623,7 +10548,7 @@ export function TamerWorldCanvas({
                         : 'bg-slate-700/50 text-slate-300'
                     }`}
                   >
-                    {canEnterDataSea ? 'Viajar' : 'Nv.40+'}
+                    {canEnterDataSea ? 'Embarcar' : 'Nv.40+'}
                   </span>
                 </button>
 
@@ -9659,7 +10584,7 @@ export function TamerWorldCanvas({
                         : 'bg-slate-700/50 text-slate-300'
                     }`}
                   >
-                    {canEnterDigimonIsland ? 'Viajar' : 'Nv.50+'}
+                    {canEnterDigimonIsland ? 'Embarcar' : 'Nv.50+'}
                   </span>
                 </button>
 
@@ -9695,9 +10620,10 @@ export function TamerWorldCanvas({
                         : 'bg-slate-700/50 text-slate-300'
                     }`}
                   >
-                    {canEnterDarkArea ? 'Viajar' : 'Nv.60+'}
+                    {canEnterDarkArea ? 'Embarcar' : 'Nv.60+'}
                   </span>
                 </button>
+
                 <button
                   type="button"
                   onClick={() => {
@@ -9736,7 +10662,7 @@ export function TamerWorldCanvas({
                         : 'bg-slate-700/50 text-slate-300'
                     }`}
                   >
-                    {canEnterVirtualWorld ? 'Viajar' : 'Nv.70+'}
+                    {canEnterVirtualWorld ? 'Embarcar' : 'Nv.70+'}
                   </span>
                 </button>
               </div>
@@ -9780,6 +10706,22 @@ export function TamerWorldCanvas({
         unlockedSlots={getUnlockedInventorySlots(hudAccount)}
         onClose={() => setMudfrigimonShopOpen(false)}
         onBuyConsumable={handleBuyMudfrigimonConsumable}
+      />
+
+      {/* Miki Player-to-Player Market Modal (DATS Center) */}
+      <PlayerMarketModal
+        open={playerMarketOpen}
+        currentUid={marketActorUid}
+        bits={hudAccount.bits}
+        inventory={hudAccount.inventory}
+        unlockedSlots={getUnlockedInventorySlots(hudAccount)}
+        globalListings={marketGlobalListings}
+        sellerListings={marketSellerListings}
+        onClose={() => setPlayerMarketOpen(false)}
+        onCreateListing={handleCreateMarketListing}
+        onBuyListing={handleBuyMarketListing}
+        onCancelListing={handleCancelMarketListing}
+        onClaimPayout={handleClaimMarketPayout}
       />
 
       {/* Modal Overlay for Bottom Dock Windows, Incubadora, Shop & Exit Confirmation */}
@@ -9846,14 +10788,18 @@ export function TamerWorldCanvas({
         onAdminResetTutorial={() => {
           try {
             window.localStorage.removeItem(tutorialStorageKey);
+            window.localStorage.removeItem(tutorialRewardsStorageKey);
           } catch {
             // Ignore storage restrictions
           }
+          const resetRewards = { supplies: false, eggPack: false };
+          tutorialRewardsClaimedRef.current = resetRewards;
+          setTutorialRewardsClaimed(resetRewards);
           tutorialAutoTriggeredRef.current = false;
           playDigitalTone('confirm', soundEnabled);
           pushChatMessage(
             'system',
-            '[GM] Status de iniciante resetado! Novos logins no DATS abrirão o Tutorial do Richard Sampson automaticamente.',
+            '[GM] Status de iniciante e presentes do tutorial resetados! Novos logins no DATS abrirão o Tutorial do Richard Sampson automaticamente.',
             { tone: 'info' }
           );
         }}
@@ -9898,7 +10844,7 @@ export function TamerWorldCanvas({
       {/* Official Evoluter Evolution Unlock Modal */}
       {evoluterUnlockFormId && (
         <EvoluterUnlockModal
-          starterId={starterDigimon.digimonId}
+          starterId={activeStarterId}
           targetFormId={evoluterUnlockFormId}
           digimonStats={hudAccount.digimon}
           ownedEvoluters={getOwnedEvoluterCount(hudAccount.inventory)}
@@ -9915,8 +10861,11 @@ export function TamerWorldCanvas({
           digimonName={
             hudAccount.digimon.nickname?.trim() || activeFormProfile.name
           }
-          digimonPortraitUrl={activeFormProfile.portraitUrl}
           isPreviewFromGm={beginnerTutorialGmPreview}
+          suppliesClaimed={tutorialRewardsClaimed.supplies}
+          eggPackClaimed={tutorialRewardsClaimed.eggPack}
+          onClaimSuppliesReward={handleClaimTutorialSupplies}
+          onClaimEggReward={handleClaimTutorialEggPack}
           onComplete={() => {
             if (!beginnerTutorialGmPreview) {
               try {
@@ -9926,7 +10875,7 @@ export function TamerWorldCanvas({
               }
               pushChatMessage(
                 'system',
-                `[DATS · Richard Sampson] Treinamento inicial concluído, ${selection.tamerName}! Atravesse o Portal Digital para iniciar sua jornada na Planície Digital.`,
+                `[DATS · Richard Sampson] Guia concluído, ${selection.tamerName}! Choque seu DemiMeramon 3/5 na Incubadora e siga pelo Portal Sul até o D-Terminal para embarcar rumo à Planície Digital!`,
                 { tone: 'level' }
               );
             }

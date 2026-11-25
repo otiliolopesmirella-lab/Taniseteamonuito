@@ -854,36 +854,8 @@ export function drawHuntingGroundAnimations(
   ctx.closePath();
   ctx.fill();
 
-  // 2. Central Digital Portal luminous ring & rising cyan energy shimmer
-  const pulse = 1 + Math.sin(elapsed * 3.4) * 0.08;
-  const portalGlow = ctx.createRadialGradient(
-    HUNTING_RETURN_PORTAL.x,
-    HUNTING_RETURN_PORTAL.y - 30,
-    8,
-    HUNTING_RETURN_PORTAL.x,
-    HUNTING_RETURN_PORTAL.y - 30,
-    98 * pulse
-  );
-  portalGlow.addColorStop(
-    0,
-    nearPortal ? 'rgba(254, 240, 138, 0.44)' : 'rgba(56, 232, 255, 0.38)'
-  );
-  portalGlow.addColorStop(0.55, 'rgba(14, 165, 233, 0.16)');
-  portalGlow.addColorStop(1, 'rgba(14, 165, 233, 0)');
-  ctx.fillStyle = portalGlow;
-  ctx.beginPath();
-  ctx.ellipse(
-    HUNTING_RETURN_PORTAL.x,
-    HUNTING_RETURN_PORTAL.y - 18,
-    92 * pulse,
-    36 * pulse,
-    0,
-    0,
-    Math.PI * 2
-  );
-  ctx.fill();
-
-  // Subtle rotating cyan orbit dots on Safe Sanctuary border
+  // 2. Subtle rotating cyan orbit dots on Safe Sanctuary border
+  void nearPortal;
   for (let i = 0; i < 6; i++) {
     const a = elapsed * 0.42 + (i * Math.PI) / 3;
     const ox = HUNTING_SAFE_ZONE.x + Math.cos(a) * (HUNTING_SAFE_ZONE.radius - 6);
@@ -892,34 +864,6 @@ export function drawHuntingGroundAnimations(
     ctx.fillStyle = `rgba(125, 243, 255, ${alpha.toFixed(3)})`;
     ctx.beginPath();
     ctx.arc(ox, oy, 2.5, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  if (nearPortal) {
-    ctx.strokeStyle = 'rgba(253, 224, 71, 0.84)';
-    ctx.lineWidth = 2.6;
-    ctx.beginPath();
-    ctx.ellipse(
-      HUNTING_RETURN_PORTAL.x,
-      HUNTING_RETURN_PORTAL.y,
-      56 * pulse,
-      19 * pulse,
-      0,
-      0,
-      Math.PI * 2
-    );
-    ctx.stroke();
-  }
-
-  // Rising digital light motes around the central energy column
-  for (let i = 0; i < 10; i++) {
-    const phase = (elapsed * 0.48 + i * 0.1) % 1;
-    const mx = 1200 + Math.sin(elapsed * 1.6 + i * 1.4) * 38;
-    const my = 448 - phase * 270;
-    const alpha = Math.sin(phase * Math.PI) * 0.64;
-    ctx.fillStyle = `rgba(186, 246, 255, ${alpha.toFixed(3)})`;
-    ctx.beginPath();
-    ctx.arc(mx, my, 2 + (i % 2) * 0.9, 0, Math.PI * 2);
     ctx.fill();
   }
 

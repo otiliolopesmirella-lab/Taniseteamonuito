@@ -569,62 +569,8 @@ export function drawDarkAreaGroundAnimations(
   ctx.ellipse(1495, 290, 44, 68, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // 2. SE Rune Altar Return Portal glow + rising amethyst/gold motes
-  const pulse = 1 + Math.sin(safeElapsed * 3.4) * 0.08;
-  const portalGlow = ctx.createRadialGradient(
-    DARK_AREA_RETURN_PORTAL.x,
-    DARK_AREA_RETURN_PORTAL.y - 6,
-    10,
-    DARK_AREA_RETURN_PORTAL.x,
-    DARK_AREA_RETURN_PORTAL.y - 6,
-    118 * pulse
-  );
-  portalGlow.addColorStop(
-    0,
-    nearPortal ? 'rgba(254, 240, 138, 0.54)' : 'rgba(216, 180, 254, 0.48)'
-  );
-  portalGlow.addColorStop(0.55, 'rgba(147, 51, 234, 0.2)');
-  portalGlow.addColorStop(1, 'rgba(147, 51, 234, 0)');
-  ctx.fillStyle = portalGlow;
-  ctx.beginPath();
-  ctx.ellipse(
-    DARK_AREA_RETURN_PORTAL.x,
-    DARK_AREA_RETURN_PORTAL.y,
-    108 * pulse,
-    42 * pulse,
-    0,
-    0,
-    Math.PI * 2
-  );
-  ctx.fill();
-
-  if (nearPortal) {
-    ctx.strokeStyle = 'rgba(253, 224, 71, 0.94)';
-    ctx.lineWidth = 2.6;
-    ctx.beginPath();
-    ctx.ellipse(
-      DARK_AREA_RETURN_PORTAL.x,
-      DARK_AREA_RETURN_PORTAL.y,
-      74 * pulse,
-      28 * pulse,
-      0,
-      0,
-      Math.PI * 2
-    );
-    ctx.stroke();
-  }
-
-  for (let i = 0; i < 8; i++) {
-    const phase = (safeElapsed * 0.54 + i * 0.125) % 1;
-    const mx =
-      DARK_AREA_RETURN_PORTAL.x + Math.sin(safeElapsed * 2.1 + i * 1.4) * 44;
-    const my = DARK_AREA_RETURN_PORTAL.y + 8 - phase * 168;
-    const alpha = Math.sin(phase * Math.PI) * 0.74;
-    ctx.fillStyle = `rgba(233, 213, 255, ${alpha.toFixed(3)})`;
-    ctx.beginPath();
-    ctx.arc(mx, my, 2.2, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  // 2. Return portal rendered by unified dimensional portal gate
+  void nearPortal;
 
   // 3. West Chained Tower amethyst ring & circling sparks
   const towerPulse = 1 + Math.sin(safeElapsed * 3.1) * 0.1;

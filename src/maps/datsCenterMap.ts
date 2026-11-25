@@ -1,4 +1,8 @@
 import type { CardinalDirection } from '../sprites/tamerRealSheets';
+import {
+  drawDimensionalPortalGate,
+  drawDimensionalPortalGround,
+} from './portalRenderer';
 
 export const DATS_MAP_ID = 'dats-center' as const;
 export const DATS_WORLD_W = 1600;
@@ -190,13 +194,26 @@ export const DATS_INTERACTION_POINTS: readonly DatsInteractionPoint[] = [
     accentColor: '#38e8ff',
   },
   {
+    id: 'dats-player-market-npc',
+    kind: 'info-npc',
+    title: 'Miki — Mercado de Jogadores',
+    badge: 'Mercado P2P',
+    description:
+      'Compre e venda DATA, DigiEggs e itens entre jogadores com vitrine pública de 2 minutos antes da liberação.',
+    futureModule: 'Mercado de Jogadores da DATS',
+    x: 1190,
+    y: 768,
+    radius: 86,
+    accentColor: '#c084fc',
+  },
+  {
     id: 'digital-world-portal',
     kind: 'world-portal',
-    title: 'Portal de Acesso ao Mundo Digital',
-    badge: 'Portal Regional',
+    title: 'Portal para D-Terminal',
+    badge: 'D-Terminal',
     description:
-      'Plataforma de transporte conectando a praça do DATS Center às demais regiões exploráveis.',
-    futureModule: 'Viagem para Áreas Externas e Regiões do Mundo Digital',
+      'Portal dimensional que leva diretamente à Estação D-Terminal, onde o Condutor PawnChessmon (Black) embarca os Tamers nos trens Trailmon.',
+    futureModule: 'Acesso Direto ao D-Terminal',
     x: 800,
     y: 1318,
     radius: 86,
@@ -958,27 +975,27 @@ export function drawDatsGroundAnimations(
   ctx.stroke();
   ctx.restore();
 
-  // Animated Southern Digital World Portal
-  ctx.save();
-  ctx.translate(800, 1326);
-  const pulse = 1 + Math.sin(elapsed * 3.5) * 0.05;
-  ctx.fillStyle = 'rgba(56, 232, 255, 0.25)';
-  ctx.beginPath();
-  ctx.ellipse(0, 0, 102 * pulse, 52 * pulse, 0, 0, Math.PI * 2);
-  ctx.fill();
+  // Animated Southern Digital World Portal (real dimensional dais + energy pool)
+  drawDimensionalPortalGround(
+    ctx,
+    800,
+    1326,
+    elapsed,
+    activePointId === 'digital-world-portal',
+    { scale: 1.1, theme: 'digital' }
+  );
 
-  ctx.rotate(-elapsed * 0.9);
-  ctx.strokeStyle = '#ffd43b';
-  ctx.lineWidth = 3;
-  ctx.setLineDash([18, 14]);
-  ctx.beginPath();
-  ctx.ellipse(0, 0, 74, 38, 0, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.restore();
-
-  // Interaction Point floor markers (skip fixed NPCs that render their own fitted aura ring)
+  // Interaction Point floor markers (skip fixed NPCs and portal that render their own fitted aura)
   for (const pt of DATS_INTERACTION_POINTS) {
-    if (pt.id === 'dats-mudfrigimon-npc') continue;
+    if (
+      pt.id === 'dats-mudfrigimon-npc' ||
+      pt.id === 'dats-player-market-npc' ||
+      pt.id === 'digital-world-portal' ||
+      pt.id === 'dats-digimon-incubator' ||
+      pt.id === 'dats-digimon-archive'
+    ) {
+      continue;
+    }
     const isNear = pt.id === activePointId;
     const pPulse = 1 + Math.sin(elapsed * 4.2) * (isNear ? 0.14 : 0.06);
     ctx.save();
@@ -993,6 +1010,23 @@ export function drawDatsGroundAnimations(
     ctx.fill();
     ctx.restore();
   }
+}
+
+let incubatorMachineImg: HTMLImageElement | null = null;
+let incubatorMachineImgLoaded = false;
+
+function getIncubatorMachineSprite(): HTMLImageElement | null {
+  if (typeof window === 'undefined') return null;
+  if (!incubatorMachineImg) {
+    incubatorMachineImg = new Image();
+    incubatorMachineImg.onload = () => {
+      incubatorMachineImgLoaded = true;
+    };
+    incubatorMachineImg.src = '/assets/dats/digimon_incubator_machine.png';
+  }
+  return incubatorMachineImgLoaded && incubatorMachineImg.naturalWidth > 0
+    ? incubatorMachineImg
+    : null;
 }
 
 function drawIncubatorMachine(
@@ -1051,8 +1085,30 @@ function drawIncubatorMachine(
   ctx.setLineDash([]);
   ctx.restore();
 
-  if (world3DCanvas) {
-    // Draw clean unclipped 320x320 3D Three.js Incubator seated flush on the DATS dock pad
+  // 3. Official Digimon Incubator Machine Sprite seated flush on the DATS dock pad (matching Digimon Archive)
+  const sprite = getIncubatorMachineSprite();
+  if (sprite) {
+    const drawH = 148;
+    const drawW = Math.round((sprite.naturalWidth / sprite.naturalHeight) * drawH);
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(
+      sprite,
+      cx - drawW / 2,
+      baseY - drawH + 14,
+      drawW,
+      drawH
+    );
+    ctx.restore();
+
+    // Subtle live holographic shimmer pulse over the central cyan DigiEgg glass chamber
+    const chamberPulse = 0.08 + Math.sin(elapsed * 4.0) * 0.06;
+    ctx.fillStyle = `rgba(56, 232, 255, ${chamberPulse})`;
+    ctx.beginPath();
+    ctx.ellipse(cx, baseY - 64, 24, 28, 0, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (world3DCanvas) {
     const drawSize = 188;
     ctx.save();
     ctx.imageSmoothingEnabled = true;
@@ -1079,39 +1135,42 @@ function drawIncubatorMachine(
     ctx.fillRect(cx + 34, baseY - 82, 16, 8);
   }
 
-  // 3. Rising subtle digital energy motes
+  // 4. Rising subtle digital energy motes
   for (let i = 0; i < 4; i++) {
     const phase = (elapsed * 0.58 + i * 0.25) % 1;
     const px = cx + Math.sin(elapsed * 2.1 + i * 1.8) * 30;
-    const py = baseY - 12 - phase * 86;
+    const py = baseY - 12 - phase * 92;
     ctx.fillStyle = `rgba(125, 249, 255, ${(1 - phase) * 0.65})`;
     ctx.beginPath();
     ctx.arc(px, py, 2, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  // 4. Clean Floating DATS Overhead Tag
+  // 5. Clean Floating DATS Overhead Tag (exact same height & proportion as Digimon Archive)
   const bob = Math.sin(elapsed * 2.6) * 2;
   const tagW = 128;
   const tagH = 30;
   const tagX = cx - tagW / 2;
-  const tagY = baseY - 142 + bob;
+  const tagY = baseY - 166 + bob;
 
-  ctx.fillStyle = 'rgba(4, 21, 62, 0.9)';
+  ctx.fillStyle = 'rgba(4, 21, 62, 0.92)';
   drawRoundedPanel(ctx, tagX, tagY, tagW, tagH, 7);
   ctx.fill();
-  ctx.strokeStyle = isNearby ? '#fde047' : 'rgba(56, 232, 255, 0.85)';
+  ctx.strokeStyle = isNearby ? '#fde047' : 'rgba(56, 232, 255, 0.88)';
   ctx.lineWidth = isNearby ? 2 : 1.4;
   ctx.stroke();
 
-  // Mini DigiEgg emblem on left of sign
-  ctx.fillStyle = '#0ea5e9';
-  ctx.beginPath();
-  ctx.ellipse(tagX + 15, tagY + tagH / 2, 6.5, 8.5, 0, 0, Math.PI * 2);
+  // Mini Incubator Capsule + DigiEgg emblem on left of sign (matching Archive mini terminal style)
+  ctx.fillStyle = '#4f46e5';
+  drawRoundedPanel(ctx, tagX + 8, tagY + 6, 14, 18, 4);
   ctx.fill();
-  ctx.strokeStyle = '#bae6fd';
-  ctx.lineWidth = 1.2;
-  ctx.stroke();
+  ctx.fillStyle = '#38e8ff';
+  drawRoundedPanel(ctx, tagX + 10, tagY + 9, 10, 12, 3);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.ellipse(tagX + 15, tagY + 15, 3.2, 4.4, 0, 0, Math.PI * 2);
+  ctx.fill();
 
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
@@ -1126,7 +1185,7 @@ function drawIncubatorMachine(
     ctx.textAlign = 'center';
     ctx.font = '900 9.5px "Exo 2", sans-serif';
     ctx.fillStyle = '#fef08a';
-    ctx.fillText('[E] Chocar DigiEgg', cx, tagY - 9);
+    ctx.fillText('Toque ou [E] Chocar', cx, tagY - 9);
   }
 
   ctx.restore();
@@ -1301,6 +1360,7 @@ export function buildDatsDepthProps(options?: {
   getIncubatorCanvas?: (elapsed: number) => HTMLCanvasElement | null;
   isIncubatorNearby?: () => boolean;
   isArchiveNearby?: () => boolean;
+  isPortalNearby?: () => boolean;
 }): DepthProp[] {
   const props: DepthProp[] = [];
   for (const c of DATS_COLLIDERS) {
@@ -1341,5 +1401,26 @@ export function buildDatsDepthProps(options?: {
       },
     });
   }
+
+  // Upright Southern Digital World Dimensional Portal Gateway (depth-sorted with Tamers)
+  props.push({
+    sortY: 1326,
+    draw: (ctx, elapsed) => {
+      drawDimensionalPortalGate(
+        ctx,
+        800,
+        1326,
+        elapsed,
+        options?.isPortalNearby?.() ?? false,
+        {
+          scale: 1.1,
+          theme: 'digital',
+          title: 'D-Terminal',
+          subtitle: 'Estação Trailmon',
+        }
+      );
+    },
+  });
+
   return props;
 }

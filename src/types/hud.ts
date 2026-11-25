@@ -74,6 +74,12 @@ export interface DigiEggItemMetadata {
     name: string;
     quantity: number;
   }>;
+  /** Quando definido (ex.: 3), injeções de DATA abaixo deste estágio têm 100% de chance e 0% de quebra. */
+  guaranteedUpToLevel?: number;
+  /** Formas evolutivas já desbloqueadas permanentemente ao chocar este DigiEgg (sem precisar de Evoluters). */
+  preUnlockedFormIds?: DigimonFormId[];
+  /** Identifica um DigiEgg especial recebido no Tutorial de Iniciante da DATS. */
+  isTutorialGift?: boolean;
 }
 
 export interface EggReinforceItemMetadata {
@@ -99,6 +105,8 @@ export interface InventoryItem {
   statBonuses?: EquipmentStatBonuses;
   eggData?: DigiEggItemMetadata;
   reinforceMeta?: EggReinforceItemMetadata;
+  /** Quando true, o item não pode ser vendido em lojas ou negociações. */
+  nonSellable?: boolean;
 }
 
 export type ChatChannel = 'global' | 'map' | 'guild' | 'party' | 'system';
@@ -216,6 +224,8 @@ export interface AccountHudPersistence {
   tamerCoverUrl?: string | null;
   xpBoostUntilMs?: number | null;
   autoFarmVipUnlocked?: boolean;
+  /** Timestamp (ms) até quando o VIP Auto Farm (30 dias) está ativo. */
+  autoFarmVipUntilMs?: number | null;
   defeatedEnemiesTotal: number;
   updatedAt: string;
 }
@@ -240,7 +250,7 @@ export type HudWindowId =
   | null;
 
 export interface LiveWorldHudSnapshot {
-  mapId: 'dats-center' | 'hunting-plains' | 'data-forest' | 'digi-mountain' | 'digital-desert' | 'data-sea' | 'digimon-island' | 'dark-area' | 'virtual-world';
+  mapId: 'dats-center' | 'd-terminal' | 'hunting-plains' | 'data-forest' | 'digi-mountain' | 'digital-desert' | 'data-sea' | 'digimon-island' | 'dark-area' | 'virtual-world';
   tamerX: number;
   tamerY: number;
   tamerDir: CardinalDirection;

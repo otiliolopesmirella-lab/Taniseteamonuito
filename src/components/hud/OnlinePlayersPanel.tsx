@@ -33,6 +33,7 @@ interface OnlinePlayersBadgeProps {
 
 const MAP_LABELS: Record<SharedWorldMapId, string> = {
   'dats-center': 'DATS Center',
+  'd-terminal': 'D-Terminal',
   'hunting-plains': 'Planície Digital',
   'data-forest': 'Floresta de Dados',
   'digi-mountain': 'Montanha Digi',

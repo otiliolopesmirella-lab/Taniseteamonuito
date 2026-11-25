@@ -204,8 +204,10 @@ async function evaluateAndAutoCreditOrder(params: {
       if (creditRes.errorCode) {
         evaluated.creditErrorCode = creditRes.errorCode;
       }
-    } catch {
-      evaluated.creditErrorCode = 'AUTO_CREDIT_FAILED';
+    } catch (err) {
+      const rawCode =
+        err instanceof Error ? err.message.replace(/[^A-Z0-9_]/gi, '_').slice(0, 64) : '';
+      evaluated.creditErrorCode = rawCode || 'AUTO_CREDIT_FAILED';
     }
   }
 

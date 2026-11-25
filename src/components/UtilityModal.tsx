@@ -22,6 +22,7 @@ import {
   type ModalSection,
 } from '../types/auth';
 import { playDigitalTone } from '../utils/soundFx';
+import { DiscordInviteButton } from './DiscordInviteButton';
 import { PWAInstallButton } from './PWAInstallButton';
 
 interface UtilityModalProps {
@@ -679,6 +680,11 @@ export function UtilityModal({
                 variant="compact"
                 soundEnabled={preferences.soundEnabled}
                 showInstalledState
+              />
+
+              <DiscordInviteButton
+                variant="settings"
+                soundEnabled={preferences.soundEnabled}
               />
             </div>
           )}

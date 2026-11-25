@@ -168,7 +168,8 @@ function buildNewDigimonEntry(
   grade: HatchQualityGrade,
   sizePct: number,
   levelOverride?: number,
-  idPrefix = 'arch'
+  idPrefix = 'arch',
+  extraUnlockedFormIds?: readonly DigimonFormId[]
 ): ArchivedDigimonEntry {
   const form = getDigimonFormProfile(formId);
   const qualityProfile = getHatchQualityProfile(grade);
@@ -195,10 +196,14 @@ function buildNewDigimonEntry(
     unlockedFormIds: (() => {
       const chainSpecs = DIGIMON_EVOLUTION_CHAINS[form.starterId] ?? [];
       const targetIdx = chainSpecs.findIndex((s) => s.formId === form.id);
-      const initialIds = chainSpecs
+      const baseIds = chainSpecs
         .slice(0, Math.max(0, targetIdx) + 1)
         .map((s) => s.formId)
         .filter((id): id is DigimonFormId => Boolean(id));
+      const initialIds =
+        extraUnlockedFormIds && extraUnlockedFormIds.length > 0
+          ? Array.from(new Set<DigimonFormId>([...baseIds, ...extraUnlockedFormIds]))
+          : baseIds;
       return sanitizeUnlockedFormIdsForDigimon(
         form.starterId,
         level,
@@ -216,7 +221,8 @@ export function storeHatchedDigimonInArchive(
   state: AccountHudPersistence,
   formId: DigimonFormId,
   grade: HatchQualityGrade,
-  sizePct: number
+  sizePct: number,
+  extraUnlockedFormIds?: readonly DigimonFormId[]
 ): {
   ok: boolean;
   next: AccountHudPersistence;
@@ -237,7 +243,15 @@ export function storeHatchedDigimonInArchive(
     };
   }
 
-  const entry = buildNewDigimonEntry(formId, freeSlot, grade, sizePct, 1, 'arch');
+  const entry = buildNewDigimonEntry(
+    formId,
+    freeSlot,
+    grade,
+    sizePct,
+    1,
+    'arch',
+    extraUnlockedFormIds
+  );
   const nextArchive = [...currentArchive, entry].sort(
     (a, b) => a.slotIndex - b.slotIndex
   );

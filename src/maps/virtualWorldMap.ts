@@ -586,63 +586,8 @@ export function drawVirtualWorldGroundAnimations(
   ctx.ellipse(1200, 555, 68, 28, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // 2. South Holographic Return Portal glow + rising cyber motes
-  const pulse = 1 + Math.sin(safeElapsed * 3.4) * 0.08;
-  const portalGlow = ctx.createRadialGradient(
-    VIRTUAL_WORLD_RETURN_PORTAL.x,
-    VIRTUAL_WORLD_RETURN_PORTAL.y - 6,
-    10,
-    VIRTUAL_WORLD_RETURN_PORTAL.x,
-    VIRTUAL_WORLD_RETURN_PORTAL.y - 6,
-    118 * pulse
-  );
-  portalGlow.addColorStop(
-    0,
-    nearPortal ? 'rgba(254, 240, 138, 0.56)' : 'rgba(125, 211, 252, 0.5)'
-  );
-  portalGlow.addColorStop(0.55, 'rgba(14, 165, 233, 0.22)');
-  portalGlow.addColorStop(1, 'rgba(14, 165, 233, 0)');
-  ctx.fillStyle = portalGlow;
-  ctx.beginPath();
-  ctx.ellipse(
-    VIRTUAL_WORLD_RETURN_PORTAL.x,
-    VIRTUAL_WORLD_RETURN_PORTAL.y,
-    108 * pulse,
-    42 * pulse,
-    0,
-    0,
-    Math.PI * 2
-  );
-  ctx.fill();
-
-  if (nearPortal) {
-    ctx.strokeStyle = 'rgba(253, 224, 71, 0.94)';
-    ctx.lineWidth = 2.6;
-    ctx.beginPath();
-    ctx.ellipse(
-      VIRTUAL_WORLD_RETURN_PORTAL.x,
-      VIRTUAL_WORLD_RETURN_PORTAL.y,
-      74 * pulse,
-      28 * pulse,
-      0,
-      0,
-      Math.PI * 2
-    );
-    ctx.stroke();
-  }
-
-  for (let i = 0; i < 8; i++) {
-    const phase = (safeElapsed * 0.56 + i * 0.125) % 1;
-    const mx =
-      VIRTUAL_WORLD_RETURN_PORTAL.x +
-      Math.sin(safeElapsed * 2.2 + i * 1.4) * 44;
-    const my = VIRTUAL_WORLD_RETURN_PORTAL.y + 8 - phase * 168;
-    const alpha = Math.sin(phase * Math.PI) * 0.78;
-    ctx.fillStyle = `rgba(186, 230, 253, ${alpha.toFixed(3)})`;
-    ctx.beginPath();
-    ctx.arc(mx, my, 2.2, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  // 2. Return portal rendered by unified dimensional portal gate
+  void nearPortal;
 
   // 3. West Circuit Relay Pad & SE Crystal Portal shimmer rings
   const relayPads: ReadonlyArray<{ x: number; y: number; rgb: string }> = [

@@ -40,7 +40,7 @@
         },
         "hudState": {
           "type": "object",
-          "description": "Tamer & Digimon levels, EXP, HP, DS, active evolution, Bits, DWcoin, inventory, equipped items, optional custom Tamer portrait photo data URL (tamerPhotoUrl), optional custom Rank cover banner data URL (tamerCoverUrl), active XP boost expiration timestamp (xpBoostUntilMs), VIP Auto Farm unlock flag (autoFarmVipUnlocked), and battle counters."
+          "description": "Tamer & Digimon levels, EXP, HP, DS, active evolution, Bits, DWcoin, inventory, equipped items, optional custom Tamer portrait photo data URL (tamerPhotoUrl), optional custom Rank cover banner data URL (tamerCoverUrl), active XP boost expiration timestamp (xpBoostUntilMs), VIP Auto Farm unlock flag (autoFarmVipUnlocked), VIP Auto Farm 30-day expiration timestamp (autoFarmVipUntilMs), and battle counters."
         },
         "createdAt": {
           "type": "string",
@@ -1580,6 +1580,132 @@
         }
       },
       "required": ["inviteId", "guildId", "guildName", "guildTag", "guildLevel", "guildEmblemColor", "fromUid", "fromName", "fromRole", "toUid", "toName", "status", "createdAt", "updatedAt"]
+    },
+    "PlayerMarketListing": {
+      "title": "PlayerMarketListing",
+      "description": "Player-to-player DATS Center marketplace listing (zero PII) with a server-enforced 2-minute public pre-listing countdown before purchase unlocks.",
+      "type": "object",
+      "properties": {
+        "listingId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Unique market listing document ID."
+        },
+        "sellerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the selling player."
+        },
+        "sellerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24,
+          "description": "Public Tamer display name of the seller."
+        },
+        "itemKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Catalog item key (non-sellable keys such as digiegg_demimeramon are forbidden)."
+        },
+        "itemName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "Display name of the listed item."
+        },
+        "itemCategory": {
+          "type": "string",
+          "enum": ["digiegg", "data", "consumable", "equip", "other"],
+          "description": "Inventory category of the listed item."
+        },
+        "itemRarity": {
+          "type": "string",
+          "enum": ["comum", "incomum", "raro", "epico", "lendario"],
+          "description": "Rarity tier of the listed item."
+        },
+        "itemIconUrl": {
+          "type": "string",
+          "maxLength": 240,
+          "description": "Optional icon asset path for the listed item."
+        },
+        "itemDescription": {
+          "type": "string",
+          "maxLength": 240,
+          "description": "Short item description snapshot."
+        },
+        "quantity": {
+          "type": "number",
+          "description": "Listed stack quantity (1..9999)."
+        },
+        "eggHatchLevel": {
+          "type": "number",
+          "description": "DigiEgg reinforcement stage (0..5; 0 for non-egg items)."
+        },
+        "priceBits": {
+          "type": "number",
+          "description": "Total asking price in Bits (1..1000000000)."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "sold", "cancelled"],
+          "description": "Current listing lifecycle status."
+        },
+        "buyerUid": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Firebase Auth UID of the buyer once sold (or null)."
+        },
+        "buyerName": {
+          "type": "string",
+          "maxLength": 24,
+          "description": "Display Tamer name of the buyer once sold (or null)."
+        },
+        "payoutClaimed": {
+          "type": "boolean",
+          "description": "Whether the seller has already claimed the Bits payout from a sold listing."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the listing was posted (purchase unlocks at createdAt + 120s)."
+        },
+        "soldAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the listing was purchased (or null)."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest listing update."
+        }
+      },
+      "required": [
+        "listingId",
+        "sellerUid",
+        "sellerName",
+        "itemKey",
+        "itemName",
+        "itemCategory",
+        "itemRarity",
+        "itemIconUrl",
+        "itemDescription",
+        "quantity",
+        "eggHatchLevel",
+        "priceBits",
+        "status",
+        "buyerUid",
+        "buyerName",
+        "payoutClaimed",
+        "createdAt",
+        "soldAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -1666,6 +1792,10 @@
     "/guildInvites/{inviteId}": {
       "schema": { "$ref": "#/entities/GuildInvite" },
       "description": "Targeted Guild invitations sent by Guild Leaders or Sub-Leaders and resolved by the invited player."
+    },
+    "/playerMarketListings/{listingId}": {
+      "schema": { "$ref": "#/entities/PlayerMarketListing" },
+      "description": "Global player-to-player marketplace listings in DATS Center with a server-enforced 2-minute public pre-listing window before purchase unlocks."
     }
   }
 }

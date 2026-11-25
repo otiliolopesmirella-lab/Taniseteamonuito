@@ -643,17 +643,19 @@ export function getNextEvolutionInfo(
   readyToUnlockWithEvoluters: DigimonFormProfile | null;
   nextEvoluterCost: number;
 } {
-  const chain = getEvolutionChainForStarter(starterId);
   const activeForm = resolveActiveFormProfile(starterId, digimon.activeFormId);
+  const effectiveStarterId = activeForm.starterId;
+  const chain = getEvolutionChainForStarter(effectiveStarterId);
   const activeIdx = chain.findIndex((f) => f.id === activeForm.id);
   const nextForm =
     activeIdx >= 0 && activeIdx + 1 < chain.length ? chain[activeIdx + 1] : null;
   const nextEvoluterCost = nextForm
-    ? getFormEvoluterCost(starterId, nextForm.id)
+    ? getFormEvoluterCost(effectiveStarterId, nextForm.id)
     : 0;
   const nextLevelMet = Boolean(nextForm && digimon.level >= nextForm.unlockLevel);
   const nextSlotUnlocked = Boolean(
-    nextForm && isEvolutionSlotUnlockedByEvoluter(starterId, nextForm.id, digimon)
+    nextForm &&
+      isEvolutionSlotUnlockedByEvoluter(effectiveStarterId, nextForm.id, digimon)
   );
   const readyToEvolve =
     nextForm && nextLevelMet && nextSlotUnlocked ? nextForm : null;
@@ -681,7 +683,12 @@ export function unlockDigimonEvolutionWithEvoluters(
   spentEvoluters: number;
   error?: string;
 } {
-  const chain = getEvolutionChainForStarter(starterId);
+  const activeForm = resolveActiveFormProfile(
+    starterId,
+    state.digimon.activeFormId
+  );
+  const effectiveStarterId = activeForm.starterId;
+  const chain = getEvolutionChainForStarter(effectiveStarterId);
   const targetForm = chain.find((f) => f.id === targetFormId);
   if (!targetForm) {
     return {
@@ -701,13 +708,17 @@ export function unlockDigimonEvolutionWithEvoluters(
     };
   }
 
-  const cost = getFormEvoluterCost(starterId, targetForm.id);
+  const cost = getFormEvoluterCost(effectiveStarterId, targetForm.id);
   if (
     cost <= 0 ||
-    isEvolutionSlotUnlockedByEvoluter(starterId, targetForm.id, state.digimon)
+    isEvolutionSlotUnlockedByEvoluter(
+      effectiveStarterId,
+      targetForm.id,
+      state.digimon
+    )
   ) {
     const synced = sanitizeUnlockedFormIdsForDigimon(
-      starterId,
+      effectiveStarterId,
       state.digimon.level,
       [...(state.digimon.unlockedFormIds ?? []), targetForm.id],
       state.digimon.activeFormId
@@ -753,7 +764,7 @@ export function unlockDigimonEvolutionWithEvoluters(
   }
 
   const nextUnlockedIds = sanitizeUnlockedFormIdsForDigimon(
-    starterId,
+    effectiveStarterId,
     state.digimon.level,
     [...(state.digimon.unlockedFormIds ?? []), targetForm.id],
     state.digimon.activeFormId
@@ -786,7 +797,12 @@ export function evolveDigimonAccountState(
   evoluterCost?: number;
   error?: string;
 } {
-  const chain = getEvolutionChainForStarter(starterId);
+  const currentForm = resolveActiveFormProfile(
+    starterId,
+    state.digimon.activeFormId
+  );
+  const effectiveStarterId = currentForm.starterId;
+  const chain = getEvolutionChainForStarter(effectiveStarterId);
   const targetForm = chain.find((f) => f.id === targetFormId);
   if (!targetForm) {
     return {
@@ -800,10 +816,14 @@ export function evolveDigimonAccountState(
       error: `Nível insuficiente! ${targetForm.name} é desbloqueado no Nível ${targetForm.unlockLevel}.`,
     };
   }
-  const evoluterCost = getFormEvoluterCost(starterId, targetForm.id);
+  const evoluterCost = getFormEvoluterCost(effectiveStarterId, targetForm.id);
   if (
     evoluterCost > 0 &&
-    !isEvolutionSlotUnlockedByEvoluter(starterId, targetForm.id, state.digimon)
+    !isEvolutionSlotUnlockedByEvoluter(
+      effectiveStarterId,
+      targetForm.id,
+      state.digimon
+    )
   ) {
     return {
       next: state,
@@ -812,7 +832,6 @@ export function evolveDigimonAccountState(
       error: `Evolução bloqueada! ${targetForm.name} precisa de ${evoluterCost} Evoluters para ser desbloqueado.`,
     };
   }
-  const currentForm = resolveActiveFormProfile(starterId, state.digimon.activeFormId);
   if (currentForm.id === targetForm.id) {
     return { next: state, evolvedForm: targetForm };
   }
@@ -840,7 +859,7 @@ export function evolveDigimonAccountState(
           Math.min(nextMaxDs, Math.round((currentDs / prevMaxDs) * nextMaxDs))
         );
   const unlockedIds = sanitizeUnlockedFormIdsForDigimon(
-    starterId,
+    effectiveStarterId,
     state.digimon.level,
     state.digimon.unlockedFormIds,
     targetForm.id
@@ -906,6 +925,7 @@ export function createDefaultAccountHudState(
     tamerCoverUrl: null,
     xpBoostUntilMs: null,
     autoFarmVipUnlocked: false,
+    autoFarmVipUntilMs: null,
     defeatedEnemiesTotal: 0,
     updatedAt: new Date().toISOString(),
   };
@@ -958,11 +978,12 @@ export function loadAccountHudState(
     );
 
     const activeForm = resolveActiveFormProfile(starterId, mergedDigi.activeFormId);
+    const effectiveStarterId = activeForm.starterId;
     // Strict safety check: never allow a higher form if account level is below unlock requirement
     const safeForm =
       mergedDigi.level >= activeForm.unlockLevel
         ? activeForm
-        : getEvolutionChainForStarter(starterId)[0];
+        : getEvolutionChainForStarter(effectiveStarterId)[0];
     const digiMaxHp = calcDigimonMaxHp(
       mergedDigi.level,
       safeForm.id,
@@ -977,7 +998,7 @@ export function loadAccountHudState(
     );
     mergedDigi.activeFormId = safeForm.id;
     mergedDigi.unlockedFormIds = sanitizeUnlockedFormIdsForDigimon(
-      starterId,
+      effectiveStarterId,
       mergedDigi.level,
       parsed.digimon?.unlockedFormIds,
       safeForm.id
@@ -1024,6 +1045,12 @@ export function loadAccountHudState(
           ? Math.round(parsed.xpBoostUntilMs)
           : null,
       autoFarmVipUnlocked: parsed.autoFarmVipUnlocked === true,
+      autoFarmVipUntilMs:
+        typeof parsed.autoFarmVipUntilMs === 'number' &&
+        Number.isFinite(parsed.autoFarmVipUntilMs) &&
+        parsed.autoFarmVipUntilMs > 0
+          ? Math.round(parsed.autoFarmVipUntilMs)
+          : null,
       defeatedEnemiesTotal:
         typeof parsed.defeatedEnemiesTotal === 'number' && parsed.defeatedEnemiesTotal >= 0
           ? parsed.defeatedEnemiesTotal
@@ -1115,6 +1142,7 @@ export function applyExpToDigimon(
   const qualityProfile = getHatchQualityProfile(stats.hatchGrade);
   const effectiveSizePct = clampHatchSizePct(qualityProfile.grade, stats.hatchSizePct);
   const activeForm = resolveActiveFormProfile(starterId, stats.activeFormId);
+  const effectiveStarterId = activeForm.starterId;
   const prevLevel = level;
   if (level < MAX_GAME_LEVEL) {
     exp += gainedExp;
@@ -1133,9 +1161,9 @@ export function applyExpToDigimon(
   if (level >= MAX_GAME_LEVEL) {
     exp = 0;
   }
-  const chain = getEvolutionChainForStarter(starterId);
+  const chain = getEvolutionChainForStarter(effectiveStarterId);
   const syncedUnlockedIds = sanitizeUnlockedFormIdsForDigimon(
-    starterId,
+    effectiveStarterId,
     level,
     stats.unlockedFormIds,
     activeForm.id
@@ -1177,12 +1205,13 @@ export function setDigimonLevelForTesting(
   const prevLevel = stats.level;
   const qualityProfile = getHatchQualityProfile(stats.hatchGrade);
   const effectiveSizePct = clampHatchSizePct(qualityProfile.grade, stats.hatchSizePct);
-  const chain = getEvolutionChainForStarter(starterId);
   const currentForm = resolveActiveFormProfile(starterId, stats.activeFormId);
+  const effectiveStarterId = currentForm.starterId;
+  const chain = getEvolutionChainForStarter(effectiveStarterId);
 
   const validCurrent = clampedLevel >= currentForm.unlockLevel;
   const syncedUnlockedIds = sanitizeUnlockedFormIdsForDigimon(
-    starterId,
+    effectiveStarterId,
     clampedLevel,
     stats.unlockedFormIds,
     validCurrent ? currentForm.id : undefined
@@ -1296,11 +1325,13 @@ export function addInventoryItem(
   });
 
   const incomingEggLevel = enriched.eggData?.hatchLevel ?? 0;
-  // Stack items with matching itemKey (keeping reinforced eggs separate from base eggs)
+  const incomingTutorialGift = Boolean(enriched.eggData?.isTutorialGift);
+  // Stack items with matching itemKey (keeping reinforced and tutorial-gift eggs separate from regular eggs)
   const existingIdx = current.findIndex(
     (i) =>
       i.itemKey === enriched.itemKey &&
-      (i.eggData?.hatchLevel ?? 0) === incomingEggLevel
+      (i.eggData?.hatchLevel ?? 0) === incomingEggLevel &&
+      Boolean(i.eggData?.isTutorialGift) === incomingTutorialGift
   );
   if (existingIdx >= 0) {
     const updated = [...current];

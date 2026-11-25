@@ -604,62 +604,8 @@ export function drawDigitalDesertGroundAnimations(
   ctx.ellipse(1200, 448, 32, 46, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // 2. South Technological Platform Return Portal glow + rising digital motes
-  const pulse = 1 + Math.sin(safeElapsed * 3.4) * 0.08;
-  const portalGlow = ctx.createRadialGradient(
-    DIGITAL_DESERT_RETURN_PORTAL.x,
-    DIGITAL_DESERT_RETURN_PORTAL.y - 6,
-    10,
-    DIGITAL_DESERT_RETURN_PORTAL.x,
-    DIGITAL_DESERT_RETURN_PORTAL.y - 6,
-    114 * pulse
-  );
-  portalGlow.addColorStop(
-    0,
-    nearPortal ? 'rgba(254, 240, 138, 0.48)' : 'rgba(56, 232, 255, 0.42)'
-  );
-  portalGlow.addColorStop(0.55, 'rgba(14, 165, 233, 0.16)');
-  portalGlow.addColorStop(1, 'rgba(14, 165, 233, 0)');
-  ctx.fillStyle = portalGlow;
-  ctx.beginPath();
-  ctx.ellipse(
-    DIGITAL_DESERT_RETURN_PORTAL.x,
-    DIGITAL_DESERT_RETURN_PORTAL.y,
-    108 * pulse,
-    42 * pulse,
-    0,
-    0,
-    Math.PI * 2
-  );
-  ctx.fill();
-
-  if (nearPortal) {
-    ctx.strokeStyle = 'rgba(253, 224, 71, 0.92)';
-    ctx.lineWidth = 2.6;
-    ctx.beginPath();
-    ctx.ellipse(
-      DIGITAL_DESERT_RETURN_PORTAL.x,
-      DIGITAL_DESERT_RETURN_PORTAL.y,
-      74 * pulse,
-      28 * pulse,
-      0,
-      0,
-      Math.PI * 2
-    );
-    ctx.stroke();
-  }
-
-  for (let i = 0; i < 8; i++) {
-    const phase = (safeElapsed * 0.54 + i * 0.125) % 1;
-    const mx =
-      DIGITAL_DESERT_RETURN_PORTAL.x + Math.sin(safeElapsed * 2.1 + i * 1.4) * 44;
-    const my = DIGITAL_DESERT_RETURN_PORTAL.y + 8 - phase * 165;
-    const alpha = Math.sin(phase * Math.PI) * 0.68;
-    ctx.fillStyle = `rgba(165, 243, 252, ${alpha.toFixed(3)})`;
-    ctx.beginPath();
-    ctx.arc(mx, my, 2.2, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  // 2. Return portal rendered by unified dimensional portal gate
+  void nearPortal;
 
   // 3. Central Oasis Fountain pulsing energy ring
   const fountainPulse = 0.96 + Math.sin(safeElapsed * 2.4) * 0.04;

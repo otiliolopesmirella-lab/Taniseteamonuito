@@ -75,22 +75,47 @@ service cloud.firestore {
           !('autoFarmVipUnlocked' in data.hudState) ||
           data.hudState.autoFarmVipUnlocked == null ||
           data.hudState.autoFarmVipUnlocked == false
+        ) && (
+          !('autoFarmVipUntilMs' in data.hudState) ||
+          data.hudState.autoFarmVipUntilMs == null ||
+          data.hudState.autoFarmVipUntilMs == 0
         ));
     }
 
     function canUpdatePlayerAutoFarmVip(newData, oldData) {
       return isAdmin() ||
         newData.hudState == null ||
-        (newData.hudState is map && (
-          !('autoFarmVipUnlocked' in newData.hudState) ||
-          newData.hudState.autoFarmVipUnlocked == null ||
-          newData.hudState.autoFarmVipUnlocked == false
-        )) ||
-        ('hudState' in oldData &&
-          oldData.hudState != null &&
-          oldData.hudState is map &&
-          'autoFarmVipUnlocked' in oldData.hudState &&
-          oldData.hudState.autoFarmVipUnlocked == true) ||
+        (newData.hudState is map &&
+          (
+            !('autoFarmVipUnlocked' in newData.hudState) ||
+            newData.hudState.autoFarmVipUnlocked == null ||
+            newData.hudState.autoFarmVipUnlocked == false ||
+            ('hudState' in oldData &&
+              oldData.hudState != null &&
+              oldData.hudState is map &&
+              'autoFarmVipUnlocked' in oldData.hudState &&
+              oldData.hudState.autoFarmVipUnlocked == true)
+          ) &&
+          (
+            !('autoFarmVipUntilMs' in newData.hudState) ||
+            newData.hudState.autoFarmVipUntilMs == null ||
+            newData.hudState.autoFarmVipUntilMs == 0 ||
+            ('hudState' in oldData &&
+              oldData.hudState != null &&
+              oldData.hudState is map &&
+              'autoFarmVipUntilMs' in oldData.hudState &&
+              oldData.hudState.autoFarmVipUntilMs is number &&
+              newData.hudState.autoFarmVipUntilMs <= oldData.hudState.autoFarmVipUntilMs) ||
+            ('hudState' in oldData &&
+              oldData.hudState != null &&
+              oldData.hudState is map &&
+              'autoFarmVipUnlocked' in oldData.hudState &&
+              oldData.hudState.autoFarmVipUnlocked == true &&
+              (!('autoFarmVipUntilMs' in oldData.hudState) || oldData.hudState.autoFarmVipUntilMs == null) &&
+              newData.hudState.autoFarmVipUntilMs is number &&
+              newData.hudState.autoFarmVipUntilMs <= request.time.toMillis() + 2678400000)
+          )
+        ) ||
         ('hudState' in oldData &&
           oldData.hudState != null &&
           oldData.hudState is map &&
@@ -100,7 +125,11 @@ service cloud.firestore {
           'dCoin' in newData.hudState &&
           newData.hudState.dCoin is number &&
           oldData.hudState.dCoin >= 20 &&
-          oldData.hudState.dCoin - newData.hudState.dCoin >= 20);
+          oldData.hudState.dCoin - newData.hudState.dCoin >= 20 &&
+          (!('autoFarmVipUntilMs' in newData.hudState) ||
+            newData.hudState.autoFarmVipUntilMs == null ||
+            (newData.hudState.autoFarmVipUntilMs is number &&
+              newData.hudState.autoFarmVipUntilMs <= request.time.toMillis() + 31536000000)));
     }
 
     function isValidId(id) {
@@ -160,7 +189,7 @@ service cloud.firestore {
         prog is map &&
         prog.keys().hasAll(['mapId', 'worldX', 'worldY', 'facingDir', 'stepsCount', 'discoveredZones', 'updatedAt']) &&
         prog.keys().hasOnly(['mapId', 'worldX', 'worldY', 'facingDir', 'stepsCount', 'discoveredZones', 'updatedAt']) &&
-        prog.mapId in ['dats-center', 'hunting-plains', 'data-forest', 'digi-mountain', 'digital-desert', 'data-sea', 'digimon-island', 'dark-area', 'virtual-world'] &&
+        prog.mapId in ['dats-center', 'd-terminal', 'hunting-plains', 'data-forest', 'digi-mountain', 'digital-desert', 'data-sea', 'digimon-island', 'dark-area', 'virtual-world'] &&
         prog.worldX is number && prog.worldX >= 0 && prog.worldX <= 20000 &&
         prog.worldY is number && prog.worldY >= 0 && prog.worldY <= 20000 &&
         prog.facingDir in ['N', 'S', 'E', 'W'] &&
@@ -194,7 +223,7 @@ service cloud.firestore {
       return hud == null || (
         hud is map &&
         hud.keys().hasAll(['tamer', 'digimon', 'bits', 'dCoin', 'inventory', 'equippedItems', 'guildName', 'defeatedEnemiesTotal', 'updatedAt']) &&
-        hud.keys().hasOnly(['tamer', 'digimon', 'bits', 'dCoin', 'inventory', 'equippedItems', 'guildName', 'tamerPhotoUrl', 'tamerCoverUrl', 'xpBoostUntilMs', 'autoFarmVipUnlocked', 'defeatedEnemiesTotal', 'updatedAt']) &&
+        hud.keys().hasOnly(['tamer', 'digimon', 'bits', 'dCoin', 'inventory', 'equippedItems', 'guildName', 'tamerPhotoUrl', 'tamerCoverUrl', 'xpBoostUntilMs', 'autoFarmVipUnlocked', 'autoFarmVipUntilMs', 'defeatedEnemiesTotal', 'updatedAt']) &&
         isValidRuntimeStats(hud.tamer) &&
         isValidRuntimeStats(hud.digimon) &&
         hud.bits is number && hud.bits >= 0 && hud.bits <= 1000000000 &&
@@ -207,6 +236,7 @@ service cloud.firestore {
         (!('tamerCoverUrl' in hud) || hud.tamerCoverUrl == null || isValidImageDataUrl(hud.tamerCoverUrl, 48000)) &&
         (!('xpBoostUntilMs' in hud) || hud.xpBoostUntilMs == null || (hud.xpBoostUntilMs is number && hud.xpBoostUntilMs >= 0 && hud.xpBoostUntilMs <= 4000000000000)) &&
         (!('autoFarmVipUnlocked' in hud) || hud.autoFarmVipUnlocked == null || hud.autoFarmVipUnlocked is bool) &&
+        (!('autoFarmVipUntilMs' in hud) || hud.autoFarmVipUntilMs == null || (hud.autoFarmVipUntilMs is number && hud.autoFarmVipUntilMs >= 0 && hud.autoFarmVipUntilMs <= 4000000000000)) &&
         hud.defeatedEnemiesTotal is number && hud.defeatedEnemiesTotal >= 0 && hud.defeatedEnemiesTotal <= 100000000 &&
         hud.updatedAt is string && hud.updatedAt.size() >= 10 && hud.updatedAt.size() <= 40
       );
@@ -299,7 +329,7 @@ service cloud.firestore {
           'kunemon', 'flymon', 'okuwamon', 'grankuwagamon'
         ] &&
         data.digimonLevel is number && data.digimonLevel >= 1 && data.digimonLevel <= 200 &&
-        data.mapId in ['dats-center', 'hunting-plains', 'data-forest', 'digi-mountain', 'digital-desert', 'data-sea', 'digimon-island', 'dark-area', 'virtual-world'] &&
+        data.mapId in ['dats-center', 'd-terminal', 'hunting-plains', 'data-forest', 'digi-mountain', 'digital-desert', 'data-sea', 'digimon-island', 'dark-area', 'virtual-world'] &&
         data.worldX is number && data.worldX >= 0 && data.worldX <= 20000 &&
         data.worldY is number && data.worldY >= 0 && data.worldY <= 20000 &&
         data.facingDir in ['N', 'S', 'E', 'W'] &&
@@ -517,7 +547,7 @@ service cloud.firestore {
         m.digimonLevel is number && m.digimonLevel >= 1 && m.digimonLevel <= 200 &&
         m.maxHp is number && m.maxHp >= 1 && m.maxHp <= 1000000 &&
         m.hp is number && m.hp >= 0 && m.hp <= m.maxHp &&
-        m.mapId in ['dats-center', 'hunting-plains', 'data-forest', 'digi-mountain', 'digital-desert', 'data-sea', 'digimon-island', 'dark-area', 'virtual-world'];
+        m.mapId in ['dats-center', 'd-terminal', 'hunting-plains', 'data-forest', 'digi-mountain', 'digital-desert', 'data-sea', 'digimon-island', 'dark-area', 'virtual-world'];
     }
 
     function isValidPartyRecord(data, partyId) {
@@ -567,7 +597,7 @@ service cloud.firestore {
         data.eventId is string && isValidId(data.eventId) && data.eventId == eventId &&
         data.killerUid is string && isValidId(data.killerUid) &&
         data.killerName is string && data.killerName.size() >= 1 && data.killerName.size() <= 24 &&
-        data.mapId in ['dats-center', 'hunting-plains', 'data-forest', 'digi-mountain', 'digital-desert', 'data-sea', 'digimon-island', 'dark-area', 'virtual-world'] &&
+        data.mapId in ['dats-center', 'd-terminal', 'hunting-plains', 'data-forest', 'digi-mountain', 'digital-desert', 'data-sea', 'digimon-island', 'dark-area', 'virtual-world'] &&
         data.mobName is string && data.mobName.size() >= 1 && data.mobName.size() <= 32 &&
         data.mobLevel is number && data.mobLevel >= 1 && data.mobLevel <= 200 &&
         data.baseExp is number && data.baseExp >= 1 && data.baseExp <= 50000000 &&
@@ -657,7 +687,7 @@ service cloud.firestore {
         data.senderUid is string && isValidId(data.senderUid) &&
         data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 24 &&
         data.isGmSender is bool &&
-        data.mapId in ['dats-center', 'hunting-plains', 'data-forest', 'digi-mountain', 'digital-desert', 'data-sea', 'digimon-island', 'dark-area', 'virtual-world'] &&
+        data.mapId in ['dats-center', 'd-terminal', 'hunting-plains', 'data-forest', 'digi-mountain', 'digital-desert', 'data-sea', 'digimon-island', 'dark-area', 'virtual-world'] &&
         data.text is string && data.text.size() >= 1 && data.text.size() <= 140 &&
         data.createdAt is timestamp;
     }
@@ -684,6 +714,43 @@ service cloud.firestore {
         data.toName is string && data.toName.size() >= 1 && data.toName.size() <= 24 &&
         data.status in ['pending', 'accepted', 'declined'] &&
         data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidPlayerMarketListing(data, listingId) {
+      return data.keys().hasAll([
+          'listingId', 'sellerUid', 'sellerName', 'itemKey', 'itemName',
+          'itemCategory', 'itemRarity', 'itemIconUrl', 'itemDescription',
+          'quantity', 'eggHatchLevel', 'priceBits', 'status',
+          'buyerUid', 'buyerName', 'payoutClaimed',
+          'createdAt', 'soldAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'listingId', 'sellerUid', 'sellerName', 'itemKey', 'itemName',
+          'itemCategory', 'itemRarity', 'itemIconUrl', 'itemDescription',
+          'quantity', 'eggHatchLevel', 'priceBits', 'status',
+          'buyerUid', 'buyerName', 'payoutClaimed',
+          'createdAt', 'soldAt', 'updatedAt'
+        ]) &&
+        data.listingId is string && isValidId(data.listingId) && data.listingId == listingId &&
+        data.sellerUid is string && isValidId(data.sellerUid) &&
+        data.sellerName is string && data.sellerName.size() >= 1 && data.sellerName.size() <= 24 &&
+        data.itemKey is string && data.itemKey.size() >= 1 && data.itemKey.size() <= 64 &&
+        data.itemKey != 'digiegg_demimeramon' &&
+        data.itemName is string && data.itemName.size() >= 1 && data.itemName.size() <= 80 &&
+        data.itemCategory in ['digiegg', 'data', 'consumable', 'equip', 'other'] &&
+        data.itemRarity in ['comum', 'incomum', 'raro', 'epico', 'lendario'] &&
+        data.itemIconUrl is string && data.itemIconUrl.size() <= 240 &&
+        data.itemDescription is string && data.itemDescription.size() <= 240 &&
+        data.quantity is number && data.quantity >= 1 && data.quantity <= 9999 &&
+        data.eggHatchLevel is number && data.eggHatchLevel >= 0 && data.eggHatchLevel <= 5 &&
+        data.priceBits is number && data.priceBits >= 1 && data.priceBits <= 1000000000 &&
+        data.status in ['active', 'sold', 'cancelled'] &&
+        (data.buyerUid == null || (data.buyerUid is string && isValidId(data.buyerUid))) &&
+        (data.buyerName == null || (data.buyerName is string && data.buyerName.size() >= 1 && data.buyerName.size() <= 24)) &&
+        data.payoutClaimed is bool &&
+        data.createdAt is timestamp &&
+        (data.soldAt == null || data.soldAt is timestamp) &&
         data.updatedAt is timestamp;
     }
 
@@ -1521,6 +1588,91 @@ service cloud.firestore {
           get(/databases/$(database)/documents/guilds/$(existing().guildId)).data.masterUid == request.auth.uid) ||
         isAdmin()
       );
+    }
+
+    // =========================================================================
+    // Collection: /playerMarketListings/{listingId} — Player-to-Player Market
+    // Server-enforced 2-minute (120s) public preview before purchase unlocks.
+    // =========================================================================
+    match /playerMarketListings/{listingId} {
+      allow get: if isVerified() && isValidId(listingId);
+      allow list: if isVerified() && request.query.limit <= 80;
+
+      allow create: if isVerified() &&
+        isValidId(listingId) &&
+        isValidPlayerMarketListing(incoming(), listingId) &&
+        incoming().sellerUid == request.auth.uid &&
+        incoming().status == 'active' &&
+        incoming().buyerUid == null &&
+        incoming().buyerName == null &&
+        incoming().soldAt == null &&
+        incoming().payoutClaimed == false &&
+        incoming().itemKey != 'digiegg_demimeramon' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/players/$(request.auth.uid)) &&
+        isNotBanned();
+
+      allow update: if isVerified() &&
+        isValidId(listingId) &&
+        isValidPlayerMarketListing(incoming(), listingId) &&
+        incoming().listingId == existing().listingId &&
+        incoming().sellerUid == existing().sellerUid &&
+        incoming().sellerName == existing().sellerName &&
+        incoming().itemKey == existing().itemKey &&
+        incoming().itemName == existing().itemName &&
+        incoming().itemCategory == existing().itemCategory &&
+        incoming().itemRarity == existing().itemRarity &&
+        incoming().itemIconUrl == existing().itemIconUrl &&
+        incoming().itemDescription == existing().itemDescription &&
+        incoming().quantity == existing().quantity &&
+        incoming().eggHatchLevel == existing().eggHatchLevel &&
+        incoming().priceBits == existing().priceBits &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/players/$(request.auth.uid)) &&
+        isNotBanned() && (
+          // Action 1: Another player purchases an active listing AFTER the 120s public countdown expires
+          (existing().status == 'active' &&
+            existing().sellerUid != request.auth.uid &&
+            request.time >= existing().createdAt + duration.value(120, 's') &&
+            incoming().status == 'sold' &&
+            incoming().buyerUid == request.auth.uid &&
+            incoming().buyerName is string &&
+            incoming().buyerName.size() >= 1 &&
+            incoming().buyerName.size() <= 24 &&
+            incoming().soldAt == request.time &&
+            incoming().payoutClaimed == false &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'status', 'buyerUid', 'buyerName', 'soldAt', 'updatedAt'
+            ])) ||
+          // Action 2: Seller cancels their own active listing to return item to inventory
+          (existing().status == 'active' &&
+            existing().sellerUid == request.auth.uid &&
+            incoming().status == 'cancelled' &&
+            incoming().buyerUid == null &&
+            incoming().buyerName == null &&
+            incoming().soldAt == null &&
+            incoming().payoutClaimed == false &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'status', 'updatedAt'
+            ])) ||
+          // Action 3: Seller claims Bits payout once from their own sold listing
+          (existing().status == 'sold' &&
+            existing().sellerUid == request.auth.uid &&
+            existing().payoutClaimed == false &&
+            incoming().status == 'sold' &&
+            incoming().buyerUid == existing().buyerUid &&
+            incoming().buyerName == existing().buyerName &&
+            incoming().soldAt == existing().soldAt &&
+            incoming().payoutClaimed == true &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'payoutClaimed', 'updatedAt'
+            ])) ||
+          isAdmin()
+        );
+
+      allow delete: if isAdmin() && isValidId(listingId);
     }
   }
 }

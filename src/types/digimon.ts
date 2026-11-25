@@ -6195,10 +6195,9 @@ export function resolveActiveFormProfile(
   starterId: StarterDigimonId,
   activeFormId?: DigimonFormId
 ): DigimonFormProfile {
-  const chain = getEvolutionChainForStarter(starterId);
-  if (activeFormId) {
-    const match = chain.find((f) => f.id === activeFormId);
-    if (match) return match;
+  if (activeFormId && DIGIMON_FORM_PROFILES[activeFormId]) {
+    return DIGIMON_FORM_PROFILES[activeFormId];
   }
+  const chain = getEvolutionChainForStarter(starterId);
   return chain[0];
 }

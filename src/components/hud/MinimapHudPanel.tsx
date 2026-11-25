@@ -19,6 +19,15 @@ import {
   DATS_WORLD_W,
 } from '../../maps/datsCenterMap';
 import {
+  D_TERMINAL_BANNER_URL,
+  D_TERMINAL_CONDUCTOR_NPC,
+  D_TERMINAL_MAP_ID,
+  D_TERMINAL_RETURN_PORTAL,
+  D_TERMINAL_WORLD_H,
+  D_TERMINAL_WORLD_W,
+} from '../../maps/dTerminalMap';
+import { getPortalsForMap } from '../../maps/mapPortals';
+import {
   DIGI_MOUNTAIN_BANNER_URL,
   DIGI_MOUNTAIN_FRIENDLY_NPCS,
   DIGI_MOUNTAIN_INTERACTION_POINTS,
@@ -117,6 +126,7 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
   const [zoom, setZoom] = useState<number>(1.0);
   const [minimized, setMinimized] = useState(false);
 
+  const isDTerminal = snapshot.mapId === D_TERMINAL_MAP_ID;
   const isHunting = snapshot.mapId === HUNTING_MAP_ID;
   const isDataForest = snapshot.mapId === DATA_FOREST_MAP_ID;
   const isDigiMountain = snapshot.mapId === DIGI_MOUNTAIN_MAP_ID;
@@ -135,23 +145,25 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
     isDarkArea ||
     isVirtualWorld;
 
-  const regionLabel = isVirtualWorld
-    ? 'Mundo Virtual'
-    : isDarkArea
-      ? 'Área Sombria'
-      : isDigimonIsland
-        ? 'Ilha dos Digimons'
-        : isDataSea
-          ? 'Mar de Dados'
-          : isDigitalDesert
-            ? 'Deserto Digital'
-            : isDigiMountain
-              ? 'Montanha Digi'
-              : isDataForest
-                ? 'Floresta de Dados'
-                : isHunting
-                  ? 'Planície Digital'
-                  : 'DATS Center';
+  const regionLabel = isDTerminal
+    ? 'D-Terminal'
+    : isVirtualWorld
+      ? 'Mundo Virtual'
+      : isDarkArea
+        ? 'Área Sombria'
+        : isDigimonIsland
+          ? 'Ilha dos Digimons'
+          : isDataSea
+            ? 'Mar de Dados'
+            : isDigitalDesert
+              ? 'Deserto Digital'
+              : isDigiMountain
+                ? 'Montanha Digi'
+                : isDataForest
+                  ? 'Floresta de Dados'
+                  : isHunting
+                    ? 'Planície Digital'
+                    : 'DATS Center';
 
   const activeSubZone = isVirtualWorld
     ? getVirtualWorldZoneAtPoint(snapshot.tamerX, snapshot.tamerY)
@@ -174,15 +186,17 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
   const subZoneText =
     snapshot.mapId === DATS_MAP_ID
       ? 'Praça Central DATS'
-      : activeSubZone
-        ? activeSubZone.speciesLabel
-          ? `${activeSubZone.name} · ${activeSubZone.speciesLabel}`
-          : activeSubZone.name
-        : regionLabel;
+      : isDTerminal
+        ? 'Estação Trailmon · PawnChessmon'
+        : activeSubZone
+          ? activeSubZone.speciesLabel
+            ? `${activeSubZone.name} · ${activeSubZone.speciesLabel}`
+            : activeSubZone.name
+          : regionLabel;
 
   // Exact canvas internal resolution matching the active map's photo proportions
-  const canvasW = isCombatMap ? 320 : 240;
-  const canvasH = isCombatMap ? 180 : 222;
+  const canvasW = isCombatMap ? 320 : isDTerminal ? 270 : 240;
+  const canvasH = isCombatMap ? 180 : isDTerminal ? 180 : 222;
 
   // Lazily bake exact-aspect thumbnail for the active map (including DATS Center artwork)
   useEffect(() => {
@@ -209,23 +223,25 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
     }
 
     const url =
-      mapId === VIRTUAL_WORLD_MAP_ID
-        ? VIRTUAL_WORLD_BANNER_URL
-        : mapId === DARK_AREA_MAP_ID
-          ? DARK_AREA_BANNER_URL
-          : mapId === DIGIMON_ISLAND_MAP_ID
-            ? DIGIMON_ISLAND_BANNER_URL
-            : mapId === DATA_SEA_MAP_ID
-              ? DATA_SEA_BANNER_URL
-              : mapId === DIGITAL_DESERT_MAP_ID
-                ? DIGITAL_DESERT_BANNER_URL
-                : mapId === DIGI_MOUNTAIN_MAP_ID
-                  ? DIGI_MOUNTAIN_BANNER_URL
-                  : mapId === DATA_FOREST_MAP_ID
-                    ? DATA_FOREST_IMAGE_URL
-                    : mapId === HUNTING_MAP_ID
-                      ? HUNTING_MAP_BANNER_URL
-                      : null;
+      mapId === D_TERMINAL_MAP_ID
+        ? D_TERMINAL_BANNER_URL
+        : mapId === VIRTUAL_WORLD_MAP_ID
+          ? VIRTUAL_WORLD_BANNER_URL
+          : mapId === DARK_AREA_MAP_ID
+            ? DARK_AREA_BANNER_URL
+            : mapId === DIGIMON_ISLAND_MAP_ID
+              ? DIGIMON_ISLAND_BANNER_URL
+              : mapId === DATA_SEA_MAP_ID
+                ? DATA_SEA_BANNER_URL
+                : mapId === DIGITAL_DESERT_MAP_ID
+                  ? DIGITAL_DESERT_BANNER_URL
+                  : mapId === DIGI_MOUNTAIN_MAP_ID
+                    ? DIGI_MOUNTAIN_BANNER_URL
+                    : mapId === DATA_FOREST_MAP_ID
+                      ? DATA_FOREST_IMAGE_URL
+                      : mapId === HUNTING_MAP_ID
+                        ? HUNTING_MAP_BANNER_URL
+                        : null;
 
     if (!url) return;
     loadingMapRef.current.add(mapId);
@@ -234,7 +250,7 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
     img.src = url;
     img.onload = () => {
       const thumb = document.createElement('canvas');
-      thumb.width = 320;
+      thumb.width = mapId === D_TERMINAL_MAP_ID ? 270 : 320;
       thumb.height = 180;
       const tCtx = thumb.getContext('2d');
       if (tCtx) {
@@ -261,40 +277,44 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
 
     const w = canvas.width;
     const h = canvas.height;
-    const worldW = isVirtualWorld
-      ? VIRTUAL_WORLD_WORLD_W
-      : isDarkArea
-        ? DARK_AREA_WORLD_W
-        : isDigimonIsland
-          ? DIGIMON_ISLAND_WORLD_W
-          : isDataSea
-            ? DATA_SEA_WORLD_W
-            : isDigitalDesert
-              ? DIGITAL_DESERT_WORLD_W
-              : isDigiMountain
-                ? DIGI_MOUNTAIN_WORLD_W
-                : isDataForest
-                  ? DATA_FOREST_WORLD_W
-                  : isHunting
-                    ? HUNTING_WORLD_W
-                    : DATS_WORLD_W;
-    const worldH = isVirtualWorld
-      ? VIRTUAL_WORLD_WORLD_H
-      : isDarkArea
-        ? DARK_AREA_WORLD_H
-        : isDigimonIsland
-          ? DIGIMON_ISLAND_WORLD_H
-          : isDataSea
-            ? DATA_SEA_WORLD_H
-            : isDigitalDesert
-              ? DIGITAL_DESERT_WORLD_H
-              : isDigiMountain
-                ? DIGI_MOUNTAIN_WORLD_H
-                : isDataForest
-                  ? DATA_FOREST_WORLD_H
-                  : isHunting
-                    ? HUNTING_WORLD_H
-                    : DATS_WORLD_H;
+    const worldW = isDTerminal
+      ? D_TERMINAL_WORLD_W
+      : isVirtualWorld
+        ? VIRTUAL_WORLD_WORLD_W
+        : isDarkArea
+          ? DARK_AREA_WORLD_W
+          : isDigimonIsland
+            ? DIGIMON_ISLAND_WORLD_W
+            : isDataSea
+              ? DATA_SEA_WORLD_W
+              : isDigitalDesert
+                ? DIGITAL_DESERT_WORLD_W
+                : isDigiMountain
+                  ? DIGI_MOUNTAIN_WORLD_W
+                  : isDataForest
+                    ? DATA_FOREST_WORLD_W
+                    : isHunting
+                      ? HUNTING_WORLD_W
+                      : DATS_WORLD_W;
+    const worldH = isDTerminal
+      ? D_TERMINAL_WORLD_H
+      : isVirtualWorld
+        ? VIRTUAL_WORLD_WORLD_H
+        : isDarkArea
+          ? DARK_AREA_WORLD_H
+          : isDigimonIsland
+            ? DIGIMON_ISLAND_WORLD_H
+            : isDataSea
+              ? DATA_SEA_WORLD_H
+              : isDigitalDesert
+                ? DIGITAL_DESERT_WORLD_H
+                : isDigiMountain
+                  ? DIGI_MOUNTAIN_WORLD_H
+                  : isDataForest
+                    ? DATA_FOREST_WORLD_H
+                    : isHunting
+                      ? HUNTING_WORLD_H
+                      : DATS_WORLD_H;
 
     ctx.clearRect(0, 0, w, h);
 
@@ -332,7 +352,37 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
       ctx.fillRect(0, 0, drawW, drawH);
     }
 
-    if (!isCombatMap) {
+    if (isDTerminal) {
+      // DATS Return Portal marker
+      ctx.fillStyle = '#38e8ff';
+      ctx.beginPath();
+      ctx.arc(
+        D_TERMINAL_RETURN_PORTAL.x * scaleX,
+        D_TERMINAL_RETURN_PORTAL.y * scaleY,
+        4.8,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+      ctx.strokeStyle = '#020617';
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+
+      // PawnChessmon (Black) Trailmon Conductor NPC marker
+      ctx.fillStyle = '#34d399';
+      ctx.beginPath();
+      ctx.arc(
+        D_TERMINAL_CONDUCTOR_NPC.x * scaleX,
+        D_TERMINAL_CONDUCTOR_NPC.y * scaleY,
+        5.0,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+      ctx.strokeStyle = '#fde047';
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+    } else if (!isCombatMap) {
       // DATS portals & interactive nodes
       for (const pt of DATS_INTERACTION_POINTS) {
         if (pt.id === 'dats-mudfrigimon-npc') continue;
@@ -434,20 +484,39 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
       ctx.fill();
       ctx.stroke();
 
-      // Return Portal to DATS Center
-      ctx.fillStyle = '#ffd43b';
-      ctx.beginPath();
-      ctx.arc(
-        returnPortal.x * scaleX,
-        returnPortal.y * scaleY,
-        4.6,
-        0,
-        Math.PI * 2
-      );
-      ctx.fill();
-      ctx.strokeStyle = '#020617';
-      ctx.lineWidth = 1.3;
-      ctx.stroke();
+      // Interconnected Portals (Return/Back Portal in Gold, Next-Map Portal in Cyan-Amber Ring)
+      const mapPortals = getPortalsForMap(snapshot.mapId);
+      if (mapPortals.length > 0) {
+        for (const portal of mapPortals) {
+          ctx.fillStyle = portal.role === 'next' ? '#38e8ff' : '#ffd43b';
+          ctx.beginPath();
+          ctx.arc(
+            portal.x * scaleX,
+            portal.y * scaleY,
+            portal.role === 'next' ? 5.0 : 4.6,
+            0,
+            Math.PI * 2
+          );
+          ctx.fill();
+          ctx.strokeStyle = portal.role === 'next' ? '#fde047' : '#020617';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
+      } else {
+        ctx.fillStyle = '#ffd43b';
+        ctx.beginPath();
+        ctx.arc(
+          returnPortal.x * scaleX,
+          returnPortal.y * scaleY,
+          4.6,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+        ctx.strokeStyle = '#020617';
+        ctx.lineWidth = 1.3;
+        ctx.stroke();
+      }
 
       // Interactive Landmarks
       for (const pt of points) {
@@ -536,6 +605,7 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
   }, [
     snapshot,
     zoom,
+    isDTerminal,
     isHunting,
     isDataForest,
     isDigiMountain,
@@ -556,9 +626,13 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
     ? minimapSize === 'compacto'
       ? 'w-[148px] min-[390px]:w-[162px] sm:w-[184px]'
       : 'w-[174px] min-[390px]:w-[192px] sm:w-[224px]'
-    : minimapSize === 'compacto'
-      ? 'w-[122px] min-[390px]:w-[132px] sm:w-[148px]'
-      : 'w-[144px] min-[390px]:w-[156px] sm:w-[174px]';
+    : isDTerminal
+      ? minimapSize === 'compacto'
+        ? 'w-[142px] min-[390px]:w-[154px] sm:w-[174px]'
+        : 'w-[166px] min-[390px]:w-[180px] sm:w-[208px]'
+      : minimapSize === 'compacto'
+        ? 'w-[122px] min-[390px]:w-[132px] sm:w-[148px]'
+        : 'w-[144px] min-[390px]:w-[156px] sm:w-[174px]';
 
   return (
     <div
@@ -608,7 +682,11 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
             title="Clique para abrir o Mapa Completo"
             aria-label="Abrir Mapa Completo"
             className={`relative block w-full overflow-hidden bg-[#041232] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 ${
-              isCombatMap ? 'aspect-[16/9]' : 'aspect-[40/37]'
+              isCombatMap
+                ? 'aspect-[16/9]'
+                : isDTerminal
+                  ? 'aspect-[3/2]'
+                  : 'aspect-[40/37]'
             }`}
           >
             <canvas

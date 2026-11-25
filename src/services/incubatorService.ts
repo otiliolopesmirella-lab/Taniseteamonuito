@@ -191,8 +191,17 @@ export function getDigiEggDisplayInfo(
   );
 
   const hasAllMaterials = requiredMaterials.every((m) => m.owned >= m.quantity);
-  const nextInjection =
+  const rawNextInjection =
     hatchLevel < maxHatchLevel ? getNextInjectionStepInfo(hatchLevel) : null;
+  const guaranteedUpTo = meta?.guaranteedUpToLevel ?? 0;
+  const nextInjection: DataInjectionStepConfig | null =
+    rawNextInjection && guaranteedUpTo > 0 && hatchLevel < guaranteedUpTo
+      ? {
+          ...rawNextInjection,
+          successChance: 1.0,
+          breakChanceOnFail: 0.0,
+        }
+      : rawNextInjection;
   const canHatch = hatchLevel >= MIN_HATCHABLE_LEVEL;
   const canInjectData = Boolean(nextInjection && hasAllMaterials);
   const currentQualityProfile = canHatch
@@ -266,12 +275,14 @@ function promoteOneEggLevel(
     return { nextInventory: [...inventory], targetEggId: sourceEggId };
   }
 
-  // Try merging into an existing stack of the same itemKey at nextLevel first
+  // Try merging into an existing stack of the same itemKey at nextLevel first (keeping tutorial gift eggs separate)
+  const sourceTutorialGift = Boolean(sourceItem.eggData?.isTutorialGift);
   const mergeTarget = inventory.find(
     (i) =>
       i.id !== sourceEggId &&
       i.itemKey === sourceItem.itemKey &&
-      (i.eggData?.hatchLevel ?? 0) === nextLevel
+      (i.eggData?.hatchLevel ?? 0) === nextLevel &&
+      Boolean(i.eggData?.isTutorialGift) === sourceTutorialGift
   );
 
   if (mergeTarget && sourceItem.quantity > 1) {
@@ -397,11 +408,13 @@ export function validateDataInjection(
   // If stacked > 1 and no matching next-level stack exists yet, verify inventory slot limit
   if (eggItem.quantity > 1) {
     const nextLevel = info.nextInjection.toLevel;
+    const sourceTutorialGift = Boolean(eggItem.eggData?.isTutorialGift);
     const hasMergeTarget = state.inventory.some(
       (i) =>
         i.id !== eggItem.id &&
         i.itemKey === eggItem.itemKey &&
-        (i.eggData?.hatchLevel ?? 0) === nextLevel
+        (i.eggData?.hatchLevel ?? 0) === nextLevel &&
+        Boolean(i.eggData?.isTutorialGift) === sourceTutorialGift
     );
     const unlockedSlots = getUnlockedInventorySlots(state);
     if (!hasMergeTarget && state.inventory.length >= unlockedSlots) {
@@ -645,12 +658,17 @@ export function executeDigiEggHatch(
   let archiveNotice = '';
   let hatchedArchiveSlotIndex: number | undefined;
   const hatchedFormId = check.info.item.eggData?.hatchedFormId;
+  const preUnlockedFormIds = check.info.item.eggData?.preUnlockedFormIds;
+  const hasPreUnlockedEvoBonus = Boolean(
+    preUnlockedFormIds && preUnlockedFormIds.length > 2
+  );
   if (hatchedFormId) {
     const stored = storeHatchedDigimonInArchive(
       nextState,
       hatchedFormId,
       grade,
-      hatchedSizePct
+      hatchedSizePct,
+      preUnlockedFormIds
     );
     if (stored.ok && stored.entry) {
       nextState = stored.next;
@@ -658,6 +676,9 @@ export function executeDigiEggHatch(
       archiveNotice = ` Guardado no Digimon Archive (Slot #${stored.entry.slotIndex + 1})!`;
     }
   }
+  const unlockedEvoNotice = hasPreUnlockedEvoBonus
+    ? ' Evoluções Ultimate e Mega já vêm desbloqueadas permanentemente!'
+    : '';
 
   return {
     ok: true,
@@ -670,7 +691,7 @@ export function executeDigiEggHatch(
     hatchedGrade: grade,
     hatchedSizePct,
     qualityProfile,
-    message: `Chocagem ${qualityProfile.label} (${qualityProfile.qualityName}${powerBonusText} · Qualidade ${hatchedSizePct}%) concluída! ${hatchedSpecies} nasceu na Incubadora DATS.${archiveNotice}`,
+    message: `Chocagem ${qualityProfile.label} (${qualityProfile.qualityName}${powerBonusText} · Qualidade ${hatchedSizePct}%) concluída! ${hatchedSpecies} nasceu na Incubadora DATS.${unlockedEvoNotice}${archiveNotice}`,
   };
 }
 

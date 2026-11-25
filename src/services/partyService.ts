@@ -100,6 +100,7 @@ export interface PartyActorProfile {
 const VALID_TAMERS = new Set<TamerId>(['kai', 'ren', 'hina', 'yuna']);
 const VALID_MAPS = new Set<SharedWorldMapId>([
   'dats-center',
+  'd-terminal',
   'hunting-plains',
   'data-forest',
   'digi-mountain',

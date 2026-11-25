@@ -35,7 +35,7 @@ export interface CloudStarterDigimon {
 }
 
 export interface CloudAdventureProgress {
-  mapId: 'dats-center' | 'hunting-plains' | 'data-forest' | 'digi-mountain' | 'digital-desert' | 'data-sea' | 'digimon-island' | 'dark-area' | 'virtual-world';
+  mapId: 'dats-center' | 'd-terminal' | 'hunting-plains' | 'data-forest' | 'digi-mountain' | 'digital-desert' | 'data-sea' | 'digimon-island' | 'dark-area' | 'virtual-world';
   worldX: number;
   worldY: number;
   facingDir: 'N' | 'S' | 'E' | 'W';
@@ -74,6 +74,7 @@ export interface CloudHudState {
   tamerCoverUrl?: string | null;
   xpBoostUntilMs?: number | null;
   autoFarmVipUnlocked?: boolean;
+  autoFarmVipUntilMs?: number | null;
   defeatedEnemiesTotal: number;
   updatedAt: string;
 }
@@ -371,12 +372,22 @@ function sanitizeHudStateForCloud(state: AccountHudPersistence): CloudHudState {
   if (state.autoFarmVipUnlocked === true) {
     hudPayload.autoFarmVipUnlocked = true;
   }
+  if (
+    typeof state.autoFarmVipUntilMs === 'number' &&
+    Number.isFinite(state.autoFarmVipUntilMs) &&
+    state.autoFarmVipUntilMs > 0
+  ) {
+    hudPayload.autoFarmVipUntilMs = Math.min(
+      4000000000000,
+      Math.round(state.autoFarmVipUntilMs)
+    );
+  }
 
   return hudPayload;
 }
 
 function sanitizeAdventureForCloud(progress: {
-  mapId?: 'dats-center' | 'hunting-plains' | 'data-forest' | 'digi-mountain' | 'digital-desert' | 'data-sea' | 'digimon-island' | 'dark-area' | 'virtual-world';
+  mapId?: 'dats-center' | 'd-terminal' | 'hunting-plains' | 'data-forest' | 'digi-mountain' | 'digital-desert' | 'data-sea' | 'digimon-island' | 'dark-area' | 'virtual-world';
   worldX: number;
   worldY: number;
   facingDir: 'N' | 'S' | 'E' | 'W';
@@ -385,23 +396,25 @@ function sanitizeAdventureForCloud(progress: {
   updatedAt?: string;
 }): CloudAdventureProgress {
   const mapId =
-    progress.mapId === 'hunting-plains'
-      ? 'hunting-plains'
-      : progress.mapId === 'data-forest'
-        ? 'data-forest'
-        : progress.mapId === 'digi-mountain'
-          ? 'digi-mountain'
-          : progress.mapId === 'digital-desert'
-            ? 'digital-desert'
-            : progress.mapId === 'data-sea'
-              ? 'data-sea'
-              : progress.mapId === 'digimon-island'
-                ? 'digimon-island'
-                : progress.mapId === 'dark-area'
-                  ? 'dark-area'
-                  : progress.mapId === 'virtual-world'
-                    ? 'virtual-world'
-                    : 'dats-center';
+    progress.mapId === 'd-terminal'
+      ? 'd-terminal'
+      : progress.mapId === 'hunting-plains'
+        ? 'hunting-plains'
+        : progress.mapId === 'data-forest'
+          ? 'data-forest'
+          : progress.mapId === 'digi-mountain'
+            ? 'digi-mountain'
+            : progress.mapId === 'digital-desert'
+              ? 'digital-desert'
+              : progress.mapId === 'data-sea'
+                ? 'data-sea'
+                : progress.mapId === 'digimon-island'
+                  ? 'digimon-island'
+                  : progress.mapId === 'dark-area'
+                    ? 'dark-area'
+                    : progress.mapId === 'virtual-world'
+                      ? 'virtual-world'
+                      : 'dats-center';
   return {
     mapId,
     worldX: safeCoord(progress.worldX, 20000),
@@ -800,7 +813,7 @@ function diagnosePlayerSaveMismatch(
 
   const adv = normalized.adventureProgress as CloudAdventureProgress | null;
   if (adv) {
-    if (!['dats-center', 'hunting-plains', 'data-forest', 'digi-mountain', 'digital-desert', 'data-sea', 'digimon-island', 'dark-area', 'virtual-world'].includes(adv.mapId)) {
+    if (!['dats-center', 'd-terminal', 'hunting-plains', 'data-forest', 'digi-mountain', 'digital-desert', 'data-sea', 'digimon-island', 'dark-area', 'virtual-world'].includes(adv.mapId)) {
       issues.push(`adv.map(${String(adv.mapId)})`);
     }
     if (!Number.isFinite(adv.worldX) || adv.worldX < 0 || adv.worldX > 20000) issues.push('adv.x');
@@ -817,7 +830,7 @@ function diagnosePlayerSaveMismatch(
     const allowedHudKeys = new Set([
       'tamer', 'digimon', 'bits', 'dCoin', 'inventory', 'equippedItems',
       'guildName', 'tamerPhotoUrl', 'tamerCoverUrl', 'xpBoostUntilMs',
-      'autoFarmVipUnlocked', 'defeatedEnemiesTotal', 'updatedAt',
+      'autoFarmVipUnlocked', 'autoFarmVipUntilMs', 'defeatedEnemiesTotal', 'updatedAt',
     ]);
     const extraHudKeys = Object.keys(hud).filter((k) => !allowedHudKeys.has(k));
     if (extraHudKeys.length > 0) issues.push(`hud.extra(${extraHudKeys.join(',')})`);
@@ -858,6 +871,14 @@ function diagnosePlayerSaveMismatch(
     }
     if (hud.autoFarmVipUnlocked !== undefined && typeof hud.autoFarmVipUnlocked !== 'boolean') {
       issues.push('hud.vip');
+    }
+    if (
+      hud.autoFarmVipUntilMs != null &&
+      (!Number.isFinite(hud.autoFarmVipUntilMs) ||
+        hud.autoFarmVipUntilMs < 0 ||
+        hud.autoFarmVipUntilMs > 4000000000000)
+    ) {
+      issues.push('hud.vipUntil');
     }
     if (!Number.isFinite(hud.defeatedEnemiesTotal) || hud.defeatedEnemiesTotal < 0 || hud.defeatedEnemiesTotal > 100000000) issues.push('hud.kills');
     if (hud.updatedAt.length < 10 || hud.updatedAt.length > 40) issues.push('hud.upd');
@@ -969,6 +990,9 @@ async function updatePlayerDocWithSelfHeal(
         if (h.autoFarmVipUnlocked === true) {
           updatePayload['hudState.autoFarmVipUnlocked'] = true;
         }
+        if (h.autoFarmVipUntilMs !== undefined) {
+          updatePayload['hudState.autoFarmVipUntilMs'] = h.autoFarmVipUntilMs;
+        }
       }
     }
 
@@ -1070,6 +1094,10 @@ async function updatePlayerDocWithSelfHeal(
                   existingHud.autoFarmVipUnlocked === true
                     ? true
                     : undefined,
+                autoFarmVipUntilMs: Math.max(
+                  patch.hudState.autoFarmVipUntilMs ?? 0,
+                  existingHud.autoFarmVipUntilMs ?? 0
+                ) || undefined,
               }
           : existingHud;
 
@@ -1280,7 +1308,7 @@ async function commitPendingCloudSaves(): Promise<void> {
 }
 
 export function scheduleAdventureProgressSync(progress: {
-  mapId?: 'dats-center' | 'hunting-plains' | 'data-forest' | 'digi-mountain' | 'digital-desert' | 'data-sea' | 'digimon-island' | 'dark-area' | 'virtual-world';
+  mapId?: 'dats-center' | 'd-terminal' | 'hunting-plains' | 'data-forest' | 'digi-mountain' | 'digital-desert' | 'data-sea' | 'digimon-island' | 'dark-area' | 'virtual-world';
   worldX: number;
   worldY: number;
   facingDir: 'N' | 'S' | 'E' | 'W';

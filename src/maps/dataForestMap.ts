@@ -658,61 +658,8 @@ export function drawDataForestGroundAnimations(
   ctx.closePath();
   ctx.fill();
 
-  // 2. Bottom-Right Teleport Sanctuary Portal glow + rising cyan data particles
-  const pulse = 1 + Math.sin(elapsed * 3.5) * 0.08;
-  const portalGlow = ctx.createRadialGradient(
-    DATA_FOREST_RETURN_PORTAL.x,
-    DATA_FOREST_RETURN_PORTAL.y - 12,
-    8,
-    DATA_FOREST_RETURN_PORTAL.x,
-    DATA_FOREST_RETURN_PORTAL.y - 12,
-    102 * pulse
-  );
-  portalGlow.addColorStop(
-    0,
-    nearPortal ? 'rgba(254, 240, 138, 0.48)' : 'rgba(56, 232, 255, 0.42)'
-  );
-  portalGlow.addColorStop(0.55, 'rgba(14, 165, 233, 0.16)');
-  portalGlow.addColorStop(1, 'rgba(14, 165, 233, 0)');
-  ctx.fillStyle = portalGlow;
-  ctx.beginPath();
-  ctx.ellipse(
-    DATA_FOREST_RETURN_PORTAL.x,
-    DATA_FOREST_RETURN_PORTAL.y - 6,
-    92 * pulse,
-    38 * pulse,
-    0,
-    0,
-    Math.PI * 2
-  );
-  ctx.fill();
-
-  if (nearPortal) {
-    ctx.strokeStyle = 'rgba(253, 224, 71, 0.88)';
-    ctx.lineWidth = 2.6;
-    ctx.beginPath();
-    ctx.ellipse(
-      DATA_FOREST_RETURN_PORTAL.x,
-      DATA_FOREST_RETURN_PORTAL.y,
-      64 * pulse,
-      24 * pulse,
-      0,
-      0,
-      Math.PI * 2
-    );
-    ctx.stroke();
-  }
-
-  for (let i = 0; i < 8; i++) {
-    const phase = (elapsed * 0.55 + i * 0.125) % 1;
-    const mx = DATA_FOREST_RETURN_PORTAL.x + Math.sin(elapsed * 2 + i * 1.5) * 34;
-    const my = DATA_FOREST_RETURN_PORTAL.y + 10 - phase * 185;
-    const alpha = Math.sin(phase * Math.PI) * 0.68;
-    ctx.fillStyle = `rgba(165, 243, 252, ${alpha.toFixed(3)})`;
-    ctx.beginPath();
-    ctx.arc(mx, my, 2.2, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  // 2. Return portal rendered by unified dimensional portal gate
+  void nearPortal;
 
   // 3. Sacred Great Tree Raid Boss Arena dynamic energy ring
   const bossRingPulse = 1 + Math.sin(elapsed * (bossAlive ? 3.8 : 2.1)) * 0.05;

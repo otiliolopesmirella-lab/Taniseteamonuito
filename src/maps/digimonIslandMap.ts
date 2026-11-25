@@ -570,62 +570,8 @@ export function drawDigimonIslandGroundAnimations(
   ctx.ellipse(1202, 240, 38, 62, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // 2. South Blue Portal Pier glow + rising cyan motes
-  const pulse = 1 + Math.sin(safeElapsed * 3.4) * 0.08;
-  const portalGlow = ctx.createRadialGradient(
-    DIGIMON_ISLAND_RETURN_PORTAL.x,
-    DIGIMON_ISLAND_RETURN_PORTAL.y - 6,
-    10,
-    DIGIMON_ISLAND_RETURN_PORTAL.x,
-    DIGIMON_ISLAND_RETURN_PORTAL.y - 6,
-    114 * pulse
-  );
-  portalGlow.addColorStop(
-    0,
-    nearPortal ? 'rgba(254, 240, 138, 0.52)' : 'rgba(56, 232, 255, 0.46)'
-  );
-  portalGlow.addColorStop(0.55, 'rgba(14, 165, 233, 0.18)');
-  portalGlow.addColorStop(1, 'rgba(14, 165, 233, 0)');
-  ctx.fillStyle = portalGlow;
-  ctx.beginPath();
-  ctx.ellipse(
-    DIGIMON_ISLAND_RETURN_PORTAL.x,
-    DIGIMON_ISLAND_RETURN_PORTAL.y,
-    106 * pulse,
-    42 * pulse,
-    0,
-    0,
-    Math.PI * 2
-  );
-  ctx.fill();
-
-  if (nearPortal) {
-    ctx.strokeStyle = 'rgba(253, 224, 71, 0.94)';
-    ctx.lineWidth = 2.6;
-    ctx.beginPath();
-    ctx.ellipse(
-      DIGIMON_ISLAND_RETURN_PORTAL.x,
-      DIGIMON_ISLAND_RETURN_PORTAL.y,
-      74 * pulse,
-      28 * pulse,
-      0,
-      0,
-      Math.PI * 2
-    );
-    ctx.stroke();
-  }
-
-  for (let i = 0; i < 8; i++) {
-    const phase = (safeElapsed * 0.54 + i * 0.125) % 1;
-    const mx =
-      DIGIMON_ISLAND_RETURN_PORTAL.x + Math.sin(safeElapsed * 2.1 + i * 1.4) * 42;
-    const my = DIGIMON_ISLAND_RETURN_PORTAL.y + 8 - phase * 165;
-    const alpha = Math.sin(phase * Math.PI) * 0.72;
-    ctx.fillStyle = `rgba(165, 243, 252, ${alpha.toFixed(3)})`;
-    ctx.beginPath();
-    ctx.arc(mx, my, 2.2, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  // 2. Return portal rendered by unified dimensional portal gate
+  void nearPortal;
 
   // 3. Central Angel Statue Sanctuary harmonic ring
   const plazaPulse = 0.96 + Math.sin(safeElapsed * 2.2) * 0.04;

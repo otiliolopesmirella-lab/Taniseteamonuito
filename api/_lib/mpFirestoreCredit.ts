@@ -94,6 +94,20 @@ export function isFirestoreAutoCreditConfigured(): boolean {
   return parseServiceAccountFromEnv() !== null;
 }
 
+export function getResolvedFirestoreTarget(): {
+  projectId: string;
+  databaseId: string;
+} {
+  const creds = parseServiceAccountFromEnv();
+  const projectId =
+    process.env.FIREBASE_PROJECT_ID?.trim() ||
+    process.env.VITE_FIREBASE_PROJECT_ID?.trim() ||
+    creds?.project_id ||
+    FIREBASE_PROJECT_ID;
+  const databaseId = FIREBASE_DATABASE_ID || '(default)';
+  return { projectId, databaseId };
+}
+
 function base64UrlEncode(input: string | Buffer): string {
   return Buffer.from(input)
     .toString('base64')

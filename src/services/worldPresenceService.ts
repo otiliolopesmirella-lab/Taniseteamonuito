@@ -26,6 +26,7 @@ import { ensurePlayerDocBootstrapped } from './cloudSaveService';
 
 export type SharedWorldMapId =
   | 'dats-center'
+  | 'd-terminal'
   | 'hunting-plains'
   | 'data-forest'
   | 'digi-mountain'
@@ -201,6 +202,7 @@ function safeFormId(raw: unknown): DigimonFormId {
 }
 
 function safeMapId(raw: unknown): SharedWorldMapId {
+  if (raw === 'd-terminal') return 'd-terminal';
   if (raw === 'hunting-plains') return 'hunting-plains';
   if (raw === 'data-forest') return 'data-forest';
   if (raw === 'digi-mountain') return 'digi-mountain';

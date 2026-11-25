@@ -68,8 +68,97 @@ export interface AutoHuntMapGroup {
   mobs: readonly AutoHuntMobCatalogEntry[];
 }
 
+/** Custo em DL Din para ativar/renovar o VIP Auto Farm por 30 dias (+50% EXP enquanto ligado). */
 export const AUTO_FARM_VIP_COST_DWCOIN = 20;
+/** Bônus percentual de EXP concedido enquanto o Auto Farm VIP estiver ativo. */
 export const AUTO_FARM_VIP_XP_BONUS_PCT = 50;
+/** Duração em dias de cada assinatura do VIP Auto Farm (20 DL Din = 30 dias). */
+export const AUTO_FARM_VIP_DURATION_DAYS = 30;
+/** Duração em milissegundos de cada assinatura do VIP Auto Farm (30 dias). */
+export const AUTO_FARM_VIP_DURATION_MS =
+  AUTO_FARM_VIP_DURATION_DAYS * 24 * 60 * 60 * 1000;
+
+export interface AutoFarmVipHolder {
+  autoFarmVipUnlocked?: boolean;
+  autoFarmVipUntilMs?: number | null;
+}
+
+/**
+ * Verifica se o VIP Auto Farm (assinatura de 30 dias) está ativo neste momento.
+ * - GMs têm acesso sempre ativo.
+ * - Jogadores com `autoFarmVipUntilMs > nowMs` têm acesso ativo até o vencimento.
+ * - Contas legadas com `autoFarmVipUnlocked === true` e sem `autoFarmVipUntilMs`
+ *   ainda contam como ativas até serem migradas para o prazo de 30 dias no carregamento.
+ */
+export function isAutoFarmVipActive(
+  holder: AutoFarmVipHolder | null | undefined,
+  isGM = false,
+  nowMs = Date.now()
+): boolean {
+  if (isGM) return true;
+  if (!holder) return false;
+  if (
+    typeof holder.autoFarmVipUntilMs === 'number' &&
+    Number.isFinite(holder.autoFarmVipUntilMs) &&
+    holder.autoFarmVipUntilMs > 0
+  ) {
+    return holder.autoFarmVipUntilMs > nowMs;
+  }
+  return holder.autoFarmVipUnlocked === true;
+}
+
+/**
+ * Formata o tempo restante do VIP Auto Farm (ex.: "29d 14h", "8h 25m", "12m").
+ */
+export function formatAutoFarmVipRemaining(
+  untilMs: number | null | undefined,
+  nowMs = Date.now()
+): string | null {
+  if (
+    typeof untilMs !== 'number' ||
+    !Number.isFinite(untilMs) ||
+    untilMs <= nowMs
+  ) {
+    return null;
+  }
+  const diffMs = Math.max(0, untilMs - nowMs);
+  const totalMinutes = Math.max(1, Math.ceil(diffMs / 60000));
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+
+  if (days > 0) {
+    return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+  }
+  if (hours > 0) {
+    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
+  return `${minutes}m`;
+}
+
+/**
+ * Formata a data de expiração do VIP Auto Farm em pt-BR (ex.: "25/12/2026").
+ */
+export function formatAutoFarmVipExpiryDate(
+  untilMs: number | null | undefined
+): string | null {
+  if (
+    typeof untilMs !== 'number' ||
+    !Number.isFinite(untilMs) ||
+    untilMs <= 0
+  ) {
+    return null;
+  }
+  try {
+    return new Date(untilMs).toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+  } catch {
+    return null;
+  }
+}
 
 export const AUTO_HUNT_THRESHOLD_PRESETS = [20, 35, 50, 70, 85] as const;
 

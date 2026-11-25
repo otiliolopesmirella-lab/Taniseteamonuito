@@ -52,7 +52,7 @@ export interface AdventureProgress {
   accountUsername: string;
   characterId: TamerId;
   tamerName: string;
-  mapId?: 'dats-center' | 'hunting-plains' | 'data-forest' | 'digi-mountain' | 'digital-desert' | 'data-sea' | 'digimon-island' | 'dark-area' | 'virtual-world';
+  mapId?: 'dats-center' | 'd-terminal' | 'hunting-plains' | 'data-forest' | 'digi-mountain' | 'digital-desert' | 'data-sea' | 'digimon-island' | 'dark-area' | 'virtual-world';
   worldX: number;
   worldY: number;
   facingDir: 'N' | 'S' | 'E' | 'W';

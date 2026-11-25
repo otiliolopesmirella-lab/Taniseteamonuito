@@ -1,34 +1,35 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
-  CheckCircle2,
-  ChevronsRight,
-  Info,
+  ArrowRight,
+  CalendarDays,
+  ChevronRight,
+  Compass,
+  Flame,
+  Gift,
   Lock,
-  Minus,
-  Plus,
-  RotateCcw,
-  ScrollText,
+  Map as MapIcon,
+  MapPin,
+  Navigation,
   Shield,
+  Sparkles,
   Swords,
-  Users,
+  TrainFront,
+  Wrench,
   X,
 } from 'lucide-react';
 import {
   WORLD_MAP_REGIONS,
-  getRegionAccessState,
-  getRegionLiveMissions,
   type PlayableMapId,
-  type WorldMapCategory,
   type WorldMapRegion,
 } from '../../data/worldMapCatalog';
+import { getWildDigimonPortraitUrl } from '../../sprites/wildDigimonSprites';
 import type {
   DigimonRuntimeStats,
   LiveWorldHudSnapshot,
   TamerRuntimeStats,
 } from '../../types/hud';
 import { playDigitalTone } from '../../utils/soundFx';
-import { getWildDigimonPortraitUrl } from '../../sprites/wildDigimonSprites';
 
 interface WorldMapModalProps {
   snapshot: LiveWorldHudSnapshot;
@@ -41,1008 +42,710 @@ interface WorldMapModalProps {
   onClose: () => void;
 }
 
-const CATEGORY_TABS: readonly { id: WorldMapCategory; label: string }[] = [
-  { id: 'mundo', label: 'Mundo' },
-  { id: 'eventos', label: 'Eventos' },
-  { id: 'dungeon', label: 'Dungeon' },
-] as const;
+type ModalTab = 'mapas' | 'mapa-mundi' | 'eventos' | 'dungeon';
 
-const MIN_ZOOM = 1.0;
-const MAX_ZOOM = 2.4;
-const ZOOM_STEP = 0.25;
+interface MapRouteSummary {
+  originLabel: string;
+  nextLabel: string;
+}
 
-/** Crisp 8-point white-cyan Compass Rose matching the reference map's top-right N compass */
-function MapCompassRose() {
+const MAP_ROUTE_SUMMARIES: Record<PlayableMapId, MapRouteSummary> = {
+  'dats-center': {
+    originLabel: 'Base principal (Cidade Segura)',
+    nextLabel: 'Portal Sul → Estação D-Terminal',
+  },
+  'd-terminal': {
+    originLabel: 'Portal Norte → DATS Center',
+    nextLabel: 'Fale com PawnChessmon (Black) → Planície Digital',
+  },
+  'hunting-plains': {
+    originLabel: 'Portal Oeste → D-Terminal',
+    nextLabel: 'Portal Leste → Floresta de Dados (Nv. 10+)',
+  },
+  'data-forest': {
+    originLabel: 'Portal Oeste → Planície Digital',
+    nextLabel: 'Portal Leste → Montanha Digital (Nv. 25+)',
+  },
+  'digi-mountain': {
+    originLabel: 'Portal Oeste → Floresta de Dados',
+    nextLabel: 'Portal Leste → Deserto Digital (Nv. 40+)',
+  },
+  'digital-desert': {
+    originLabel: 'Portal Oeste → Montanha Digital',
+    nextLabel: 'Portal Leste → Mar de Dados (Nv. 55+)',
+  },
+  'data-sea': {
+    originLabel: 'Portal Oeste → Deserto Digital',
+    nextLabel: 'Portal Leste → Ilha dos Digimon (Nv. 70+)',
+  },
+  'digimon-island': {
+    originLabel: 'Portal Oeste → Mar de Dados',
+    nextLabel: 'Portal Leste → Área Sombria (Nv. 85+)',
+  },
+  'dark-area': {
+    originLabel: 'Portal Oeste → Ilha dos Digimon',
+    nextLabel: 'Portal Leste → Mundo Virtual (Nv. 95+)',
+  },
+  'virtual-world': {
+    originLabel: 'Portal Oeste → Área Sombria',
+    nextLabel: 'Mapa final de caça (Nv. 95–120)',
+  },
+};
+
+const PLAYABLE_WORLD_REGIONS: readonly WorldMapRegion[] = WORLD_MAP_REGIONS.filter(
+  (r) => r.implemented && r.playableMapId !== null
+);
+
+function findRegionByPlayableId(mapId: PlayableMapId): WorldMapRegion {
   return (
-    <div
-      aria-hidden="true"
-      className="pointer-events-none absolute right-3 top-2.5 z-20 flex flex-col items-center drop-shadow-[0_0_10px_rgba(56,220,255,0.85)]"
-    >
-      <span className="text-[12px] font-black leading-none tracking-wider text-white drop-shadow-[0_1px_4px_rgba(0,18,60,0.95)]">
-        N
-      </span>
-      <svg viewBox="0 0 64 64" className="mt-0.5 h-11 w-11 sm:h-12 sm:w-12">
-        {/* Diagonal secondary points */}
-        <polygon points="32,32 14,14 27,32" fill="#7dd3fc" opacity="0.82" />
-        <polygon points="32,32 50,14 37,32" fill="#38bdf8" opacity="0.82" />
-        <polygon points="32,32 14,50 27,32" fill="#38bdf8" opacity="0.82" />
-        <polygon points="32,32 50,50 37,32" fill="#7dd3fc" opacity="0.82" />
-        {/* Main cardinal 4-point star */}
-        <polygon points="32,3 37,27 32,32 27,27" fill="#ffffff" />
-        <polygon points="32,3 37,27 32,32" fill="#bae6fd" />
-        <polygon points="32,61 37,37 32,32 27,37" fill="#e0f2fe" />
-        <polygon points="3,32 27,27 32,32 27,37" fill="#e0f2fe" />
-        <polygon points="61,32 37,27 32,32 37,37" fill="#ffffff" />
-        <circle cx="32" cy="32" r="5" fill="#0ea5e9" stroke="#ffffff" strokeWidth="2" />
-      </svg>
-    </div>
+    PLAYABLE_WORLD_REGIONS.find((r) => r.playableMapId === mapId) ??
+    PLAYABLE_WORLD_REGIONS[0]
   );
 }
 
-/** Exact glowing electric-blue teardrop pin from the reference image */
-function CurrentLocationPin({ selected }: { selected: boolean }) {
-  return (
-    <span
-      className={`relative flex items-center justify-center transition-transform duration-150 group-hover:scale-110 ${
-        selected ? 'scale-110' : 'scale-100'
-      }`}
-    >
-      <svg
-        viewBox="0 0 48 60"
-        className="h-11 w-9 drop-shadow-[0_0_16px_rgba(56,232,255,0.95)] sm:h-12 sm:w-10"
-      >
-        <defs>
-          <linearGradient id="ref-blue-pin" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#6cf4ff" />
-            <stop offset="48%" stopColor="#0ea5ff" />
-            <stop offset="100%" stopColor="#0057e7" />
-          </linearGradient>
-        </defs>
-        <path
-          d="M24 3C12.95 3 4 11.95 4 23c0 13.8 20 33 20 33s20-19.2 20-33C44 11.95 35.05 3 24 3z"
-          fill="url(#ref-blue-pin)"
-          stroke={selected ? '#ffe047' : '#ffffff'}
-          strokeWidth={selected ? '3.4' : '2.8'}
-        />
-        <circle cx="24" cy="22" r="8.2" fill="#ffffff" />
-      </svg>
-    </span>
-  );
+function getRegionAccessState(
+  region: WorldMapRegion,
+  currentMapId: PlayableMapId,
+  digimonLevel: number,
+  isGM: boolean
+): 'current' | 'available' | 'level-locked' {
+  if (region.playableMapId === currentMapId) return 'current';
+  if (isGM) return 'available';
+  if (region.minLevel > 1 && digimonLevel < region.minLevel) {
+    return 'level-locked';
+  }
+  return 'available';
 }
 
-/** Golden inverted-triangle MMORPG landmark pin matching the reference map */
-function GoldenMapPin({ selected }: { selected: boolean }) {
-  return (
-    <span
-      className={`relative flex items-center justify-center transition-transform duration-150 group-hover:scale-115 ${
-        selected ? 'scale-120' : 'scale-100'
-      }`}
-    >
-      <svg
-        viewBox="0 0 36 38"
-        className="h-8 w-8 drop-shadow-[0_0_12px_rgba(251,191,36,0.9)] sm:h-9 sm:w-9"
-      >
-        <defs>
-          <linearGradient id="ref-gold-pin" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#fff49a" />
-            <stop offset="45%" stopColor="#fbbf24" />
-            <stop offset="100%" stopColor="#c26402" />
-          </linearGradient>
-        </defs>
-        <polygon
-          points="4,6 32,6 18,34"
-          fill="url(#ref-gold-pin)"
-          stroke={selected ? '#ffffff' : '#fef08a'}
-          strokeWidth={selected ? '3' : '2.2'}
-          strokeLinejoin="round"
-        />
-      </svg>
-    </span>
-  );
+function isSafeHubRegion(region: WorldMapRegion): boolean {
+  return region.zoneType === 'Zona Segura';
+}
+
+function getShortMobPreview(region: WorldMapRegion): string {
+  if (region.playableMapId === 'dats-center') {
+    return 'NPCs: Sampson, MudFrigimon, Incubadora e Archive';
+  }
+  if (region.playableMapId === 'd-terminal') {
+    return 'Estação central · Condutor PawnChessmon (Black)';
+  }
+  if (region.enemies.length === 0) return region.subtitle;
+  const names = region.enemies.slice(0, 3).map((e) => e.name);
+  const extra = region.enemies.length - names.length;
+  return extra > 0 ? `${names.join(', ')} +${extra}` : names.join(', ');
 }
 
 export function WorldMapModal({
   snapshot,
-  tamerStats,
   digimonStats,
-  defeatedTotal,
   soundEnabled,
   isGM = false,
   onTravelToMap,
   onClose,
 }: WorldMapModalProps) {
-  const playerLevel = Math.max(tamerStats.level, digimonStats.level);
-
-  const [activeCategory, setActiveCategory] = useState<WorldMapCategory>('mundo');
-  const [selectedRegionId, setSelectedRegionId] = useState<string>(snapshot.mapId);
-  const [mobilePanel, setMobilePanel] = useState<'map' | 'details'>('map');
-  const [activeRewardId, setActiveRewardId] = useState<string | null>(null);
-
-  // Interactive Zoom & Pan state
-  const [zoom, setZoom] = useState<number>(1.0);
-  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState<boolean>(false);
-
-  const mapViewportRef = useRef<HTMLDivElement | null>(null);
-  const dragRef = useRef<{
-    active: boolean;
-    pointerId: number;
-    startX: number;
-    startY: number;
-    origPanX: number;
-    origPanY: number;
-  }>({
-    active: false,
-    pointerId: -1,
-    startX: 0,
-    startY: 0,
-    origPanX: 0,
-    origPanY: 0,
-  });
-
-  const visibleRegions = useMemo(
-    () => WORLD_MAP_REGIONS.filter((r) => r.categories.includes(activeCategory)),
-    [activeCategory]
+  const [activeTab, setActiveTab] = useState<ModalTab>('mapas');
+  const [selectedRegionId, setSelectedRegionId] = useState<PlayableMapId>(
+    snapshot.mapId
   );
+  // Mobile-only drilldown: false = clean scannable list, true = full-screen readable map guide
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
 
-  const selectedRegion: WorldMapRegion = useMemo(() => {
-    return (
-      visibleRegions.find((r) => r.id === selectedRegionId) ??
-      visibleRegions[0] ??
-      WORLD_MAP_REGIONS[0]
-    );
-  }, [visibleRegions, selectedRegionId]);
-
-  const currentRegion: WorldMapRegion = useMemo(() => {
-    return (
-      WORLD_MAP_REGIONS.find((r) => r.playableMapId === snapshot.mapId) ??
-      WORLD_MAP_REGIONS[0]
-    );
-  }, [snapshot.mapId]);
-
-  const selectedAccess = getRegionAccessState(
-    selectedRegion,
-    snapshot.mapId,
-    playerLevel,
-    isGM
+  const selectedRegion = useMemo(
+    () => findRegionByPlayableId(selectedRegionId),
+    [selectedRegionId]
   );
-
-  const liveMissions = useMemo(
-    () =>
-      getRegionLiveMissions(
-        selectedRegion,
-        snapshot.discoveredZoneIds.length,
-        defeatedTotal
-      ),
-    [selectedRegion, snapshot.discoveredZoneIds.length, defeatedTotal]
+  const currentRegion = useMemo(
+    () => findRegionByPlayableId(snapshot.mapId),
+    [snapshot.mapId]
   );
 
   useEffect(() => {
-    setActiveRewardId(selectedRegion.rewards[0]?.id ?? null);
-  }, [selectedRegion.id, selectedRegion.rewards]);
-
-  function clampPan(nextX: number, nextY: number, targetZoom: number) {
-    const vp = mapViewportRef.current;
-    const maxX = vp ? Math.max(0, ((targetZoom - 1) * vp.clientWidth) / 2) : 140;
-    const maxY = vp ? Math.max(0, ((targetZoom - 1) * vp.clientHeight) / 2) : 100;
-    return {
-      x: Math.max(-maxX, Math.min(maxX, nextX)),
-      y: Math.max(-maxY, Math.min(maxY, nextY)),
-    };
-  }
-
-  function applyZoom(delta: number) {
-    setZoom((prev) => {
-      const next = Number(
-        Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prev + delta)).toFixed(2)
-      );
-      setPan((curPan) => clampPan(curPan.x, curPan.y, next));
-      return next;
-    });
-  }
-
-  function resetCamera() {
-    setZoom(1.0);
-    setPan({ x: 0, y: 0 });
-  }
-
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
+    const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        e.stopPropagation();
-        onClose();
-      } else if (e.key === '+' || e.key === '=') {
-        applyZoom(ZOOM_STEP);
-      } else if (e.key === '-') {
-        applyZoom(-ZOOM_STEP);
+        e.preventDefault();
+        if (mobileDetailOpen) {
+          setMobileDetailOpen(false);
+        } else {
+          onClose();
+        }
       }
-    }
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [mobileDetailOpen, onClose]);
 
-  function handleSelectCategory(cat: WorldMapCategory) {
-    setActiveCategory(cat);
-    const matching = WORLD_MAP_REGIONS.filter((r) => r.categories.includes(cat));
-    if (matching.length > 0 && !matching.some((r) => r.id === selectedRegionId)) {
-      const preferred =
-        matching.find((r) => r.playableMapId === snapshot.mapId) ?? matching[0];
-      setSelectedRegionId(preferred.id);
-    }
+  const handleOpenRegionDetail = (mapId: PlayableMapId) => {
     playDigitalTone('click', soundEnabled);
-  }
+    setSelectedRegionId(mapId);
+    setActiveTab('mapas');
+    setMobileDetailOpen(true);
+  };
 
-  function handleSelectRegion(region: WorldMapRegion) {
-    setSelectedRegionId(region.id);
-    playDigitalTone('click', soundEnabled);
-  }
+  const selectedRoute = selectedRegion.playableMapId
+    ? MAP_ROUTE_SUMMARIES[selectedRegion.playableMapId]
+    : null;
 
-  function handleTravelClick() {
-    if (selectedAccess !== 'available' || !selectedRegion.playableMapId) return;
-    onTravelToMap(selectedRegion.playableMapId);
-    onClose();
-  }
+  const renderDetailContent = (region: WorldMapRegion) => {
+    const access = getRegionAccessState(
+      region,
+      snapshot.mapId,
+      digimonStats.level,
+      isGM
+    );
+    const isSafe = isSafeHubRegion(region);
+    const route = region.playableMapId
+      ? MAP_ROUTE_SUMMARIES[region.playableMapId]
+      : null;
 
-  const activeReward =
-    selectedRegion.rewards.find((rw) => rw.id === activeRewardId) ??
-    selectedRegion.rewards[0] ??
-    null;
+    return (
+      <div className="space-y-4 pb-4">
+        {/* Clean Map Hero Banner */}
+        <div className="relative h-36 overflow-hidden rounded-2xl border border-cyan-300/35 sm:h-40">
+          <img
+            src={region.bannerUrl}
+            alt={region.name}
+            className="h-full w-full object-cover brightness-85"
+          />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#030d27] via-[#030d27]/50 to-transparent" />
+          <div className="absolute inset-x-3.5 bottom-3 flex items-end justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-[11px] font-extrabold tracking-wide text-cyan-300 uppercase">
+                {isSafe
+                  ? 'Zona Segura'
+                  : `Mapa de Caça · ${region.recommendedLevel.replace('Lv. ', 'Nv. ')}`}
+              </p>
+              <h3 className="truncate text-lg font-black leading-tight text-white sm:text-xl">
+                {region.name}
+              </h3>
+            </div>
 
-  const isSelectedLocked =
-    selectedAccess === 'level-locked' || selectedAccess === 'upcoming';
+            <span
+              className={`shrink-0 rounded-lg border px-2.5 py-1 text-xs font-black ${
+                access === 'current'
+                  ? 'border-cyan-300 bg-cyan-500/25 text-cyan-100'
+                  : access === 'level-locked'
+                    ? 'border-amber-300/70 bg-amber-950/85 text-amber-200'
+                    : 'border-emerald-300/60 bg-emerald-950/80 text-emerald-200'
+              }`}
+            >
+              {access === 'current'
+                ? 'Você está aqui'
+                : access === 'level-locked'
+                  ? `Requer Nv. ${region.minLevel}+`
+                  : 'Liberado'}
+            </span>
+          </div>
+        </div>
+
+        {/* Short Clear Description */}
+        <p className="text-[13.5px] leading-relaxed text-sky-50/95">
+          {region.description}
+        </p>
+
+        {/* Como Chegar (Routes & Portals) */}
+        {route && (
+          <section className="rounded-2xl border border-cyan-400/25 bg-[#051436] p-3.5">
+            <h4 className="flex items-center gap-2 text-xs font-black tracking-wide text-cyan-300 uppercase">
+              {region.playableMapId === 'd-terminal' ? (
+                <TrainFront className="h-4 w-4 text-amber-300" />
+              ) : (
+                <Compass className="h-4 w-4 text-amber-300" />
+              )}
+              <span>Como chegar e portais</span>
+            </h4>
+            <div className="mt-2.5 space-y-2 text-[13px]">
+              <div className="flex items-start gap-2.5 rounded-xl bg-[#030d24] px-3 py-2">
+                <ArrowLeft className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" />
+                <span className="font-semibold text-sky-100">
+                  {route.originLabel}
+                </span>
+              </div>
+              <div className="flex items-start gap-2.5 rounded-xl bg-[#030d24] px-3 py-2">
+                <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+                <span className="font-bold text-amber-200">
+                  {route.nextLabel}
+                </span>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Wild Digimons & Exact Levels */}
+        {region.enemies.length > 0 ? (
+          <section className="space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <h4 className="flex items-center gap-2 text-xs font-black tracking-wide text-cyan-300 uppercase">
+                <Swords className="h-4 w-4 text-amber-300" />
+                <span>Digimons do Mapa ({region.enemies.length})</span>
+              </h4>
+              <span className="text-xs font-bold text-amber-200 tabular-nums">
+                {region.recommendedLevel.replace('Lv. ', 'Nv. ')}
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              {region.enemies.map((enemy) => {
+                const portrait = enemy.species
+                  ? getWildDigimonPortraitUrl(enemy.species)
+                  : null;
+                const isBoss =
+                  enemy.species === 'kuwagamon' ||
+                  enemy.levelLabel.toLowerCase().includes('boss');
+
+                return (
+                  <div
+                    key={enemy.name}
+                    className={`flex items-center gap-3 rounded-xl border p-2.5 ${
+                      isBoss
+                        ? 'border-rose-400/75 bg-[#2a0a1a]'
+                        : 'border-cyan-400/20 bg-[#051436]'
+                    }`}
+                  >
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-cyan-400/25 bg-[#030d24] p-1">
+                      {portrait ? (
+                        <img
+                          src={portrait}
+                          alt={enemy.name}
+                          className="h-full w-full object-contain [image-rendering:pixelated]"
+                        />
+                      ) : (
+                        <Swords className="h-5 w-5 text-cyan-300" />
+                      )}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="truncate text-sm font-black text-white">
+                          {enemy.name}
+                        </p>
+                        <span
+                          className={`shrink-0 text-xs font-black tabular-nums ${
+                            isBoss ? 'text-rose-300' : 'text-amber-300'
+                          }`}
+                        >
+                          {enemy.levelLabel.replace('Lv.', 'Nv.')}
+                        </span>
+                      </div>
+                      {enemy.habitat && (
+                        <p className="mt-0.5 text-xs text-sky-200/80">
+                          {enemy.habitat}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        ) : (
+          <section className="rounded-2xl border border-emerald-400/30 bg-emerald-950/25 p-3.5 text-[13px] text-emerald-100">
+            <p className="flex items-center gap-2 font-black text-emerald-200">
+              <Shield className="h-4.5 w-4.5 shrink-0" />
+              <span>Zona Segura — Sem Combates</span>
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-emerald-100/90">
+              {region.playableMapId === 'dats-center'
+                ? 'Aqui ficam Richard Sampson, Loja do MudFrigimon, Incubadora e Digimon Archive. Seu HP e DS regeneram naturalmente.'
+                : 'Estação ferroviária central do Mundo Digital. Converse com o Condutor PawnChessmon (Black) na frente do trem para embarcar rumo à Planície Digital.'}
+            </p>
+          </section>
+        )}
+
+        {/* Drops & Rewards */}
+        {region.rewards.length > 0 && (
+          <section className="rounded-2xl border border-cyan-400/25 bg-[#051436] p-3.5">
+            <h4 className="flex items-center gap-2 text-xs font-black tracking-wide text-amber-300 uppercase">
+              <Gift className="h-4 w-4" />
+              <span>Drops e Destaques</span>
+            </h4>
+            <div className="mt-2.5 divide-y divide-cyan-400/15">
+              {region.rewards.map((reward) => (
+                <div
+                  key={reward.id}
+                  className="py-2 first:pt-0 last:pb-0"
+                >
+                  <p className="text-xs font-black text-white">{reward.label}</p>
+                  <p className="mt-0.5 text-[12.5px] leading-snug text-sky-200/85">
+                    {reward.detail}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* GM-Only Quick Teleport */}
+        {isGM &&
+          region.playableMapId &&
+          region.playableMapId !== snapshot.mapId && (
+            <button
+              type="button"
+              onClick={() => {
+                if (!region.playableMapId) return;
+                playDigitalTone('confirm', soundEnabled);
+                onTravelToMap(region.playableMapId);
+                onClose();
+              }}
+              className="flex min-h-[46px] w-full items-center justify-center gap-2 rounded-xl border border-amber-300/75 bg-amber-500/20 px-4 text-xs font-black text-amber-200 transition hover:bg-amber-500/30 active:scale-95"
+            >
+              <Navigation className="h-4 w-4" />
+              <span>Teleporte Rápido GM → {region.name}</span>
+            </button>
+          )}
+      </div>
+    );
+  };
 
   return (
     <div
       onPointerDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label="Mapa do Mundo Digital"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[#01091d]/76 p-1.5 backdrop-blur-[2px] sm:p-3 lg:p-4"
+      aria-label="Guia de Mapas do Mundo Digital"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#020816]/82 p-1.5 backdrop-blur-[2px] sm:p-4"
     >
-      {/* Main MMORPG Metallic Blue Window */}
       <div
         onClick={(e) => e.stopPropagation()}
-        className="animate-dmo-window relative flex max-h-[96dvh] w-full max-w-[1220px] flex-col"
+        className="animate-dmo-window flex h-[92dvh] w-full max-w-[960px] flex-col overflow-hidden rounded-2xl border-2 border-cyan-300/75 bg-gradient-to-b from-[#082c78] via-[#051845] to-[#030c24] shadow-[0_16px_54px_rgba(0,0,0,0.85),0_0_36px_rgba(0,174,255,0.42)] sm:h-[88dvh]"
       >
-        {/* Top-Left Floating Glowing Circular Globe Emblem (overlapping header like reference) */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -top-2 left-3 z-40 hidden h-13 w-13 items-center justify-center rounded-full border-2 border-[#94f6ff] bg-[#042478] shadow-[0_0_22px_rgba(56,226,255,0.95)] sm:flex sm:left-5 sm:h-15 sm:w-15"
-        >
-          <img
-            src="/assets/map/globe_badge.png"
-            alt=""
-            className="h-full w-full rounded-full object-cover"
-          />
-        </div>
-
-        {/* Top-Right Metallic Red X Close Button (matching reference corner socket) */}
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Fechar janela do mapa"
-          className="absolute right-2 top-1.5 z-40 flex h-8 w-8 items-center justify-center rounded-md border-2 border-[#8cf2ff] bg-gradient-to-b from-[#f0453a] via-[#be1818] to-[#7a0e12] text-white shadow-[0_0_16px_rgba(56,224,255,0.75),inset_0_1px_1px_rgba(255,215,215,0.7)] transition hover:brightness-115 active:scale-95 sm:right-3 sm:top-2 sm:h-9 sm:w-9"
-        >
-          <X className="h-5 w-5 stroke-[3.5] drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]" />
-        </button>
-
-        {/* Outer Glowing Neon-Cyan Chamfered Shell */}
-        <div className="clip-cyber-panel flex max-h-[95dvh] flex-col bg-gradient-to-b from-[#7cf4ff] via-[#1ea8ff] to-[#4ce2ff] p-[2.5px] shadow-[0_0_48px_rgba(0,174,255,0.65),0_12px_40px_rgba(0,0,0,0.8)]">
-          <div className="clip-cyber-panel flex max-h-[calc(95dvh-5px)] flex-col overflow-hidden bg-gradient-to-b from-[#0b44b8] via-[#062269] to-[#041442]">
-            {/* ==============================================================
-                METALLIC STEPPED HEADER BAR
-               ============================================================== */}
-            <header className="relative flex h-11 shrink-0 items-center justify-between border-b-2 border-[#46d8ff] bg-gradient-to-r from-[#0a3fa8] via-[#0e55d4] to-[#072a7d] px-3 pr-12 shadow-[inset_0_1px_0_rgba(195,244,255,0.65),0_4px_18px_rgba(0,136,255,0.5)] sm:h-13 sm:pl-22 sm:pr-16">
-              <div className="flex items-center gap-2">
-                {/* Compact Globe for small mobile */}
-                <img
-                  src="/assets/map/globe_badge.png"
-                  alt=""
-                  className="h-7 w-7 rounded-full border border-[#8ef2ff] shadow-[0_0_10px_rgba(56,226,255,0.8)] sm:hidden"
-                />
-                <h2
-                  className="text-lg font-black italic tracking-wide text-white drop-shadow-[0_2px_6px_rgba(0,12,48,0.95)] sm:text-2xl"
-                  style={{ fontFamily: 'var(--font-display)' }}
-                >
-                  Mapa
-                </h2>
-              </div>
-
-              {/* Clean Live Location Metadata */}
-              <div className="hidden items-center gap-2 text-[11.5px] font-bold text-cyan-100/95 md:flex">
-                <span className="text-cyan-300">Local Atual:</span>
-                <span className="text-white">{currentRegion.name}</span>
-                <span aria-hidden="true" className="text-cyan-400/60">
-                  ·
-                </span>
-                <span className="tabular-nums text-sky-200/90">
-                  X {Math.round(snapshot.tamerX)}, Y {Math.round(snapshot.tamerY)}
-                </span>
-                <span aria-hidden="true" className="text-cyan-400/60">
-                  ·
-                </span>
-                <span className="tabular-nums text-[#ffd43b]">
-                  Nível {playerLevel}
-                </span>
-              </div>
-            </header>
-
-            {/* ==============================================================
-                CATEGORY TABS ROW: Mundo | Eventos | Dungeon (Centered)
-               ============================================================== */}
-            <div className="flex shrink-0 items-end justify-center bg-[#06205e]/90 px-2.5 pt-2 sm:px-4">
-              <div
-                className="flex items-end justify-center gap-1.5 sm:gap-2"
-                role="tablist"
-                aria-label="Categorias de mapas"
+        {/* COMPACT STICKY HEADER (<= 14% mobile height) */}
+        <header className="flex shrink-0 items-center justify-between gap-2 border-b border-cyan-400/30 bg-[#06215c] px-3 py-2.5 sm:px-5">
+          <div className="flex min-w-0 items-center gap-2.5">
+            {activeTab === 'mapas' && mobileDetailOpen ? (
+              <button
+                type="button"
+                onClick={() => {
+                  playDigitalTone('click', soundEnabled);
+                  setMobileDetailOpen(false);
+                }}
+                aria-label="Voltar para lista de mapas"
+                className="flex h-10 items-center gap-1.5 rounded-xl border border-cyan-300/60 bg-[#093282] px-3 text-xs font-black text-white active:scale-95 lg:hidden"
               >
-                {CATEGORY_TABS.map((tab) => {
-                  const isActive = activeCategory === tab.id;
+                <ArrowLeft className="h-4 w-4" />
+                <span>Voltar</span>
+              </button>
+            ) : (
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-cyan-300/50 bg-[#093282] text-amber-300">
+                <MapIcon className="h-4.5 w-4.5" />
+              </span>
+            )}
+
+            <div className="min-w-0">
+              <h2 className="truncate font-[family-name:var(--font-display)] text-sm font-black tracking-wide text-white sm:text-base">
+                {activeTab === 'mapas' && mobileDetailOpen
+                  ? selectedRegion.name
+                  : 'Guia de Mapas'}
+              </h2>
+              <p className="truncate text-[11px] font-bold text-cyan-200/85 tabular-nums">
+                Seu Digimon: Nv. {digimonStats.level} · {currentRegion.name}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              playDigitalTone('click', soundEnabled);
+              onClose();
+            }}
+            aria-label="Fechar Guia de Mapas"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-rose-300/60 bg-gradient-to-b from-rose-500 to-rose-700 text-white transition hover:brightness-110 active:scale-95"
+          >
+            <X className="h-5 w-5 stroke-[3]" />
+          </button>
+        </header>
+
+        {/* SINGLE SLIM TAB BAR */}
+        <nav
+          aria-label="Seções do Guia de Mapas"
+          className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-cyan-400/20 bg-[#041230] px-3 py-2 sm:px-5"
+        >
+          {(
+            [
+              { id: 'mapas', label: 'Mapas', icon: Compass },
+              { id: 'mapa-mundi', label: 'Mapa Mundi', icon: MapPin },
+              { id: 'eventos', label: 'Eventos', icon: CalendarDays },
+              { id: 'dungeon', label: 'Dungeon', icon: Flame },
+            ] as const
+          ).map((tab) => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => {
+                  playDigitalTone('click', soundEnabled);
+                  setActiveTab(tab.id);
+                  if (tab.id !== 'mapas') setMobileDetailOpen(false);
+                }}
+                className={`flex min-h-[38px] shrink-0 items-center gap-1.5 rounded-xl border px-3 text-xs font-black whitespace-nowrap transition active:scale-95 ${
+                  active
+                    ? 'border-cyan-300 bg-cyan-500/22 text-white shadow-[0_0_12px_rgba(34,211,238,0.22)]'
+                    : 'border-cyan-400/20 bg-[#071b45] text-sky-200/80 hover:border-cyan-300/45 hover:text-white'
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* MAIN CONTENT AREA */}
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {/* TAB 1: MAPAS — Mobile Master-Detail + Desktop 2-Pane */}
+          {activeTab === 'mapas' && (
+            <div className="flex h-full min-h-0">
+              {/* LEFT / MOBILE LIST */}
+              <div
+                className={`min-h-0 flex-1 overflow-y-auto p-3 sm:p-4 lg:w-[350px] lg:flex-none lg:border-r lg:border-cyan-400/20 ${
+                  mobileDetailOpen ? 'hidden lg:block' : 'block'
+                }`}
+              >
+                <p className="mb-2.5 text-xs font-semibold text-cyan-200/85">
+                  Toque em um mapa para ver Digimons, níveis, drops e portais.
+                </p>
+
+                <div className="space-y-2">
+                  {PLAYABLE_WORLD_REGIONS.map((region) => {
+                    const playableId = region.playableMapId;
+                    if (!playableId) return null;
+                    const access = getRegionAccessState(
+                      region,
+                      snapshot.mapId,
+                      digimonStats.level,
+                      isGM
+                    );
+                    const isSelected = region.playableMapId === selectedRegion.playableMapId;
+                    const isLocked = access === 'level-locked';
+                    const isSafe = isSafeHubRegion(region);
+
+                    return (
+                      <button
+                        key={region.id}
+                        type="button"
+                        onClick={() => handleOpenRegionDetail(playableId)}
+                        className={`flex w-full items-center gap-3 rounded-2xl border p-2.5 text-left transition active:scale-[0.99] ${
+                          isSelected
+                            ? 'border-cyan-300 bg-[#0b2e73]/90 shadow-[0_0_16px_rgba(56,189,248,0.22)]'
+                            : 'border-cyan-400/20 bg-[#051436]/90 hover:border-cyan-300/50 hover:bg-[#082052]'
+                        }`}
+                      >
+                        {/* Thumbnail */}
+                        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-cyan-300/30 bg-[#030d24]">
+                          <img
+                            src={region.thumbUrl || region.bannerUrl}
+                            alt={region.name}
+                            className={`h-full w-full object-cover ${
+                              isLocked ? 'grayscale-[55%] opacity-75' : ''
+                            }`}
+                          />
+                          {isLocked && (
+                            <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-amber-300">
+                              <Lock className="h-4.5 w-4.5" />
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Clean Scannable Info */}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="truncate text-sm font-black text-white">
+                              {region.name}
+                            </p>
+                            <span
+                              className={`shrink-0 text-xs font-black tabular-nums ${
+                                isSafe
+                                  ? 'text-emerald-300'
+                                  : isLocked
+                                    ? 'text-amber-300'
+                                    : 'text-[#ffe047]'
+                              }`}
+                            >
+                              {isSafe
+                                ? 'Segura'
+                                : region.recommendedLevel.replace('Lv. ', 'Nv. ')}
+                            </span>
+                          </div>
+
+                          <p className="mt-0.5 truncate text-xs text-sky-200/80">
+                            {getShortMobPreview(region)}
+                          </p>
+
+                          <div className="mt-1 flex items-center gap-2 text-[11px] font-extrabold">
+                            {access === 'current' ? (
+                              <span className="text-cyan-300">
+                                Você está aqui
+                              </span>
+                            ) : isLocked ? (
+                              <span className="text-amber-300">
+                                Requer Nv. {region.minLevel}+
+                              </span>
+                            ) : (
+                              <span className="text-emerald-300/90">
+                                Liberado
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <ChevronRight className="h-5 w-5 shrink-0 text-cyan-300/80" />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* RIGHT / MOBILE DETAIL VIEW */}
+              <div
+                className={`min-h-0 flex-1 overflow-y-auto p-3.5 sm:p-5 ${
+                  mobileDetailOpen ? 'block' : 'hidden lg:block'
+                }`}
+              >
+                {renderDetailContent(selectedRegion)}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: INTERACTIVE MAPA MUNDI */}
+          {activeTab === 'mapa-mundi' && (
+            <div className="flex h-full min-h-0 flex-col gap-3 p-3 sm:p-4">
+              <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-cyan-300/40 bg-[#041436]">
+                <img
+                  src="/assets/map/world_map_base.png"
+                  alt="Mapa Mundi do Mundo Digital"
+                  draggable={false}
+                  className="h-full w-full object-cover opacity-90"
+                />
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#030d24]/80 via-transparent to-[#030d24]/35" />
+
+                {PLAYABLE_WORLD_REGIONS.map((region) => {
+                  const playableId = region.playableMapId;
+                  if (!playableId) return null;
+                  const access = getRegionAccessState(
+                    region,
+                    snapshot.mapId,
+                    digimonStats.level,
+                    isGM
+                  );
+                  const isSelected = playableId === selectedRegion.playableMapId;
+                  const isCurrent = access === 'current';
+
                   return (
                     <button
-                      key={tab.id}
+                      key={region.id}
                       type="button"
-                      role="tab"
-                      aria-selected={isActive}
-                      onClick={() => handleSelectCategory(tab.id)}
-                      className={`min-w-[88px] whitespace-nowrap rounded-t-lg border-x-[1.5px] border-t-[1.5px] px-4 py-1.5 text-center text-xs font-black tracking-wide transition sm:min-w-[116px] sm:px-6 sm:py-1.5 sm:text-[13.5px] ${
-                        isActive
-                          ? 'world-map-tab-active text-[#1c1303]'
-                          : 'border-[#38bfff]/60 bg-gradient-to-b from-[#0b3994] to-[#051a52] text-white/90 hover:border-[#78e6ff] hover:text-white'
-                      }`}
+                      onClick={() => {
+                        playDigitalTone('click', soundEnabled);
+                        setSelectedRegionId(playableId);
+                      }}
+                      style={{
+                        left: `${region.mapCoords.x}%`,
+                        top: `${region.mapCoords.y}%`,
+                      }}
+                      className="group absolute -translate-x-1/2 -translate-y-1/2 focus:outline-none"
                     >
-                      {tab.label}
+                      <div className="flex flex-col items-center">
+                        <span
+                          className={`flex h-8 w-8 items-center justify-center rounded-full border-2 shadow-lg transition sm:h-9 sm:w-9 ${
+                            isCurrent
+                              ? 'scale-110 border-white bg-cyan-500 text-slate-950'
+                              : isSelected
+                                ? 'scale-110 border-amber-200 bg-amber-400 text-slate-950'
+                                : access === 'level-locked'
+                                  ? 'border-slate-500 bg-slate-900/90 text-slate-300'
+                                  : 'border-cyan-300 bg-[#07235c]/95 text-cyan-100'
+                          }`}
+                        >
+                          {access === 'level-locked' ? (
+                            <Lock className="h-3.5 w-3.5" />
+                          ) : (
+                            <MapPin className="h-4 w-4" />
+                          )}
+                        </span>
+                        <span
+                          className={`mt-1 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[10px] font-black shadow ${
+                            isSelected
+                              ? 'border-amber-300 bg-[#061d52] text-amber-200'
+                              : 'border-cyan-400/35 bg-[#030e29]/92 text-white'
+                          }`}
+                        >
+                          {region.name}
+                        </span>
+                      </div>
                     </button>
                   );
                 })}
               </div>
-            </div>
 
-            {/* ==============================================================
-                INNER 3-COLUMN PANEL CONTAINER (Matches Reference Proportions)
-               ============================================================== */}
-            <div className="mx-2 mb-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border-[1.5px] border-[#42d6ff] bg-[#041440]/95 p-2 shadow-[inset_0_0_26px_rgba(0,42,135,0.75)] sm:mx-3.5 sm:mb-2.5 sm:p-2.5">
-              <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-hidden sm:gap-2.5 lg:grid-cols-12">
-                {/* ----------------------------------------------------------
-                    LEFT COLUMN (col-span-3): Lista Lateral de Regiões
-                   ---------------------------------------------------------- */}
-                <aside
-                  aria-label="Lista de regiões"
-                  className="flex min-h-0 flex-col lg:col-span-3"
-                >
-                  <div className="world-map-scroll flex gap-1.5 overflow-x-auto pb-1 lg:flex-1 lg:flex-col lg:gap-1.5 lg:overflow-x-hidden lg:overflow-y-auto lg:pb-0 lg:pr-1.5">
-                    {visibleRegions.map((region) => {
-                      const access = getRegionAccessState(
-                        region,
-                        snapshot.mapId,
-                        playerLevel,
-                        isGM
-                      );
-                      const isSelected = region.id === selectedRegion.id;
-                      const isLocked =
-                        access === 'level-locked' || access === 'upcoming';
-
-                      return (
-                        <button
-                          key={region.id}
-                          type="button"
-                          onClick={() => handleSelectRegion(region)}
-                          className={`group flex min-w-[215px] shrink-0 items-center gap-2.5 rounded-lg p-1.5 text-left transition lg:min-w-0 lg:w-full ${
-                            isSelected
-                              ? 'world-map-selected-card'
-                              : 'border border-[#2f86e6]/55 bg-gradient-to-b from-[#09276e]/92 to-[#05184a]/96 hover:border-[#62dbff] hover:from-[#0e368f] hover:to-[#072266]'
-                          }`}
-                        >
-                          {/* Crisp Real Reference Thumbnail */}
-                          <div className="relative h-[50px] w-[86px] shrink-0 overflow-hidden rounded-[5px] border border-[#6adfff]/75 bg-[#020a24] shadow-[0_2px_6px_rgba(0,0,0,0.65)] sm:h-[54px] sm:w-[92px]">
-                            <img
-                              src={region.thumbUrl}
-                              alt={region.name}
-                              className={`h-full w-full object-cover transition duration-200 group-hover:scale-105 ${
-                                isLocked ? 'brightness-[0.58] saturate-[0.65]' : ''
-                              }`}
-                            />
-                            {isLocked && (
-                              <span className="absolute inset-0 flex items-center justify-center bg-[#020a22]/45">
-                                <Lock className="h-4 w-4 text-[#fde047] drop-shadow-[0_1px_4px_rgba(0,0,0,0.95)]" />
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Title, Golden Level & Honest Status */}
-                          <div className="min-w-0 flex-1 leading-tight">
-                            <p className="truncate text-[12.5px] font-extrabold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)] sm:text-[13.5px]">
-                              {region.name}
-                            </p>
-                            {region.recommendedLevel ? (
-                              <p className="mt-0.5 text-[11.5px] font-black tabular-nums text-[#ffd43b] drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)] sm:text-[12.5px]">
-                                {region.recommendedLevel}
-                              </p>
-                            ) : (
-                              <p className="mt-0.5 text-[11px] font-extrabold text-emerald-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)] sm:text-[12px]">
-                                {region.zoneType}
-                              </p>
-                            )}
-                            <p className="mt-0.5 truncate text-[9.5px] font-bold">
-                              {access === 'current' && (
-                                <span className="text-[#5eeeff]">Local Atual</span>
-                              )}
-                              {access === 'available' && (
-                                <span className="text-emerald-300">
-                                  Disponível · Viajar
-                                </span>
-                              )}
-                              {access === 'level-locked' && (
-                                <span className="text-amber-300/90">
-                                  Bloqueada · Lv. {region.minLevel}+
-                                </span>
-                              )}
-                              {access === 'upcoming' && (
-                                <span className="text-slate-300/80">
-                                  Em desenvolvimento
-                                </span>
-                              )}
-                            </p>
-                          </div>
-                        </button>
-                      );
-                    })}
+              {/* Clean Mobile Bottom Summary Bar for Selected Node */}
+              <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan-300/40 bg-[#051436] p-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate text-sm font-black text-white">
+                      {selectedRegion.name}
+                    </p>
+                    <span className="text-xs font-black text-amber-300 tabular-nums">
+                      {isSafeHubRegion(selectedRegion)
+                        ? 'Zona Segura'
+                        : selectedRegion.recommendedLevel.replace('Lv. ', 'Nv. ')}
+                    </span>
                   </div>
-                </aside>
+                  {selectedRoute && (
+                    <p className="mt-0.5 truncate text-xs text-sky-200/85">
+                      {selectedRoute.nextLabel}
+                    </p>
+                  )}
+                </div>
 
-                {/* ----------------------------------------------------------
-                    CENTER COLUMN (col-span-6): Mapa Central Interativo
-                   ---------------------------------------------------------- */}
-                <section
-                  aria-label="Mapa interativo do Mundo Digital"
-                  className={`${
-                    mobilePanel === 'map' ? 'flex' : 'hidden lg:flex'
-                  } relative min-h-[290px] flex-1 flex-col overflow-hidden rounded-xl border-[1.5px] border-[#42d6ff] bg-[#042878] shadow-[inset_0_0_24px_rgba(0,48,145,0.7),0_0_16px_rgba(0,174,255,0.35)] sm:min-h-[380px] lg:col-span-6`}
-                >
-                  <div
-                    ref={mapViewportRef}
-                    onWheel={(e) => {
-                      e.preventDefault();
-                      applyZoom(e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP);
-                    }}
-                    onPointerDown={(e) => {
-                      if ((e.target as HTMLElement).closest('button')) return;
-                      dragRef.current = {
-                        active: true,
-                        pointerId: e.pointerId,
-                        startX: e.clientX,
-                        startY: e.clientY,
-                        origPanX: pan.x,
-                        origPanY: pan.y,
-                      };
-                      setIsDragging(true);
-                      e.currentTarget.setPointerCapture(e.pointerId);
-                    }}
-                    onPointerMove={(e) => {
-                      if (!dragRef.current.active) return;
-                      const dx = e.clientX - dragRef.current.startX;
-                      const dy = e.clientY - dragRef.current.startY;
-                      setPan(
-                        clampPan(
-                          dragRef.current.origPanX + dx,
-                          dragRef.current.origPanY + dy,
-                          zoom
-                        )
-                      );
-                    }}
-                    onPointerUp={(e) => {
-                      if (dragRef.current.active) {
-                        dragRef.current.active = false;
-                        setIsDragging(false);
-                        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-                          e.currentTarget.releasePointerCapture(e.pointerId);
-                        }
+                {selectedRegion.playableMapId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedRegion.playableMapId) {
+                        handleOpenRegionDetail(selectedRegion.playableMapId);
                       }
                     }}
-                    onPointerCancel={() => {
-                      dragRef.current.active = false;
-                      setIsDragging(false);
-                    }}
-                    className={`relative h-full w-full flex-1 overflow-hidden touch-none ${
-                      isDragging ? 'cursor-grabbing' : 'cursor-grab'
-                    }`}
+                    className="flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-xl border border-cyan-200 bg-gradient-to-r from-cyan-400 to-sky-400 px-4 text-xs font-black text-slate-950 transition hover:brightness-110 active:scale-95"
                   >
-                    {/* Zoomable & Pannable High-Art Archipelago Layer */}
-                    <div
-                      style={{
-                        transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`,
-                        transformOrigin: 'center center',
-                      }}
-                      className="relative h-full w-full transition-transform duration-150 ease-out will-change-transform"
-                    >
-                      <img
-                        src="/assets/map/world_map_base.png"
-                        alt="Mapa do Mundo Digital"
-                        draggable={false}
-                        className="h-full w-full select-none object-cover"
-                      />
-
-                      {/* Luminous Route Line connecting current map to selected map */}
-                      {selectedRegion.id !== currentRegion.id && (
-                        <svg
-                          viewBox="0 0 100 100"
-                          preserveAspectRatio="none"
-                          className="pointer-events-none absolute inset-0 z-10 h-full w-full"
-                          aria-hidden="true"
-                        >
-                          <line
-                            x1={currentRegion.mapCoords.x}
-                            y1={currentRegion.mapCoords.y}
-                            x2={selectedRegion.mapCoords.x}
-                            y2={selectedRegion.mapCoords.y}
-                            stroke="#5eeeff"
-                            strokeWidth="0.65"
-                            strokeDasharray="1.8 1.4"
-                            strokeLinecap="round"
-                            opacity="0.95"
-                          />
-                        </svg>
-                      )}
-
-                      {/* Interactive Clickable Markers on Every Region */}
-                      {visibleRegions.map((region) => {
-                        const access = getRegionAccessState(
-                          region,
-                          snapshot.mapId,
-                          playerLevel,
-                          isGM
-                        );
-                        const isSelected = region.id === selectedRegion.id;
-                        const isCurrent = access === 'current';
-                        const isLocked =
-                          access === 'level-locked' || access === 'upcoming';
-
-                        return (
-                          <button
-                            key={region.id}
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSelectRegion(region);
-                            }}
-                            aria-label={`Selecionar ${region.name} (${region.recommendedLevel || region.zoneType})`}
-                            style={{
-                              left: `${region.mapCoords.x}%`,
-                              top: `${region.mapCoords.y}%`,
-                              transform: `translate(-50%, -65%) scale(${(1 / Math.sqrt(zoom)).toFixed(3)})`,
-                            }}
-                            className="group absolute z-20 flex flex-col items-center focus-visible:outline-none"
-                          >
-                            {/* Selection Golden Halo Ring */}
-                            {isSelected && (
-                              <span
-                                aria-hidden="true"
-                                className="pointer-events-none absolute top-1/2 h-11 w-11 -translate-y-1/2 rounded-full border-2 border-[#ffe047] bg-[#ffe047]/15 shadow-[0_0_18px_rgba(255,224,71,0.9)]"
-                              />
-                            )}
-
-                            {isCurrent ? (
-                              <CurrentLocationPin selected={isSelected} />
-                            ) : isLocked ? (
-                              <span
-                                className={`relative flex h-7 w-7 items-center justify-center rounded-full border-2 bg-gradient-to-b from-[#1e293b]/95 to-[#091229]/95 text-[#ffd43b] shadow-[0_2px_10px_rgba(0,0,0,0.88)] transition group-hover:scale-115 sm:h-8 sm:w-8 ${
-                                  isSelected
-                                    ? 'border-[#ffe047] ring-2 ring-[#ffe047]/65'
-                                    : 'border-[#60a5fa]/80'
-                                }`}
-                              >
-                                <Lock className="h-3.5 w-3.5" />
-                              </span>
-                            ) : (
-                              <GoldenMapPin selected={isSelected} />
-                            )}
-
-                            {/* Clean Nameplate Label */}
-                            <span
-                              className={`mt-0.5 whitespace-nowrap rounded border px-1.5 py-[2px] text-[10px] font-extrabold leading-none shadow-[0_2px_8px_rgba(0,0,0,0.95)] transition ${
-                                isSelected
-                                  ? 'border-[#ffe047] bg-[#04143e]/95 text-[#fff08a]'
-                                  : isCurrent
-                                    ? 'border-[#5eeeff] bg-[#041a52]/92 text-white'
-                                    : isLocked
-                                      ? 'border-slate-400/60 bg-[#050d24]/85 text-slate-200 opacity-90 group-hover:opacity-100'
-                                      : 'border-[#ffd43b]/85 bg-[#041a52]/92 text-white'
-                              }`}
-                            >
-                              {region.name}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {/* Mobile-only Region Details shortcut (top-left of map canvas) */}
-                    <button
-                      type="button"
-                      onClick={() => setMobilePanel('details')}
-                      className="absolute left-2.5 top-2.5 z-30 flex items-center gap-1 rounded-md border border-[#ffe047]/80 bg-[#041645]/92 px-2.5 py-1 text-[11px] font-extrabold text-amber-100 shadow-[0_0_12px_rgba(0,0,0,0.65)] transition hover:brightness-110 active:scale-95 lg:hidden"
-                    >
-                      <Info className="h-3.5 w-3.5 text-[#ffe047]" />
-                      <span>Detalhes</span>
-                    </button>
-
-                    {/* Top-Right Reference Compass Rose (N) */}
-                    <MapCompassRose />
-
-                    {/* Bottom-Left Reference Metallic Zoom Box (+ / -) */}
-                    <div className="absolute bottom-3 left-3 z-30 flex flex-col overflow-hidden rounded-lg border-2 border-[#5ce6ff] bg-gradient-to-b from-[#0b44b2]/95 via-[#072a7d]/95 to-[#041954]/95 shadow-[0_0_18px_rgba(0,174,255,0.65),inset_0_1px_0_rgba(200,246,255,0.65)]">
-                      <button
-                        type="button"
-                        onClick={() => applyZoom(ZOOM_STEP)}
-                        disabled={zoom >= MAX_ZOOM}
-                        aria-label="Aproximar mapa"
-                        className="flex h-10 w-10 items-center justify-center border-b border-[#4fd8ff]/55 text-white transition hover:bg-sky-500/40 active:scale-95 disabled:opacity-40"
-                      >
-                        <Plus className="h-5 w-5 stroke-[3.2] drop-shadow" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => applyZoom(-ZOOM_STEP)}
-                        disabled={zoom <= MIN_ZOOM}
-                        aria-label="Afastar mapa"
-                        className="flex h-10 w-10 items-center justify-center text-white transition hover:bg-sky-500/40 active:scale-95 disabled:opacity-40"
-                      >
-                        <Minus className="h-5 w-5 stroke-[3.2] drop-shadow" />
-                      </button>
-                      {(zoom > MIN_ZOOM || pan.x !== 0 || pan.y !== 0) && (
-                        <button
-                          type="button"
-                          onClick={resetCamera}
-                          aria-label="Centralizar mapa"
-                          title="Centralizar mapa"
-                          className="flex h-8 w-10 items-center justify-center border-t border-[#4fd8ff]/55 text-cyan-200 transition hover:bg-sky-500/40 active:scale-95"
-                        >
-                          <RotateCcw className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Subtle Zoom Percentage Indicator */}
-                    <div className="pointer-events-none absolute bottom-3 right-3 z-20 rounded-md border border-[#42d6ff]/55 bg-[#03123a]/86 px-2 py-1 text-[10px] font-bold tabular-nums text-cyan-100">
-                      {Math.round(zoom * 100)}%
-                    </div>
-                  </div>
-                </section>
-
-                {/* ----------------------------------------------------------
-                    RIGHT COLUMN (col-span-3): Informações da Região Selecionada
-                   ---------------------------------------------------------- */}
-                <aside
-                  aria-label="Informações da região selecionada"
-                  className={`${
-                    mobilePanel === 'details' ? 'flex' : 'hidden lg:flex'
-                  } min-h-0 flex-col overflow-hidden rounded-xl border-[1.5px] border-[#42d6ff] bg-gradient-to-b from-[#07266f]/96 via-[#04184e]/98 to-[#031036]/98 shadow-[inset_0_0_22px_rgba(0,48,145,0.7)] lg:col-span-3`}
-                >
-                  {/* Region Title Header */}
-                  <div className="relative flex shrink-0 items-center justify-center border-b border-[#3bc8ff]/45 bg-gradient-to-r from-[#072a7c] via-[#0e4bc4] to-[#072a7c] px-3 py-2 text-center shadow-[inset_0_1px_0_rgba(195,244,255,0.45)]">
-                    <button
-                      type="button"
-                      onClick={() => setMobilePanel('map')}
-                      aria-label="Voltar para visualização do mapa"
-                      className="absolute left-2 flex items-center gap-1 rounded border border-cyan-300/60 bg-[#041645]/90 px-2 py-0.5 text-[10.5px] font-extrabold text-cyan-100 transition active:scale-95 lg:hidden"
-                    >
-                      <ArrowLeft className="h-3.5 w-3.5" />
-                      <span>Voltar</span>
-                    </button>
-                    <h3 className="truncate px-14 text-[14px] font-black tracking-wide text-white drop-shadow sm:text-[15px] lg:px-0">
-                      {selectedRegion.name}
-                    </h3>
-                  </div>
-
-                  {/* Scrollable Details Content */}
-                  <div className="world-map-scroll flex-1 space-y-2.5 overflow-y-auto p-2.5 text-xs">
-                    {/* Crisp Wide Panoramic Region Banner */}
-                    <div className="relative aspect-[16/9] w-full overflow-hidden rounded-lg border-[1.5px] border-[#5ee3ff]/80 bg-[#020a24] shadow-[0_0_14px_rgba(0,162,255,0.35)]">
-                      <img
-                        src={selectedRegion.bannerUrl}
-                        alt={selectedRegion.name}
-                        className={`h-full w-full object-cover ${
-                          isSelectedLocked ? 'brightness-[0.55] saturate-[0.65]' : ''
-                        }`}
-                      />
-                      {isSelectedLocked && (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#02081c]/55 px-2 text-center">
-                          <Lock className="h-6 w-6 text-[#ffe047] drop-shadow" />
-                          <span className="mt-1 text-[11px] font-extrabold text-amber-100">
-                            {selectedAccess === 'level-locked'
-                              ? `Bloqueada · Requer Lv. ${selectedRegion.minLevel}`
-                              : 'Em desenvolvimento'}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Tipo de Área / Nível Recomendado */}
-                    <div>
-                      <p className="text-[12px] font-extrabold text-white">
-                        {selectedRegion.recommendedLevel
-                          ? 'Nível Recomendado'
-                          : 'Tipo de Área'}
-                      </p>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                        {selectedRegion.recommendedLevel ? (
-                          <span className="text-[14px] font-black tabular-nums text-[#ffd43b]">
-                            {selectedRegion.recommendedLevel}
-                          </span>
-                        ) : (
-                          <span className="text-[13px] font-black text-emerald-300">
-                            Cidade Segura · Sem Combate
-                          </span>
-                        )}
-                        <span aria-hidden="true" className="text-cyan-300/50">
-                          ·
-                        </span>
-                        <span
-                          className={`text-[11px] font-bold ${
-                            selectedAccess === 'current'
-                              ? 'text-[#5eeeff]'
-                              : selectedAccess === 'available'
-                                ? 'text-emerald-300'
-                                : 'text-amber-300'
-                          }`}
-                        >
-                          {selectedAccess === 'current'
-                            ? 'Local Atual'
-                            : selectedAccess === 'available'
-                              ? selectedRegion.playableMapId === 'hunting-plains'
-                                ? 'Início de Up'
-                                : selectedRegion.zoneType
-                              : selectedAccess === 'level-locked'
-                                ? `Requer Lv. ${selectedRegion.minLevel}`
-                                : 'Próxima atualização'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Descrição */}
-                    <div>
-                      <p className="text-[12px] font-extrabold text-white">
-                        Descrição
-                      </p>
-                      <p className="mt-0.5 text-[11.5px] leading-relaxed text-sky-100/92">
-                        {selectedRegion.description}
-                      </p>
-                    </div>
-
-                    {/* Principais NPCs (Reference style with white twin-users icon) */}
-                    <div className="border-t border-cyan-400/20 pt-2">
-                      <div className="flex items-start gap-2">
-                        <Users className="mt-0.5 h-5 w-5 shrink-0 text-white drop-shadow" />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-[11.5px] font-extrabold text-white">
-                            Principais NPCs
-                          </p>
-                          {selectedRegion.npcs.length > 0 ? (
-                            <p className="mt-0.5 text-[11px] leading-snug text-sky-100/90">
-                              {selectedRegion.npcs.map((n) => n.name).join(', ')}.
-                            </p>
-                          ) : (
-                            <p className="mt-0.5 text-[11px] text-slate-300/75">
-                              {selectedRegion.implemented
-                                ? 'Nenhum NPC em campo.'
-                                : 'Sem NPCs cadastrados ainda.'}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Inimigos na Região */}
-                    <div className="border-t border-cyan-400/20 pt-2">
-                      <p className="flex items-center gap-1.5 text-[11.5px] font-extrabold text-white">
-                        <Swords className="h-3.5 w-3.5 shrink-0 text-rose-300" />
-                        <span>Inimigos</span>
-                      </p>
-                      {selectedRegion.enemies.length > 0 ? (
-                        <div className="mt-1.5 space-y-1.5 text-[11px]">
-                          {selectedRegion.enemies.map((enemy) => {
-                            const portrait = enemy.species
-                              ? getWildDigimonPortraitUrl(enemy.species)
-                              : null;
-                            const isBossRow = enemy.species === 'kuwagamon';
-                            return (
-                              <div
-                                key={enemy.name}
-                                className={`flex items-center gap-2 rounded-md border px-2 py-1 ${
-                                  isBossRow
-                                    ? 'border-rose-400/70 bg-gradient-to-r from-[#2c0916]/90 to-[#160722]/90 text-rose-100 shadow-[0_0_12px_rgba(244,63,94,0.28)]'
-                                    : 'border-cyan-400/20 bg-[#04143c]/80 text-sky-100/95'
-                                }`}
-                              >
-                                {portrait && (
-                                  <img
-                                    src={portrait}
-                                    alt={enemy.name}
-                                    className={`shrink-0 object-contain ${
-                                      isBossRow ? 'h-8 w-8' : 'h-7 w-7 [image-rendering:pixelated]'
-                                    }`}
-                                  />
-                                )}
-                                <div className="min-w-0 flex-1 leading-tight">
-                                  <div className="flex items-center justify-between gap-1.5">
-                                    <span
-                                      className={`truncate font-bold ${
-                                        isBossRow ? 'text-amber-200' : 'text-white'
-                                      }`}
-                                    >
-                                      {enemy.name}
-                                      {enemy.packSize && !isBossRow ? (
-                                        <span className="ml-1 text-[10px] font-semibold text-cyan-300">
-                                          ({enemy.packSize}x)
-                                        </span>
-                                      ) : null}
-                                    </span>
-                                    <span
-                                      className={`shrink-0 font-black tabular-nums ${
-                                        isBossRow ? 'text-rose-300' : 'text-[#ffd43b]'
-                                      }`}
-                                    >
-                                      {enemy.levelLabel}
-                                    </span>
-                                  </div>
-                                  {enemy.habitat && (
-                                    <p
-                                      className={`truncate text-[9.5px] font-medium ${
-                                        isBossRow ? 'text-rose-200/85' : 'text-sky-200/80'
-                                      }`}
-                                    >
-                                      {enemy.habitat}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : selectedRegion.zoneType === 'Zona Segura' ? (
-                        <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-emerald-300">
-                          <Shield className="h-3.5 w-3.5 shrink-0" />
-                          <span>Zona Segura — sem inimigos selvagens.</span>
-                        </p>
-                      ) : (
-                        <p className="mt-0.5 text-[11px] text-slate-300/75">
-                          Disponível ao liberar esta região.
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Missões Disponíveis */}
-                    <div className="border-t border-cyan-400/20 pt-2">
-                      <p className="flex items-center gap-1.5 text-[11.5px] font-extrabold text-white">
-                        <ScrollText className="h-3.5 w-3.5 shrink-0 text-[#ffd43b]" />
-                        <span>Missões</span>
-                      </p>
-                      <div className="mt-1 space-y-1">
-                        {liveMissions.map((m) => (
-                          <div
-                            key={m.id}
-                            className="rounded-md border border-cyan-400/30 bg-[#041236]/85 px-2 py-1.5"
-                          >
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="text-[11px] font-extrabold text-white">
-                                {m.title}
-                              </span>
-                              {m.progressText && (
-                                <span
-                                  className={`flex shrink-0 items-center gap-0.5 text-[10px] font-black tabular-nums ${
-                                    m.completed ? 'text-emerald-300' : 'text-[#ffd43b]'
-                                  }`}
-                                >
-                                  {m.completed && (
-                                    <CheckCircle2 className="h-3 w-3 shrink-0" />
-                                  )}
-                                  {m.progressText}
-                                </span>
-                              )}
-                            </div>
-                            <p className="mt-0.5 text-[10.5px] leading-snug text-sky-200/80">
-                              {m.summary}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Recompensas (Exact 4 Reference Metallic Icon Tiles) */}
-                    <div className="border-t border-cyan-400/20 pt-2">
-                      <p className="text-[12px] font-extrabold text-white">
-                        Recompensas
-                      </p>
-                      <div className="mt-1.5 flex items-center gap-2">
-                        {selectedRegion.rewards.map((rw) => {
-                          const isFocused = activeReward?.id === rw.id;
-                          return (
-                            <button
-                              key={rw.id}
-                              type="button"
-                              onClick={() => setActiveRewardId(rw.id)}
-                              title={`${rw.label}: ${rw.detail}`}
-                              className={`h-11 w-11 shrink-0 overflow-hidden rounded-lg transition hover:scale-105 ${
-                                isFocused
-                                  ? 'ring-2 ring-[#ffe047] shadow-[0_0_12px_rgba(255,224,71,0.65)]'
-                                  : 'opacity-90 hover:opacity-100'
-                              }`}
-                            >
-                              <img
-                                src={rw.iconUrl}
-                                alt={rw.label}
-                                className="h-full w-full object-cover"
-                              />
-                            </button>
-                          );
-                        })}
-                      </div>
-                      {activeReward && (
-                        <p className="mt-1.5 text-[10.5px] leading-snug text-sky-100/90">
-                          <span className="font-extrabold text-[#ffd43b]">
-                            {activeReward.label}:
-                          </span>{' '}
-                          {activeReward.detail}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </aside>
+                    <span>Ver Digimons e Drops</span>
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             </div>
+          )}
 
-            {/* ==============================================================
-                FOOTER BAR: >> Ir para o Mapa (Left)  |  X Fechar (Right)
-               ============================================================== */}
-            <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 px-3 pb-2.5 pt-0.5 sm:px-5 sm:pb-3">
-              <button
-                type="button"
-                disabled={selectedAccess !== 'available'}
-                onClick={handleTravelClick}
-                className={`flex min-h-[40px] items-center justify-center gap-2 rounded-lg px-5 py-1.5 text-xs font-black tracking-wide transition active:scale-[0.98] sm:min-w-[218px] sm:text-[14px] ${
-                  selectedAccess === 'available'
-                    ? 'world-map-btn-bevel text-white'
-                    : 'cursor-not-allowed border-[1.5px] border-cyan-400/35 bg-[#061b52]/90 text-sky-200/75'
-                }`}
-              >
-                {selectedAccess === 'available' ? (
-                  <>
-                    <ChevronsRight className="h-5 w-5 stroke-[3] text-[#ffe047] drop-shadow-[0_0_8px_rgba(255,215,48,0.85)]" />
-                    <span className="drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]">
-                      Ir para o Mapa
-                    </span>
-                  </>
-                ) : selectedAccess === 'current' ? (
-                  <>
-                    <ChevronsRight className="h-5 w-5 stroke-[2.5] text-cyan-300/80" />
-                    <span>Você já está aqui</span>
-                  </>
-                ) : selectedAccess === 'level-locked' ? (
-                  <>
-                    <Lock className="h-4 w-4 text-[#ffd43b]" />
-                    <span>Bloqueada · Requer Lv. {selectedRegion.minLevel}</span>
-                  </>
-                ) : (
-                  <>
-                    <Lock className="h-4 w-4 text-slate-300" />
-                    <span>Em desenvolvimento</span>
-                  </>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={onClose}
-                className="world-map-btn-bevel flex min-h-[40px] items-center justify-center gap-2 rounded-lg px-5 py-1.5 text-xs font-black tracking-wide text-white transition active:scale-[0.98] sm:min-w-[148px] sm:text-[14px]"
-              >
-                <X className="h-4.5 w-4.5 stroke-[3.5] drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]" />
-                <span className="drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]">
-                  Fechar
-                </span>
-              </button>
-            </footer>
-          </div>
+          {/* TAB 3 & 4: EVENTOS & DUNGEON (Em Desenvolvimento) */}
+          {(activeTab === 'eventos' || activeTab === 'dungeon') && (
+            <div className="flex h-full items-center justify-center p-4">
+              <div className="w-full max-w-[440px] space-y-3 rounded-2xl border border-amber-300/35 bg-[#051436] p-6 text-center">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-amber-300/50 bg-amber-500/15 text-amber-300">
+                  {activeTab === 'eventos' ? (
+                    <Sparkles className="h-7 w-7" />
+                  ) : (
+                    <Flame className="h-7 w-7" />
+                  )}
+                </div>
+                <h3 className="text-lg font-black text-white">
+                  {activeTab === 'eventos'
+                    ? 'Eventos · Em Desenvolvimento'
+                    : 'Dungeons · Em Desenvolvimento'}
+                </h3>
+                <p className="text-sm leading-relaxed text-sky-100/85">
+                  {activeTab === 'eventos'
+                    ? 'Eventos especiais de invasão, bônus sazonais e recompensas exclusivas estão em desenvolvimento e chegam em breve.'
+                    : 'Instâncias cooperativas com chefes épicos e recompensas raras estão em desenvolvimento e chegam em atualizações futuras.'}
+                </p>
+                <div className="inline-flex items-center gap-2 rounded-xl border border-cyan-400/30 bg-[#072056] px-3.5 py-2 text-xs font-extrabold text-cyan-200">
+                  <Wrench className="h-4 w-4" />
+                  <span>Em breve no Digital World</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

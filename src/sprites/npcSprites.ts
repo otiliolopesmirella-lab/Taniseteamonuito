@@ -3,6 +3,7 @@ export interface FixedWorldNpc {
   name: string;
   title: string;
   spriteUrl: string;
+  removeWhiteBg?: boolean;
   x: number;
   y: number;
   targetHeight: number;
@@ -58,13 +59,151 @@ export const MUDFRIGIMON_NPC: FixedWorldNpc = {
     'Olá, Tamer! Eu sou o MudFrigimon da DATS Center. Fique de olho por aqui — em breve terei serviços e missões especiais para ajudar você e seu Digimon!',
 };
 
+export const MIKI_MARKET_NPC: FixedWorldNpc = {
+  id: 'npc-miki-market',
+  name: 'MIKI · MERCADO',
+  title: 'Operadora do Mercado de Jogadores',
+  spriteUrl: '/assets/aistudio/images__18__2930293b.jpeg',
+  removeWhiteBg: true,
+  x: 1190,
+  y: 768,
+  targetHeight: 104,
+  collisionRadius: 18,
+  groundRingRadiusX: 30,
+  groundShadowRadiusX: 22,
+  animPhase: 2.7,
+  hitBox: {
+    halfWidth: 46,
+    height: 126,
+  },
+  initialDialogue:
+    'Bem-vindo ao Mercado de Jogadores da DATS! Aqui Tamers compram e vendem DATA, DigiEggs e itens com vitrine pública de 2 minutos antes da liberação.',
+};
+
 export const DATS_FIXED_NPCS: readonly FixedWorldNpc[] = [
   RICHARD_SAMPSON_NPC,
   MUDFRIGIMON_NPC,
+  MIKI_MARKET_NPC,
 ] as const;
 
-const npcImageCache = new Map<string, HTMLImageElement>();
+type CachedNpcDrawable = HTMLImageElement | HTMLCanvasElement;
+
+const npcImageCache = new Map<string, CachedNpcDrawable>();
+const npcPortraitDataUrlCache = new Map<string, string>();
 const npcPreloadCache = new Map<string, Promise<void>>();
+
+/**
+ * Flood-fills only the outer connected near-white background from the image borders
+ * so internal white details (vest, socks, eyes) remain 100% opaque and crisp.
+ */
+function stripOuterWhiteBackground(img: HTMLImageElement): HTMLCanvasElement | HTMLImageElement {
+  if (typeof document === 'undefined' || img.naturalWidth === 0 || img.naturalHeight === 0) {
+    return img;
+  }
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return img;
+  ctx.drawImage(img, 0, 0);
+
+  let imageData: ImageData;
+  try {
+    imageData = ctx.getImageData(0, 0, w, h);
+  } catch {
+    return img;
+  }
+  const data = imageData.data;
+  const total = w * h;
+  const visited = new Uint8Array(total);
+  const removed = new Uint8Array(total);
+  const queue = new Int32Array(total);
+  let head = 0;
+  let tail = 0;
+
+  const isBgWhite = (idx: number): boolean => {
+    const o = idx * 4;
+    const r = data[o];
+    const g = data[o + 1];
+    const b = data[o + 2];
+    const maxC = Math.max(r, g, b);
+    const minC = Math.min(r, g, b);
+    return minC >= 224 && maxC - minC <= 26;
+  };
+
+  const enqueue = (x: number, y: number) => {
+    const idx = y * w + x;
+    if (visited[idx]) return;
+    if (!isBgWhite(idx)) return;
+    visited[idx] = 1;
+    removed[idx] = 1;
+    queue[tail++] = idx;
+  };
+
+  for (let x = 0; x < w; x++) {
+    enqueue(x, 0);
+    enqueue(x, h - 1);
+  }
+  for (let y = 0; y < h; y++) {
+    enqueue(0, y);
+    enqueue(w - 1, y);
+  }
+
+  while (head < tail) {
+    const idx = queue[head++];
+    const x = idx % w;
+    const y = (idx - x) / w;
+    if (x > 0) enqueue(x - 1, y);
+    if (x + 1 < w) enqueue(x + 1, y);
+    if (y > 0) enqueue(x, y - 1);
+    if (y + 1 < h) enqueue(x, y + 1);
+  }
+
+  // Zero alpha on outer background pixels + softly feather 1px light edge fringe
+  for (let i = 0; i < total; i++) {
+    if (removed[i]) {
+      data[i * 4 + 3] = 0;
+    }
+  }
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const idx = y * w + x;
+      if (removed[idx]) continue;
+      if (
+        removed[idx - 1] ||
+        removed[idx + 1] ||
+        removed[idx - w] ||
+        removed[idx + w]
+      ) {
+        const o = idx * 4;
+        const r = data[o];
+        const g = data[o + 1];
+        const b = data[o + 2];
+        const lum = (r + g + b) / 3;
+        const sat = Math.max(r, g, b) - Math.min(r, g, b);
+        if (lum >= 205 && sat <= 32) {
+          data[o + 3] = Math.round(data[o + 3] * 0.25);
+        }
+      }
+    }
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+  return canvas;
+}
+
+export function getProcessedNpcPortraitUrl(npc: FixedWorldNpc): string {
+  return npcPortraitDataUrlCache.get(npc.id) ?? npc.spriteUrl;
+}
+
+export async function ensureProcessedNpcPortraitUrl(
+  npc: FixedWorldNpc
+): Promise<string> {
+  await preloadFixedNpcSprite(npc);
+  return getProcessedNpcPortraitUrl(npc);
+}
 
 export function preloadFixedNpcSprite(npc: FixedWorldNpc): Promise<void> {
   const existing = npcPreloadCache.get(npc.id);
@@ -72,8 +211,21 @@ export function preloadFixedNpcSprite(npc: FixedWorldNpc): Promise<void> {
 
   const p = new Promise<void>((resolve) => {
     const img = new Image();
+    img.crossOrigin = 'anonymous';
     img.onload = () => {
-      npcImageCache.set(npc.id, img);
+      if (npc.removeWhiteBg) {
+        const processed = stripOuterWhiteBackground(img);
+        npcImageCache.set(npc.id, processed);
+        if (processed instanceof HTMLCanvasElement) {
+          try {
+            npcPortraitDataUrlCache.set(npc.id, processed.toDataURL('image/png'));
+          } catch {
+            // Keep original sprite URL fallback
+          }
+        }
+      } else {
+        npcImageCache.set(npc.id, img);
+      }
       resolve();
     };
     img.onerror = () => resolve();
@@ -107,7 +259,7 @@ export function drawFixedWorldNpc(
   elapsedSec: number,
   options: { hovered?: boolean; nearby?: boolean }
 ): boolean {
-  const img = npcImageCache.get(npc.id);
+  const drawable = npcImageCache.get(npc.id);
   const { hovered = false, nearby = false } = options;
   const phase = npc.animPhase ?? 0;
   const ringRx = npc.groundRingRadiusX ?? 28;
@@ -149,11 +301,28 @@ export function drawFixedWorldNpc(
   ctx.fill();
   ctx.restore();
 
-  if (!img || !img.complete || img.naturalWidth === 0 || img.naturalHeight === 0) {
+  if (!drawable) {
     return false;
   }
 
-  const aspect = img.naturalWidth / img.naturalHeight;
+  const srcW =
+    drawable instanceof HTMLCanvasElement
+      ? drawable.width
+      : drawable.naturalWidth;
+  const srcH =
+    drawable instanceof HTMLCanvasElement
+      ? drawable.height
+      : drawable.naturalHeight;
+
+  if (
+    srcW === 0 ||
+    srcH === 0 ||
+    (drawable instanceof HTMLImageElement && !drawable.complete)
+  ) {
+    return false;
+  }
+
+  const aspect = srcW / srcH;
   const breath = Math.sin(elapsedSec * 2.4 + phase);
   const dh = npc.targetHeight * (1 + breath * 0.008);
   const dw = dh * aspect;
@@ -162,7 +331,7 @@ export function drawFixedWorldNpc(
   ctx.translate(npc.x, npc.y);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'medium';
-  ctx.drawImage(img, -dw / 2, -dh + 3, dw, dh);
+  ctx.drawImage(drawable, -dw / 2, -dh + 3, dw, dh);
   ctx.restore();
 
   // MMORPG Official NPC Nameplate + Interactive Speech Bubble Badge

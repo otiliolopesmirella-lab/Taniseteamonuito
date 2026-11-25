@@ -1,5 +1,42 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import path from 'node:path';
+
+interface AppletFirebaseConfig {
+  projectId?: string;
+  firestoreDatabaseId?: string;
+}
+
+function loadAppletFirebaseConfig(): AppletFirebaseConfig | null {
+  const candidates: Array<string | URL> = [
+    path.resolve(process.cwd(), 'firebase-applet-config.json'),
+    new URL('../../firebase-applet-config.json', import.meta.url),
+  ];
+  for (const candidate of candidates) {
+    try {
+      const raw = fs.readFileSync(candidate, 'utf8');
+      const parsed = JSON.parse(raw) as Partial<AppletFirebaseConfig>;
+      if (parsed && typeof parsed === 'object') {
+        return {
+          projectId:
+            typeof parsed.projectId === 'string'
+              ? parsed.projectId.trim()
+              : undefined,
+          firestoreDatabaseId:
+            typeof parsed.firestoreDatabaseId === 'string'
+              ? parsed.firestoreDatabaseId.trim()
+              : undefined,
+        };
+      }
+    } catch {
+      // Try next candidate path
+    }
+  }
+  return null;
+}
+
+const APPLET_FIREBASE_CONFIG = loadAppletFirebaseConfig();
 
 export interface ServerDwCoinPack {
   id: string;
@@ -56,11 +93,20 @@ export const SERVER_DWCOIN_PACKS: Readonly<Record<string, ServerDwCoinPack>> = {
 export const FIREBASE_PROJECT_ID =
   process.env.FIREBASE_PROJECT_ID?.trim() ||
   process.env.VITE_FIREBASE_PROJECT_ID?.trim() ||
+  APPLET_FIREBASE_CONFIG?.projectId ||
   'digilegends-8bc7d';
+
+const appletDbMatchesProject =
+  Boolean(APPLET_FIREBASE_CONFIG?.firestoreDatabaseId) &&
+  (!APPLET_FIREBASE_CONFIG?.projectId ||
+    APPLET_FIREBASE_CONFIG.projectId === FIREBASE_PROJECT_ID);
 
 export const FIREBASE_DATABASE_ID =
   process.env.FIREBASE_DATABASE_ID?.trim() ||
   process.env.VITE_FIREBASE_DATABASE_ID?.trim() ||
+  (appletDbMatchesProject
+    ? APPLET_FIREBASE_CONFIG?.firestoreDatabaseId
+    : undefined) ||
   '(default)';
 
 export interface MpPaymentRecord {

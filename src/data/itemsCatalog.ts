@@ -1060,30 +1060,62 @@ export function sanitizeInventoryItems(
 }
 
 /**
+ * Verifica se um item do inventário não pode ser vendido em lojas ou negociações.
+ * Regra oficial: DigiEgg de DemiMeramon e ovos especiais do Tutorial não podem ser vendidos.
+ */
+export function isItemNonSellable(
+  item: Pick<InventoryItem, 'itemKey' | 'nonSellable' | 'eggData'>
+): boolean {
+  if (item.nonSellable === true) return true;
+  if (item.itemKey === 'digiegg_demimeramon') return true;
+  if (item.eggData?.isTutorialGift === true) return true;
+  return false;
+}
+
+/**
  * Garante que itens antigos ou carregados da nuvem recebam icone oficial,
  * categoria correta, raridade e metadados atualizados do catalogo.
  */
 export function enrichInventoryItem(item: InventoryItem): InventoryItem {
   const def = CATALOG_REGISTRY.get(item.itemKey);
+  const nonSellable = isItemNonSellable(item);
   if (!def) {
     // Preserve existing items cleanly while ensuring sensible defaults
     return {
       ...item,
       rarity: item.rarity ?? (item.category === 'equip' ? 'incomum' : 'comum'),
+      ...(nonSellable ? { nonSellable: true } : {}),
     };
   }
 
+  const isTutorialEgg = Boolean(item.eggData?.isTutorialGift);
+  const guaranteedUpTo = item.eggData?.guaranteedUpToLevel;
+  const preUnlockedForms = item.eggData?.preUnlockedFormIds;
+  const hasPreUnlockedBonus = Boolean(preUnlockedForms && preUnlockedForms.length > 2);
+
   return {
     ...item,
-    name: def.name,
+    name:
+      isTutorialEgg && guaranteedUpTo
+        ? `${def.name} (${guaranteedUpTo}/5 Garantido)`
+        : def.name,
     category: def.category,
-    description: def.description,
+    description: isTutorialEgg
+      ? `${def.description} Presente do Tutorial DATS: 100% garantido até ${guaranteedUpTo ?? 3}/5${hasPreUnlockedBonus ? ' e já nasce com Ultimate e Mega desbloqueadas!' : '.'}`
+      : def.description,
     iconUrl: def.iconUrl,
-    rarity: def.category === 'digiegg' ? 'comum' : (item.rarity ?? def.rarity),
+    rarity: isTutorialEgg
+      ? 'epico'
+      : def.category === 'digiegg'
+        ? 'comum'
+        : (item.rarity ?? def.rarity),
     dataType: def.dataType,
-    usageInfo: def.usageInfo,
+    usageInfo: isTutorialEgg
+      ? `Injete DATA na Incubadora do DATS com 100% de sucesso garantido até ${guaranteedUpTo ?? 3}/5 (sem risco de quebra).${hasPreUnlockedBonus ? ' Nasce com Ultimate e Mega já abertas!' : ''}`
+      : def.usageInfo,
     hpRestore: def.hpRestore ?? item.hpRestore,
     dsRestore: def.dsRestore ?? item.dsRestore,
+    ...(nonSellable ? { nonSellable: true } : {}),
     eggData: def.eggData
       ? {
           ...def.eggData,
@@ -1091,6 +1123,14 @@ export function enrichInventoryItem(item: InventoryItem): InventoryItem {
           maxHatchLevel: item.eggData?.maxHatchLevel ?? def.eggData.maxHatchLevel ?? 5,
           hatchedFormId: item.eggData?.hatchedFormId ?? def.eggData.hatchedFormId,
           requiredMaterials: def.eggData.requiredMaterials?.map((m) => ({ ...m })),
+          usageRequirements: isTutorialEgg
+            ? `Presente do Comandante Sampson: 100% garantido até ${guaranteedUpTo ?? 3}/5 (0% quebra) e nasce com Ultimate + Mega desbloqueadas!`
+            : def.eggData.usageRequirements,
+          ...(guaranteedUpTo ? { guaranteedUpToLevel: guaranteedUpTo } : {}),
+          ...(preUnlockedForms && preUnlockedForms.length > 0
+            ? { preUnlockedFormIds: [...preUnlockedForms] }
+            : {}),
+          ...(isTutorialEgg ? { isTutorialGift: true } : {}),
         }
       : item.eggData,
   };

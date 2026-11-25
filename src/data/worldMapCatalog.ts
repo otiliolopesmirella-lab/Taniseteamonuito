@@ -10,6 +10,11 @@ import {
   DATS_MAP_ID,
 } from '../maps/datsCenterMap';
 import {
+  D_TERMINAL_BANNER_URL,
+  D_TERMINAL_CONDUCTOR_NPC,
+  D_TERMINAL_MAP_ID,
+} from '../maps/dTerminalMap';
+import {
   DIGI_MOUNTAIN_BANNER_URL,
   DIGI_MOUNTAIN_FRIENDLY_NPCS,
   DIGI_MOUNTAIN_HABITAT_PACKS,
@@ -58,6 +63,7 @@ import {
 
 export type PlayableMapId =
   | typeof DATS_MAP_ID
+  | typeof D_TERMINAL_MAP_ID
   | typeof HUNTING_MAP_ID
   | typeof DATA_FOREST_MAP_ID
   | typeof DIGI_MOUNTAIN_MAP_ID
@@ -326,7 +332,7 @@ export const WORLD_MAP_REGIONS: readonly WorldMapRegion[] = [
     maxLevel: 1,
     recommendedLevel: '',
     description:
-      'A base central dos Tamers. Cidade segura sem combates, com recuperação natural de HP e DS, oficiais da DATS, loja de suprimentos e portal direto para a Planície Digital onde começa a caça.',
+      'A base central dos Tamers. Cidade segura sem combates, com recuperação natural de HP e DS, oficiais da DATS, loja de suprimentos, Incubadora e portal sul direto para a estação D-Terminal.',
     categories: ['mundo'],
     mapCoords: { x: 50.0, y: 40.2 },
     npcs: REAL_DATS_NPCS,
@@ -359,6 +365,54 @@ export const WORLD_MAP_REGIONS: readonly WorldMapRegion[] = [
         detail: 'Recuperação automática de HP e DS na zona segura',
         kind: 'crystal',
         iconUrl: REWARD_ICONS.crystal,
+      },
+    ],
+    staticMissions: [],
+  },
+  {
+    id: D_TERMINAL_MAP_ID,
+    playableMapId: D_TERMINAL_MAP_ID,
+    implemented: true,
+    bannerUrl: D_TERMINAL_BANNER_URL,
+    thumbUrl: D_TERMINAL_BANNER_URL,
+    name: 'D-Terminal',
+    subtitle: 'Zona Segura · Estação Trailmon Central',
+    zoneType: 'Zona Segura',
+    minLevel: 1,
+    maxLevel: 80,
+    recommendedLevel: '',
+    description:
+      'Estação ferroviária central do Mundo Digital acessada pelo portal sul do DATS Center. Converse com o Condutor PawnChessmon (Black) em frente ao trem Trailmon para escolher seu destino entre todas as áreas liberadas.',
+    categories: ['mundo'],
+    mapCoords: { x: 56.5, y: 47.5 },
+    npcs: [
+      {
+        name: D_TERMINAL_CONDUCTOR_NPC.name,
+        role: `${D_TERMINAL_CONDUCTOR_NPC.title} · Viagens entre Mapas`,
+      },
+    ],
+    enemies: [],
+    rewards: [
+      {
+        id: 'dt-travel',
+        label: 'Estação Trailmon',
+        detail: 'Embarque com PawnChessmon (Black) para qualquer mapa desbloqueado',
+        kind: 'crystal',
+        iconUrl: REWARD_ICONS.crystal,
+      },
+      {
+        id: 'dt-safe',
+        label: 'Zona Segura',
+        detail: 'Sem monstros selvagens e recuperação natural de HP e DS',
+        kind: 'exp',
+        iconUrl: REWARD_ICONS.exp,
+      },
+      {
+        id: 'dt-return',
+        label: 'Portal DATS',
+        detail: 'Retorno rápido ao DATS Center pelo portal sul da estação',
+        kind: 'item',
+        iconUrl: REWARD_ICONS.item,
       },
     ],
     staticMissions: [],
@@ -957,7 +1011,7 @@ export function getRegionAccessState(
     return 'current';
   }
   if (!region.implemented || !region.playableMapId) {
-    return playerLevel < region.minLevel && !isGM ? 'level-locked' : 'upcoming';
+    return 'upcoming';
   }
   if (playerLevel < region.minLevel && !isGM) {
     return 'level-locked';
@@ -980,6 +1034,19 @@ export function getRegionLiveMissions(
         summary: 'Visite os pontos luminosos da praça para registrá-los.',
         progressText: `${discoveredZoneCount}/${total} pontos`,
         completed,
+      },
+    ];
+  }
+
+  if (region.playableMapId === D_TERMINAL_MAP_ID) {
+    return [
+      {
+        id: 'd-terminal-hub',
+        title: 'Estação Central D-Terminal',
+        summary:
+          'Fale com o Condutor PawnChessmon (Black) na frente do trem Trailmon para escolher sua próxima área de caça.',
+        progressText: 'Zona Segura',
+        completed: true,
       },
     ];
   }

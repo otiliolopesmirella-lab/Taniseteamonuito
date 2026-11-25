@@ -248,6 +248,7 @@ export async function fetchServerSnapshotForGm(): Promise<GmServerSnapshot> {
       }
       const rawMap = String(d.mapId ?? 'dats-center');
       const mapId: SharedWorldMapId =
+        rawMap === 'd-terminal' ||
         rawMap === 'hunting-plains' ||
         rawMap === 'data-forest' ||
         rawMap === 'digi-mountain' ||
@@ -379,6 +380,7 @@ export async function fetchServerSnapshotForGm(): Promise<GmServerSnapshot> {
 
       const rawMap = String(pres?.mapId ?? adv?.mapId ?? 'dats-center');
       const mapId: SharedWorldMapId =
+        rawMap === 'd-terminal' ||
         rawMap === 'hunting-plains' ||
         rawMap === 'data-forest' ||
         rawMap === 'digi-mountain' ||
@@ -735,6 +737,13 @@ function buildValidHudStatePatch(
   }
   if (hud.autoFarmVipUnlocked === true) {
     nextHudState.autoFarmVipUnlocked = true;
+  }
+  if (
+    typeof hud.autoFarmVipUntilMs === 'number' &&
+    Number.isFinite(hud.autoFarmVipUntilMs) &&
+    hud.autoFarmVipUntilMs > 0
+  ) {
+    nextHudState.autoFarmVipUntilMs = hud.autoFarmVipUntilMs;
   }
 
   return {

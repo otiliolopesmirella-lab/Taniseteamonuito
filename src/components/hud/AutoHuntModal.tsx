@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   Check,
+  Clock,
   Coins,
   Crosshair,
   Crown,
@@ -16,11 +17,14 @@ import {
 import type { PlayableMapId } from '../../data/worldMapCatalog';
 import {
   AUTO_FARM_VIP_COST_DWCOIN,
+  AUTO_FARM_VIP_DURATION_DAYS,
   AUTO_FARM_VIP_XP_BONUS_PCT,
   AUTO_HUNT_MAP_GROUPS,
   AUTO_HUNT_THRESHOLD_PRESETS,
   clampThresholdPct,
   countRecoveryItems,
+  formatAutoFarmVipExpiryDate,
+  formatAutoFarmVipRemaining,
   type AutoHuntConfig,
 } from '../../services/autoHuntService';
 import type { WildMonsterSpecies } from '../../maps/huntingFieldMap';
@@ -39,6 +43,8 @@ interface AutoHuntModalProps {
   digimonMaxDs: number;
   inventory: readonly InventoryItem[];
   autoFarmVipUnlocked: boolean;
+  autoFarmVipUntilMs?: number | null;
+  isGM?: boolean;
   dCoinBalance: number;
   onUnlockAutoFarmVip?: () => { ok: boolean; message: string };
   onOpenDwCoinShop?: () => void;
@@ -57,6 +63,8 @@ export function AutoHuntModal({
   digimonMaxDs,
   inventory,
   autoFarmVipUnlocked,
+  autoFarmVipUntilMs = null,
+  isGM = false,
   dCoinBalance,
   onUnlockAutoFarmVip,
   onOpenDwCoinShop,
@@ -131,6 +139,12 @@ export function AutoHuntModal({
 
   const hasEnoughDwCoin = dCoinBalance >= AUTO_FARM_VIP_COST_DWCOIN;
   const isVipBonusActive = autoFarmVipUnlocked && config.enabled;
+  const vipRemainingLabel = formatAutoFarmVipRemaining(autoFarmVipUntilMs);
+  const vipExpiryDateLabel = formatAutoFarmVipExpiryDate(autoFarmVipUntilMs);
+  const hasPreviousExpiredVip =
+    !autoFarmVipUnlocked &&
+    typeof autoFarmVipUntilMs === 'number' &&
+    autoFarmVipUntilMs > 0;
 
   return (
     <div
@@ -167,15 +181,21 @@ export function AutoHuntModal({
               <p className="text-[10.5px] font-bold text-cyan-200/85">
                 {isVipBonusActive ? (
                   <span className="text-emerald-300">
-                    ATIVO (+{AUTO_FARM_VIP_XP_BONUS_PCT}% EXP) · {config.targetSpecies.length} alvo(s) · {digimonName}
+                    ATIVO (+{AUTO_FARM_VIP_XP_BONUS_PCT}% EXP)
+                    {!isGM && vipRemainingLabel ? ` · ${vipRemainingLabel} restantes` : ''} · {config.targetSpecies.length} alvo(s)
                   </span>
                 ) : autoFarmVipUnlocked ? (
                   <span>
-                    PAUSADO · Ative o Auto Farm para ganhar +{AUTO_FARM_VIP_XP_BONUS_PCT}% EXP
+                    PAUSADO ·{' '}
+                    {isGM
+                      ? 'Acesso GM'
+                      : vipRemainingLabel
+                        ? `${vipRemainingLabel} restantes`
+                        : `${AUTO_FARM_VIP_DURATION_DAYS} dias ativos`}
                   </span>
                 ) : (
                   <span className="text-amber-200">
-                    BLOQUEADO · Libere o VIP Auto Farm por {AUTO_FARM_VIP_COST_DWCOIN} DL Din
+                    {hasPreviousExpiredVip ? 'EXPIRADO' : 'BLOQUEADO'} · {AUTO_FARM_VIP_COST_DWCOIN} DL Din ({AUTO_FARM_VIP_DURATION_DAYS} dias)
                   </span>
                 )}
               </p>
@@ -199,23 +219,31 @@ export function AutoHuntModal({
             <div className="space-y-2.5 rounded-xl border-2 border-amber-300/75 bg-gradient-to-br from-[#2a1a05]/95 via-[#18163a]/95 to-[#06183b]/95 p-3.5 shadow-[0_0_24px_rgba(251,191,36,0.22)]">
               <div className="flex items-start justify-between gap-2.5">
                 <div className="space-y-1">
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <Crown className="h-4 w-4 shrink-0 text-amber-300" />
                     <span className="text-xs font-black tracking-wide text-amber-200">
-                      VIP AUTO FARM · {AUTO_FARM_VIP_COST_DWCOIN} DL Din
+                      VIP AUTO FARM · {AUTO_FARM_VIP_DURATION_DAYS} DIAS ({AUTO_FARM_VIP_COST_DWCOIN} DL Din)
                     </span>
                   </div>
-                  <p className="text-[11px] leading-snug text-slate-200">
-                    Desbloqueie o Auto Farm na sua conta por{' '}
-                    <strong className="text-amber-200">{AUTO_FARM_VIP_COST_DWCOIN} DL Din</strong> e
-                    ganhe{' '}
+                  {hasPreviousExpiredVip && (
+                    <p className="text-[11px] font-extrabold text-rose-300">
+                      Seu plano de {AUTO_FARM_VIP_DURATION_DAYS} dias expirou. Renove por {AUTO_FARM_VIP_COST_DWCOIN} DL Din para liberar mais {AUTO_FARM_VIP_DURATION_DAYS} dias!
+                    </p>
+                  )}
+                  <p className="text-[11.5px] leading-snug text-slate-200">
+                    Ative o Auto Farm por{' '}
+                    <strong className="text-amber-200">
+                      {AUTO_FARM_VIP_COST_DWCOIN} DL Din (R$ {AUTO_FARM_VIP_COST_DWCOIN})
+                    </strong>{' '}
+                    com duração de{' '}
+                    <strong className="text-white">{AUTO_FARM_VIP_DURATION_DAYS} dias</strong> e ganhe{' '}
                     <strong className="text-emerald-300">
-                      +{AUTO_FARM_VIP_XP_BONUS_PCT}% de EXP no servidor
+                      +{AUTO_FARM_VIP_XP_BONUS_PCT}% de EXP extra
                     </strong>{' '}
                     sempre que o Auto Farm estiver <strong>ATIVADO</strong>!
                   </p>
-                  <p className="text-[10px] font-bold text-cyan-200/85">
-                    O bônus de +{AUTO_FARM_VIP_XP_BONUS_PCT}% EXP funciona exclusivamente enquanto o Auto Farm estiver ligado.
+                  <p className="text-[10.5px] font-bold text-cyan-200/85">
+                    Após os {AUTO_FARM_VIP_DURATION_DAYS} dias, basta comprar novamente para continuar usando.
                   </p>
                 </div>
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-amber-300/60 bg-amber-500/20 text-amber-200">
@@ -232,7 +260,7 @@ export function AutoHuntModal({
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {!hasEnoughDwCoin && onOpenDwCoinShop && (
                     <button
                       type="button"
@@ -240,7 +268,7 @@ export function AutoHuntModal({
                         onPlayTone('click');
                         onOpenDwCoinShop();
                       }}
-                      className="flex min-h-[36px] items-center gap-1.5 rounded-lg border border-cyan-300/75 bg-gradient-to-b from-sky-500 to-blue-700 px-3 text-[11px] font-black text-white shadow-[0_0_12px_rgba(56,189,248,0.35)] transition hover:brightness-110 active:scale-95"
+                      className="flex min-h-[40px] items-center gap-1.5 rounded-lg border border-cyan-300/75 bg-gradient-to-b from-sky-500 to-blue-700 px-3 text-[11px] font-black text-white shadow-[0_0_12px_rgba(56,189,248,0.35)] transition hover:brightness-110 active:scale-95"
                     >
                       <Coins className="h-3.5 w-3.5" />
                       <span>COMPRAR DL DIN</span>
@@ -250,14 +278,16 @@ export function AutoHuntModal({
                   <button
                     type="button"
                     onClick={handleUnlockVip}
-                    className={`flex min-h-[36px] items-center gap-1.5 rounded-lg border px-3.5 text-[11px] font-black tracking-wide transition active:scale-95 ${
+                    className={`flex min-h-[40px] items-center gap-1.5 rounded-lg border px-3.5 text-[11px] font-black tracking-wide transition active:scale-95 ${
                       hasEnoughDwCoin
                         ? 'border-amber-200 bg-gradient-to-b from-amber-400 to-amber-600 text-slate-950 shadow-[0_0_16px_rgba(251,191,36,0.45)] hover:brightness-110'
                         : 'border-amber-400/45 bg-amber-950/60 text-amber-200/80 hover:bg-amber-900/60'
                     }`}
                   >
                     <Crown className="h-3.5 w-3.5" />
-                    <span>ATIVAR VIP ({AUTO_FARM_VIP_COST_DWCOIN} DL Din)</span>
+                    <span>
+                      {hasPreviousExpiredVip ? 'RENOVAR' : 'ATIVAR'} {AUTO_FARM_VIP_DURATION_DAYS}D ({AUTO_FARM_VIP_COST_DWCOIN} DL Din)
+                    </span>
                   </button>
                 </div>
               </div>
@@ -305,9 +335,25 @@ export function AutoHuntModal({
                       : `+${AUTO_FARM_VIP_XP_BONUS_PCT}% EXP PAUSADO`}
                   </span>
                 </div>
+
+                {/* Live 30-Day Subscription Remaining Time */}
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold text-cyan-200">
+                  <Clock className="h-3.5 w-3.5 shrink-0 text-amber-300" />
+                  {isGM ? (
+                    <span className="text-amber-200">Acesso GM Ilimitado</span>
+                  ) : vipRemainingLabel ? (
+                    <span>
+                      Restam <strong className="text-amber-200 tabular-nums">{vipRemainingLabel}</strong>
+                      {vipExpiryDateLabel ? ` (válido até ${vipExpiryDateLabel})` : ''}
+                    </span>
+                  ) : (
+                    <span>Plano de {AUTO_FARM_VIP_DURATION_DAYS} dias ativo</span>
+                  )}
+                </div>
+
                 <p className="text-[10.5px] leading-snug text-slate-300">
-                  {currentMapId === 'dats-center'
-                    ? 'Você está no DATS Center (zona segura). Ao entrar em um mapa de caça, o Auto Farm e o bônus de +50% EXP começarão automaticamente.'
+                  {currentMapId === 'dats-center' || currentMapId === 'd-terminal'
+                    ? 'Você está em uma zona segura. Ao entrar em um mapa de caça, o Auto Farm e o bônus de +50% EXP começarão automaticamente.'
                     : config.targetSpecies.length === 0
                       ? 'Selecione ao menos 1 Digimon abaixo para seu parceiro caçar automaticamente no mapa.'
                       : config.enabled

@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import {
   creditApprovedMercadoPagoPayment,
+  getResolvedFirestoreTarget,
   isFirestoreAutoCreditConfigured,
 } from '../_lib/mpFirestoreCredit.js';
 import {
@@ -61,10 +62,13 @@ export default async function handler(
   res.setHeader('X-Content-Type-Options', 'nosniff');
 
   if (req.method === 'GET') {
+    const target = getResolvedFirestoreTarget();
     sendJson(res, 200, {
       ok: true,
       service: 'mercadopago-webhook',
       autoCreditConfigured: isFirestoreAutoCreditConfigured(),
+      projectId: target.projectId,
+      databaseId: target.databaseId,
     });
     return;
   }
