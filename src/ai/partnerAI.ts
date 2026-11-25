@@ -784,11 +784,12 @@ export function updatePartnerAI(
     }
   }
 
-  // Advance running animation frames briskly
+  // Advance walking/flying animation frames at a smooth, natural RPG cadence (~8.2 FPS)
   if (partner.isMoving) {
     partner.frameTime += dt;
-    if (partner.frameTime >= 1 / 12.5) {
-      partner.frameTime = 0;
+    if (partner.frameTime >= 1 / 8.2) {
+      partner.frameTime -= 1 / 8.2;
+      if (partner.frameTime > 0.2) partner.frameTime = 0;
       partner.frameIndex = (partner.frameIndex + 1) % 4;
     }
   } else {

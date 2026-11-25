@@ -68,6 +68,41 @@ service cloud.firestore {
           newData.hudState.dCoin <= oldData.hudState.dCoin);
     }
 
+    function canCreatePlayerAutoFarmVip(data) {
+      return isAdmin() ||
+        data.hudState == null ||
+        (data.hudState is map && (
+          !('autoFarmVipUnlocked' in data.hudState) ||
+          data.hudState.autoFarmVipUnlocked == null ||
+          data.hudState.autoFarmVipUnlocked == false
+        ));
+    }
+
+    function canUpdatePlayerAutoFarmVip(newData, oldData) {
+      return isAdmin() ||
+        newData.hudState == null ||
+        (newData.hudState is map && (
+          !('autoFarmVipUnlocked' in newData.hudState) ||
+          newData.hudState.autoFarmVipUnlocked == null ||
+          newData.hudState.autoFarmVipUnlocked == false
+        )) ||
+        ('hudState' in oldData &&
+          oldData.hudState != null &&
+          oldData.hudState is map &&
+          'autoFarmVipUnlocked' in oldData.hudState &&
+          oldData.hudState.autoFarmVipUnlocked == true) ||
+        ('hudState' in oldData &&
+          oldData.hudState != null &&
+          oldData.hudState is map &&
+          'dCoin' in oldData.hudState &&
+          oldData.hudState.dCoin is number &&
+          newData.hudState is map &&
+          'dCoin' in newData.hudState &&
+          newData.hudState.dCoin is number &&
+          oldData.hudState.dCoin >= 20 &&
+          oldData.hudState.dCoin - newData.hudState.dCoin >= 20);
+    }
+
     function isValidId(id) {
       return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
@@ -159,7 +194,7 @@ service cloud.firestore {
       return hud == null || (
         hud is map &&
         hud.keys().hasAll(['tamer', 'digimon', 'bits', 'dCoin', 'inventory', 'equippedItems', 'guildName', 'defeatedEnemiesTotal', 'updatedAt']) &&
-        hud.keys().hasOnly(['tamer', 'digimon', 'bits', 'dCoin', 'inventory', 'equippedItems', 'guildName', 'tamerPhotoUrl', 'tamerCoverUrl', 'xpBoostUntilMs', 'defeatedEnemiesTotal', 'updatedAt']) &&
+        hud.keys().hasOnly(['tamer', 'digimon', 'bits', 'dCoin', 'inventory', 'equippedItems', 'guildName', 'tamerPhotoUrl', 'tamerCoverUrl', 'xpBoostUntilMs', 'autoFarmVipUnlocked', 'defeatedEnemiesTotal', 'updatedAt']) &&
         isValidRuntimeStats(hud.tamer) &&
         isValidRuntimeStats(hud.digimon) &&
         hud.bits is number && hud.bits >= 0 && hud.bits <= 1000000000 &&
@@ -171,6 +206,7 @@ service cloud.firestore {
         (!('tamerPhotoUrl' in hud) || hud.tamerPhotoUrl == null || isValidImageDataUrl(hud.tamerPhotoUrl, 44000)) &&
         (!('tamerCoverUrl' in hud) || hud.tamerCoverUrl == null || isValidImageDataUrl(hud.tamerCoverUrl, 48000)) &&
         (!('xpBoostUntilMs' in hud) || hud.xpBoostUntilMs == null || (hud.xpBoostUntilMs is number && hud.xpBoostUntilMs >= 0 && hud.xpBoostUntilMs <= 4000000000000)) &&
+        (!('autoFarmVipUnlocked' in hud) || hud.autoFarmVipUnlocked == null || hud.autoFarmVipUnlocked is bool) &&
         hud.defeatedEnemiesTotal is number && hud.defeatedEnemiesTotal >= 0 && hud.defeatedEnemiesTotal <= 100000000 &&
         hud.updatedAt is string && hud.updatedAt.size() >= 10 && hud.updatedAt.size() <= 40
       );
@@ -632,6 +668,7 @@ service cloud.firestore {
         isValidId(userId) &&
         isValidPlayerSave(incoming(), userId) &&
         canCreatePlayerDCoin(incoming()) &&
+        canCreatePlayerAutoFarmVip(incoming()) &&
         incoming().ownerUid == request.auth.uid &&
         incoming().createdAt == request.time &&
         incoming().updatedAt == request.time &&
@@ -641,6 +678,7 @@ service cloud.firestore {
         (isVerifiedOwner(userId) || isAdmin()) &&
         isValidPlayerSave(incoming(), userId) &&
         canUpdatePlayerDCoin(incoming(), existing()) &&
+        canUpdatePlayerAutoFarmVip(incoming(), existing()) &&
         (!('ownerUid' in existing()) || existing().ownerUid != userId || incoming().ownerUid == existing().ownerUid) &&
         ((('createdAt' in existing() && existing().createdAt is timestamp) && incoming().createdAt == existing().createdAt) ||
           (!('createdAt' in existing() && existing().createdAt is timestamp) && incoming().createdAt == request.time)) &&

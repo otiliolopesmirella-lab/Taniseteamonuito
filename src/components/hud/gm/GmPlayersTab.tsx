@@ -240,9 +240,9 @@ export function GmPlayersTab({
               </p>
             </div>
             <div className="rounded-lg border border-white/10 bg-[#041232] p-2">
-              <p className="text-[10px] text-slate-400">DWcoin Atuais</p>
+              <p className="text-[10px] text-slate-400">DL Din Atuais</p>
               <p className="text-xs font-black tabular-nums text-cyan-300">
-                {selectedPlayer.dCoin.toLocaleString('pt-BR')} DWcoin
+                {selectedPlayer.dCoin.toLocaleString('pt-BR')} DL Din
               </p>
             </div>
             <div className="rounded-lg border border-white/10 bg-[#041232] p-2">
@@ -285,15 +285,15 @@ export function GmPlayersTab({
             <div className="rounded-lg border border-cyan-400/25 bg-[#041232] p-2.5">
               <p className="mb-2 flex items-center gap-1.5 text-[10.5px] font-extrabold uppercase text-cyan-200">
                 <Gem className="h-3.5 w-3.5 text-cyan-300" />
-                <span>Ajustar Bits / DWcoin da Conta</span>
+                <span>Ajustar Bits / DL Din da Conta</span>
               </p>
 
               <div className="mb-2 flex flex-wrap gap-1.5">
                 {[
                   { label: '+100M Bits', bits: 100_000, dCoin: 0 },
-                  { label: '+10 DWcoin', bits: 0, dCoin: 10 },
-                  { label: '+50 DWcoin', bits: 0, dCoin: 50 },
-                  { label: '+100 DWcoin', bits: 0, dCoin: 100 },
+                  { label: '+10 DL Din', bits: 0, dCoin: 10 },
+                  { label: '+50 DL Din', bits: 0, dCoin: 50 },
+                  { label: '+100 DL Din', bits: 0, dCoin: 100 },
                 ].map((preset) => (
                   <button
                     key={preset.label}
@@ -327,7 +327,7 @@ export function GmPlayersTab({
                 </div>
                 <div>
                   <label className="text-[9.5px] font-bold text-cyan-200">
-                    Delta DWcoin (+/-)
+                    Delta DL Din (+/-)
                   </label>
                   <input
                     type="number"
@@ -475,7 +475,7 @@ export function GmPlayersTab({
           <span>Status</span>
           <span>Parceiro / Mapa</span>
           <span className="text-right">Bits</span>
-          <span className="text-right">DWcoin</span>
+          <span className="text-right">DL Din</span>
           <span className="text-right">Ações</span>
         </div>
 
@@ -551,7 +551,7 @@ export function GmPlayersTab({
 
                   <div className="flex items-center justify-between gap-2 md:block md:text-right">
                     <span className="flex items-center gap-1 text-[10px] text-slate-400 md:hidden">
-                      <Gem className="h-3 w-3 text-cyan-300" /> DWcoin:
+                      <Gem className="h-3 w-3 text-cyan-300" /> DL Din:
                     </span>
                     <span className="text-xs font-black tabular-nums text-cyan-300">
                       {p.dCoin.toLocaleString('pt-BR')}

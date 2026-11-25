@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteDoc,
   doc,
   limit,
   onSnapshot,
@@ -10,7 +11,14 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
-import { auth, db, handleFirestoreError, OperationType } from '../firebase';
+import {
+  activeFirebaseDatabaseId,
+  activeFirebaseProjectId,
+  auth,
+  db,
+  handleFirestoreError,
+  OperationType,
+} from '../firebase';
 import type { CardinalDirection, TamerMovementState } from '../sprites/tamerRealSheets';
 import type { TamerId } from '../types/character';
 import type { DigimonFormId } from '../types/digimon';
@@ -156,10 +164,10 @@ const VALID_FORMS = new Set<DigimonFormId>([
 ]);
 
 /**
- * Players whose server-clock heartbeat is older than 120s (compared against
+ * Players whose server-clock heartbeat is older than 35s (compared against
  * Google Firestore's own server timestamp, never raw device Date.now()) are pruned.
  */
-export const PRESENCE_STALE_MS = 120_000;
+export const PRESENCE_STALE_MS = 35_000;
 
 function safeDir(dir: unknown): CardinalDirection {
   const s = String(dir ?? 'S').toUpperCase();
@@ -226,6 +234,65 @@ function parseTimestampMs(raw: unknown): number | null {
 let activeChatSeq = Math.floor(Date.now() / 1000) % 900_000;
 let hasInitializedPresenceDocForUid: string | null = null;
 let presenceEpoch = 0;
+let cachedPresenceIdToken: { uid: string; token: string; fetchedAtMs: number } | null = null;
+
+function refreshCachedPresenceIdToken(): void {
+  const user = auth.currentUser;
+  if (!user || !user.emailVerified) {
+    cachedPresenceIdToken = null;
+    return;
+  }
+  const now = Date.now();
+  if (
+    cachedPresenceIdToken &&
+    cachedPresenceIdToken.uid === user.uid &&
+    now - cachedPresenceIdToken.fetchedAtMs < 20 * 60_000
+  ) {
+    return;
+  }
+  void user
+    .getIdToken()
+    .then((token) => {
+      if (auth.currentUser?.uid === user.uid && token) {
+        cachedPresenceIdToken = { uid: user.uid, token, fetchedAtMs: Date.now() };
+      }
+    })
+    .catch(() => {
+      // Best-effort token cache for keepalive disconnect
+    });
+}
+
+/**
+ * Fires a keepalive Firestore REST DELETE on `/worldPresence/{uid}` that survives
+ * mobile app switching, tab close, and browser kill where async WebChannel SDK writes abort.
+ */
+export function sendKeepalivePresenceDisconnect(uidOverride?: string): void {
+  const uid = uidOverride ?? auth.currentUser?.uid ?? cachedPresenceIdToken?.uid;
+  if (!uid || !cachedPresenceIdToken || cachedPresenceIdToken.uid !== uid) {
+    return;
+  }
+  const projectId = activeFirebaseProjectId;
+  const databaseId = activeFirebaseDatabaseId || '(default)';
+  if (!projectId) return;
+
+  const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(
+    projectId
+  )}/databases/${encodeURIComponent(databaseId)}/documents/worldPresence/${encodeURIComponent(uid)}`;
+
+  try {
+    void fetch(url, {
+      method: 'DELETE',
+      keepalive: true,
+      headers: {
+        Authorization: `Bearer ${cachedPresenceIdToken.token}`,
+      },
+    }).catch(() => {
+      // Best-effort keepalive disconnect
+    });
+  } catch {
+    // Ignore unsupported keepalive environments
+  }
+}
 
 export function bumpPresenceSessionEpoch(): number {
   presenceEpoch += 1;
@@ -244,6 +311,7 @@ export async function publishLocalWorldPresence(
   if (!user || !user.emailVerified) {
     return { ok: false, chatSeq: null, errorMessage: 'Conta não verificada' };
   }
+  refreshCachedPresenceIdToken();
 
   const ready = await ensurePlayerDocBootstrapped(user);
   if (!ready) {
@@ -392,8 +460,9 @@ export async function broadcastWorldChatBubble(
 }
 
 /**
- * Marks the current user's world presence offline cleanly on exit, sign-out, or page hide.
- * Optional `expectedEpoch` guards against stale React cleanup marking a freshly mounted session offline.
+ * Immediately removes the current user's live world presence on exit, sign-out, tab hide, or page close.
+ * Uses BOTH a keepalive REST DELETE (survives mobile/tab close) and Firestore SDK deleteDoc
+ * so ghost characters never remain inside the server after leaving.
  */
 export async function markLocalWorldPresenceOffline(
   expectedEpoch?: number
@@ -402,20 +471,32 @@ export async function markLocalWorldPresenceOffline(
     return;
   }
   const user = auth.currentUser;
-  if (!user || !user.emailVerified) {
-    hasInitializedPresenceDocForUid = null;
+  const uid = user?.uid ?? cachedPresenceIdToken?.uid ?? null;
+  hasInitializedPresenceDocForUid = null;
+
+  if (!uid) {
     return;
   }
-  if (hasInitializedPresenceDocForUid !== user.uid) return;
 
-  hasInitializedPresenceDocForUid = null;
+  // 1) Fire synchronous keepalive HTTP DELETE first (survives pagehide/mobile background kill)
+  sendKeepalivePresenceDisconnect(uid);
+
+  if (!user || !user.emailVerified) {
+    return;
+  }
+
+  // 2) Also perform SDK deleteDoc (fallback to online: false updateDoc if delete fails)
   try {
-    await updateDoc(doc(db, 'worldPresence', user.uid), {
-      online: false,
-      updatedAt: serverTimestamp(),
-    });
+    await deleteDoc(doc(db, 'worldPresence', user.uid));
   } catch {
-    // Best-effort offline signal on tab close or sign-out
+    try {
+      await updateDoc(doc(db, 'worldPresence', user.uid), {
+        online: false,
+        updatedAt: serverTimestamp(),
+      });
+    } catch {
+      // Best-effort offline signal on tab close or sign-out
+    }
   }
 }
 
@@ -514,9 +595,16 @@ export function subscribeOnlineWorldPlayers(
         const serverMs = parseTimestampMs(d.updatedAt);
 
         const prevServerMs = lastObservedServerTsByUid.get(uid);
-        if (serverMs !== null && serverMs !== prevServerMs) {
-          lastObservedServerTsByUid.set(uid, serverMs);
-          lastObservedLocalArrivalByUid.set(uid, localNow);
+        if (serverMs !== null) {
+          if (prevServerMs === undefined) {
+            // First time seeing this doc on initial snapshot: record server timestamp,
+            // do NOT grant a fresh local-arrival grace lease to an already-stale ghost!
+            lastObservedServerTsByUid.set(uid, serverMs);
+          } else if (serverMs !== prevServerMs) {
+            // Genuine live heartbeat update arrived after mount
+            lastObservedServerTsByUid.set(uid, serverMs);
+            lastObservedLocalArrivalByUid.set(uid, localNow);
+          }
         }
 
         next.push({
@@ -561,8 +649,8 @@ export function subscribeOnlineWorldPlayers(
     }
   );
 
-  // Periodically prune stale players even if no new snapshot events arrive
-  const pruneTimer = window.setInterval(emitFiltered, 15_000);
+  // Periodically prune stale players every 5s even if no new snapshot events arrive
+  const pruneTimer = window.setInterval(emitFiltered, 5_000);
 
   return () => {
     window.clearInterval(pruneTimer);

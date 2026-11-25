@@ -207,9 +207,9 @@ export const InventoryHudWindow = memo(function InventoryHudWindow({
 
           {/* Right: DWcoin Pill + Close Button */}
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-            {/* DWcoin Chamfered Pill */}
+            {/* DL Din Chamfered Pill */}
             <div
-              title="DWcoin: moeda premium da Loja Digital"
+              title="DL Din: moeda premium da Loja Digital"
               className="clip-cyber-input bg-gradient-to-r from-[#5ce6ff] to-[#1d7ff2] p-[1.5px] shadow-[0_0_12px_rgba(56,214,255,0.45)]"
             >
               <div className="clip-cyber-input flex items-center gap-1.5 bg-gradient-to-b from-[#072973] to-[#031036] px-2.5 py-1 sm:px-3">
@@ -239,15 +239,15 @@ export const InventoryHudWindow = memo(function InventoryHudWindow({
                     y="19.8"
                     textAnchor="middle"
                     fill="#fef9c3"
-                    fontSize="10"
+                    fontSize="10.5"
                     fontWeight="900"
                     fontFamily="system-ui, sans-serif"
                   >
-                    DW
+                    DL
                   </text>
                 </svg>
                 <span className="hidden text-[10.5px] font-black italic text-amber-300 sm:inline">
-                  DWcoin:
+                  DL Din:
                 </span>
                 <span className="text-xs font-black italic tabular-nums text-white sm:text-sm">
                   {dCoin.toLocaleString('pt-BR')}
@@ -367,7 +367,7 @@ export const InventoryHudWindow = memo(function InventoryHudWindow({
                         </span>
                       </span>
                       <span className="shrink-0 text-[8.5px] text-cyan-200/80">
-                        Loja DW
+                        Loja DL
                       </span>
                     </div>
                   )}
@@ -381,7 +381,7 @@ export const InventoryHudWindow = memo(function InventoryHudWindow({
                         key={`locked-slot-${slotNumber}`}
                         type="button"
                         onClick={() => setSelectedLockedSlot(slotNumber)}
-                        title={`Slot #${slotNumber} trancado — Use Expansor de Inventário na Loja DWcoin`}
+                        title={`Slot #${slotNumber} trancado — Use Expansor de Inventário na Loja DL Din`}
                         className={`clip-cyber-slot aspect-square p-[1.5px] transition-all ${
                           isLockedSelected
                             ? 'bg-amber-300'
@@ -422,7 +422,7 @@ export const InventoryHudWindow = memo(function InventoryHudWindow({
                     <span className="font-bold text-amber-200">
                       Expansor de Inventário
                     </span>{' '}
-                    na Loja DWcoin para liberar mais espaço.
+                    na Loja DL Din para liberar mais espaço.
                   </p>
                 </div>
               ) : selectedItem ? (
@@ -475,41 +475,52 @@ export const InventoryHudWindow = memo(function InventoryHudWindow({
                       {selectedItem.description}
                     </p>
 
-                    {(selectedItem.usageInfo ||
-                      selectedItem.eggData?.usageRequirements) && (
-                      <p className="mt-1.5 border-t border-cyan-400/20 pt-1.5 text-[9.5px] leading-snug text-cyan-200/95 sm:text-[10px]">
-                        <span className="font-black text-amber-300">Efeito / Uso: </span>
-                        {selectedItem.eggData?.usageRequirements ??
-                          selectedItem.usageInfo}
-                      </p>
-                    )}
-
-                    {selectedMatchingData &&
-                      selectedItem.eggData?.requiredDataQuantity && (
-                        <div className="mt-1.5 flex items-center justify-between gap-1 rounded border border-cyan-400/30 bg-[#051a4a] px-1.5 py-1 text-[9.5px]">
-                          <div className="flex min-w-0 items-center gap-1">
-                            <img
-                              src={selectedMatchingData.iconUrl}
-                              alt={selectedMatchingData.name}
-                              className="h-3.5 w-3.5 shrink-0 object-contain"
-                            />
-                            <span className="truncate font-bold text-cyan-100">
-                              {selectedMatchingData.name}
+                    {selectedItem.category === 'digiegg' &&
+                    (selectedItem.eggData?.hatchLevel ?? 0) >= 5 ? (
+                      <div className="mt-1.5 rounded border border-amber-300/60 bg-amber-950/50 px-2 py-1.5 text-[9.5px] font-bold text-amber-200">
+                        5/5 · Não precisa de DATA! Coloque na Incubadora DATS e choque seu Digimon Nv. 1 para jogar na hora.
+                      </div>
+                    ) : (
+                      <>
+                        {(selectedItem.usageInfo ||
+                          selectedItem.eggData?.usageRequirements) && (
+                          <p className="mt-1.5 border-t border-cyan-400/20 pt-1.5 text-[9.5px] leading-snug text-cyan-200/95 sm:text-[10px]">
+                            <span className="font-black text-amber-300">
+                              Efeito / Uso:{' '}
                             </span>
-                          </div>
-                          <span
-                            className={`shrink-0 font-black tabular-nums ${
-                              ownedMatchingDataQty >=
-                              selectedItem.eggData.requiredDataQuantity
-                                ? 'text-emerald-300'
-                                : 'text-rose-300'
-                            }`}
-                          >
-                            {ownedMatchingDataQty}/
-                            {selectedItem.eggData.requiredDataQuantity}
-                          </span>
-                        </div>
-                      )}
+                            {selectedItem.eggData?.usageRequirements ??
+                              selectedItem.usageInfo}
+                          </p>
+                        )}
+
+                        {selectedMatchingData &&
+                          selectedItem.eggData?.requiredDataQuantity && (
+                            <div className="mt-1.5 flex items-center justify-between gap-1 rounded border border-cyan-400/30 bg-[#051a4a] px-1.5 py-1 text-[9.5px]">
+                              <div className="flex min-w-0 items-center gap-1">
+                                <img
+                                  src={selectedMatchingData.iconUrl}
+                                  alt={selectedMatchingData.name}
+                                  className="h-3.5 w-3.5 shrink-0 object-contain"
+                                />
+                                <span className="truncate font-bold text-cyan-100">
+                                  {selectedMatchingData.name}
+                                </span>
+                              </div>
+                              <span
+                                className={`shrink-0 font-black tabular-nums ${
+                                  ownedMatchingDataQty >=
+                                  selectedItem.eggData.requiredDataQuantity
+                                    ? 'text-emerald-300'
+                                    : 'text-rose-300'
+                                }`}
+                              >
+                                {ownedMatchingDataQty}/
+                                {selectedItem.eggData.requiredDataQuantity}
+                              </span>
+                            </div>
+                          )}
+                      </>
+                    )}
 
                     {selectedMatchingEgg && (
                       <div className="mt-1.5 flex items-center gap-1 rounded border border-cyan-400/30 bg-[#051a4a] px-1.5 py-1 text-[9.5px]">

@@ -77,7 +77,6 @@ import {
 } from '../../services/archiveService';
 import { DIGIMON_DROP_TABLES } from '../../services/dropService';
 import {
-  BASIC_BITS_SHOP_ITEMS,
   DIGIMON_EVOLUTION_CHAINS,
   getFormEvoluterCost,
   getUnlockedInventorySlots,
@@ -389,7 +388,7 @@ function AdminTestModalInner({
         'ok',
         `Saldo atualizado! Novo total: ${formatDigitalCurrency(
           res.nextBits
-        )} · ${res.nextDCoin.toLocaleString('pt-BR')} DWcoin.`
+        )} · ${res.nextDCoin.toLocaleString('pt-BR')} DL Din.`
       );
       await loadServerSnapshot();
     } catch (err) {
@@ -467,7 +466,7 @@ function AdminTestModalInner({
       });
       showNotice(
         'ok',
-        `Pedido aprovado! +${res.dwCoinCredited} DWcoin creditados (novo saldo: ${res.nextBalance}).`
+        `Pedido aprovado! +${res.dwCoinCredited} DL Din creditados (novo saldo: ${res.nextBalance}).`
       );
       await loadServerSnapshot();
     } catch (err) {
@@ -559,7 +558,7 @@ function AdminTestModalInner({
   const serverManagementTabs = [
     { id: 'overview', label: 'Visão Geral', icon: Activity },
     { id: 'players', label: 'Jogadores', icon: Users },
-    { id: 'economy', label: 'DWcoin/Loja', icon: Gem },
+    { id: 'economy', label: 'DL Din/Loja', icon: Gem },
     { id: 'moderation', label: 'Bans & Logs', icon: Ban },
   ] as const;
 
@@ -596,7 +595,7 @@ function AdminTestModalInner({
                 Central de Comando GM · Servidor & Ferramentas
               </h2>
               <p className="truncate text-[10px] font-semibold text-cyan-200/85">
-                Monitor ao vivo, Economia DWcoin, Banimentos e Spawn · [F9]
+                Monitor ao vivo, Economia DL Din, Banimentos e Spawn · [F9]
               </p>
             </div>
           </div>
@@ -657,7 +656,7 @@ function AdminTestModalInner({
           <div className="flex items-center gap-2.5 tabular-nums">
             <span className="text-amber-300">{formatDigitalCurrency(bits)}</span>
             <span className="text-cyan-300">
-              {dCoin.toLocaleString('pt-BR')} DWcoin
+              {dCoin.toLocaleString('pt-BR')} DL Din
             </span>
             <span className="text-slate-300">
               Mochila {inventory.length}/{safeUnlockedSlots}
@@ -1641,7 +1640,7 @@ function AdminTestModalInner({
               <div className="rounded-xl border border-cyan-400/35 bg-[#041232] p-3">
                 <p className="mb-2 flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wide text-cyan-200">
                   <Coins className="h-4 w-4 text-amber-300" />
-                  <span>Moedas & Economia (Bits / DWcoin)</span>
+                  <span>Moedas & Economia (Bits / DL Din)</span>
                 </p>
                 <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5">
                   <button
@@ -1674,7 +1673,7 @@ function AdminTestModalInner({
                     className="flex min-h-[42px] items-center justify-center gap-1 rounded-xl border border-cyan-300/75 bg-cyan-500/20 px-2 text-[11px] font-black text-cyan-100 hover:bg-cyan-500/30 active:scale-95"
                   >
                     <Gem className="h-3.5 w-3.5 shrink-0" />
-                    <span>+500 DWcoin</span>
+                    <span>+500 DL Din</span>
                   </button>
                   <button
                     type="button"
@@ -1682,7 +1681,7 @@ function AdminTestModalInner({
                     className="flex min-h-[42px] items-center justify-center gap-1 rounded-xl border border-amber-300/80 bg-amber-500/25 px-2 text-[11px] font-black text-amber-100 hover:bg-amber-500/35 active:scale-95"
                   >
                     <Gem className="h-3.5 w-3.5 shrink-0" />
-                    <span>+5.000 DWcoin</span>
+                    <span>+5.000 DL Din</span>
                   </button>
                 </div>
               </div>
@@ -1736,43 +1735,16 @@ function AdminTestModalInner({
                 </div>
               </div>
 
-              {/* Equipment Items */}
+              {/* Backpack Management */}
               <div className="rounded-xl border border-cyan-400/35 bg-[#041232] p-3">
-                <div className="mb-2 flex items-center justify-between">
+                <div className="flex items-center justify-between">
                   <span className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wide text-cyan-200">
                     <ShieldCheck className="h-4 w-4 text-emerald-300" />
-                    <span>Equipamentos DATS</span>
+                    <span>Mochila do Personagem</span>
                   </span>
                   <span className="text-[10px] font-bold tabular-nums text-slate-300">
                     {inventory.length}/{safeUnlockedSlots} slots
                   </span>
-                </div>
-
-                <div className="space-y-1.5">
-                  {BASIC_BITS_SHOP_ITEMS.map((item) => (
-                    <div
-                      key={item.itemKey}
-                      className="flex items-center justify-between gap-2 rounded-xl border border-cyan-400/20 bg-[#061844] px-2.5 py-2"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-xs font-extrabold text-white">
-                          {item.name}
-                        </p>
-                        <p className="truncate text-[10px] text-slate-300">
-                          {item.description}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => onGrantItem(item.itemKey, 1)}
-                          className="min-h-[38px] rounded-lg border border-cyan-300/55 bg-[#082c74] px-2.5 text-[10.5px] font-black text-white hover:bg-sky-700 active:scale-95"
-                        >
-                          +1
-                        </button>
-                      </div>
-                    </div>
-                  ))}
                 </div>
 
                 {inventory.length > 0 && (

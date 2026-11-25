@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import {
   Check,
+  Coins,
   Crosshair,
+  Crown,
   Heart,
+  Lock,
   Pause,
   Play,
   Sparkles,
@@ -12,6 +15,8 @@ import {
 } from 'lucide-react';
 import type { PlayableMapId } from '../../data/worldMapCatalog';
 import {
+  AUTO_FARM_VIP_COST_DWCOIN,
+  AUTO_FARM_VIP_XP_BONUS_PCT,
   AUTO_HUNT_MAP_GROUPS,
   AUTO_HUNT_THRESHOLD_PRESETS,
   clampThresholdPct,
@@ -33,6 +38,10 @@ interface AutoHuntModalProps {
   digimonDs: number;
   digimonMaxDs: number;
   inventory: readonly InventoryItem[];
+  autoFarmVipUnlocked: boolean;
+  dCoinBalance: number;
+  onUnlockAutoFarmVip?: () => { ok: boolean; message: string };
+  onOpenDwCoinShop?: () => void;
   onUpdateConfig: (next: AutoHuntConfig) => void;
   onPlayTone: (tone: 'click' | 'confirm' | 'error') => void;
   onClose: () => void;
@@ -47,6 +56,10 @@ export function AutoHuntModal({
   digimonDs,
   digimonMaxDs,
   inventory,
+  autoFarmVipUnlocked,
+  dCoinBalance,
+  onUnlockAutoFarmVip,
+  onOpenDwCoinShop,
   onUpdateConfig,
   onPlayTone,
   onClose,
@@ -57,6 +70,10 @@ export function AutoHuntModal({
 
   const [selectedMapTab, setSelectedMapTab] =
     useState<(typeof AUTO_HUNT_MAP_GROUPS)[number]['mapId']>(initialTab);
+  const [vipFeedback, setVipFeedback] = useState<{
+    tone: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
   const activeGroup =
     AUTO_HUNT_MAP_GROUPS.find((g) => g.mapId === selectedMapTab) ??
@@ -92,11 +109,28 @@ export function AutoHuntModal({
     onUpdateConfig({ ...config, targetSpecies: [] });
   };
 
+  const handleUnlockVip = () => {
+    if (!onUnlockAutoFarmVip) return;
+    const res = onUnlockAutoFarmVip();
+    onPlayTone(res.ok ? 'confirm' : 'error');
+    setVipFeedback({
+      tone: res.ok ? 'success' : 'error',
+      text: res.message,
+    });
+  };
+
   const handleToggleMaster = () => {
+    if (!autoFarmVipUnlocked) {
+      handleUnlockVip();
+      return;
+    }
     const nextEnabled = !config.enabled;
     onPlayTone(nextEnabled ? 'confirm' : 'click');
     onUpdateConfig({ ...config, enabled: nextEnabled });
   };
+
+  const hasEnoughDwCoin = dCoinBalance >= AUTO_FARM_VIP_COST_DWCOIN;
+  const isVipBonusActive = autoFarmVipUnlocked && config.enabled;
 
   return (
     <div
@@ -121,17 +155,27 @@ export function AutoHuntModal({
               className="h-9 w-9 shrink-0 rounded-xl border border-cyan-300/65 bg-[#04143a] object-cover shadow-[0_0_12px_rgba(56,214,255,0.45)]"
             />
             <div>
-              <h2 className="font-[family-name:var(--font-display)] text-sm font-black tracking-wide text-white">
-                AUTO-ATAQUE &amp; SUPORTE
-              </h2>
+              <div className="flex items-center gap-1.5">
+                <h2 className="font-[family-name:var(--font-display)] text-sm font-black tracking-wide text-white">
+                  VIP AUTO FARM &amp; SUPORTE
+                </h2>
+                <span className="inline-flex items-center gap-1 rounded-md border border-amber-300/75 bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-black text-amber-200">
+                  <Crown className="h-2.5 w-2.5" />
+                  +{AUTO_FARM_VIP_XP_BONUS_PCT}% EXP
+                </span>
+              </div>
               <p className="text-[10.5px] font-bold text-cyan-200/85">
-                {config.enabled ? (
+                {isVipBonusActive ? (
                   <span className="text-emerald-300">
-                    ATIVO · {config.targetSpecies.length} alvo(s) · {digimonName}
+                    ATIVO (+{AUTO_FARM_VIP_XP_BONUS_PCT}% EXP) · {config.targetSpecies.length} alvo(s) · {digimonName}
+                  </span>
+                ) : autoFarmVipUnlocked ? (
+                  <span>
+                    PAUSADO · Ative o Auto Farm para ganhar +{AUTO_FARM_VIP_XP_BONUS_PCT}% EXP
                   </span>
                 ) : (
-                  <span>
-                    PAUSADO · Escolha os Digimons e configure HP / DS
+                  <span className="text-amber-200">
+                    BLOQUEADO · Libere o VIP Auto Farm por {AUTO_FARM_VIP_COST_DWCOIN} DL Din
                   </span>
                 )}
               </p>
@@ -150,56 +194,151 @@ export function AutoHuntModal({
 
         {/* Body */}
         <div className="flex-1 space-y-3.5 overflow-y-auto p-3.5 text-xs text-sky-100 sm:p-4">
-          {/* Master Auto Control */}
-          <div
-            className={`flex flex-col gap-2.5 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between ${
-              config.enabled
-                ? 'border-emerald-300/75 bg-gradient-to-r from-[#06382d]/90 to-[#041d38]/90 shadow-[0_0_18px_rgba(16,185,129,0.22)]'
-                : 'border-cyan-400/35 bg-[#041335]'
-            }`}
-          >
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-1.5">
-                <Crosshair
-                  className={`h-4 w-4 ${
-                    config.enabled ? 'text-emerald-300' : 'text-cyan-300'
-                  }`}
-                />
-                <span className="text-xs font-black tracking-wide text-white">
-                  {config.enabled ? 'Caça Automática Ativada' : 'Caça Automática Desligada'}
+          {/* Master Auto Control / VIP Unlock Gate */}
+          {!autoFarmVipUnlocked ? (
+            <div className="space-y-2.5 rounded-xl border-2 border-amber-300/75 bg-gradient-to-br from-[#2a1a05]/95 via-[#18163a]/95 to-[#06183b]/95 p-3.5 shadow-[0_0_24px_rgba(251,191,36,0.22)]">
+              <div className="flex items-start justify-between gap-2.5">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <Crown className="h-4 w-4 shrink-0 text-amber-300" />
+                    <span className="text-xs font-black tracking-wide text-amber-200">
+                      VIP AUTO FARM · {AUTO_FARM_VIP_COST_DWCOIN} DL Din
+                    </span>
+                  </div>
+                  <p className="text-[11px] leading-snug text-slate-200">
+                    Desbloqueie o Auto Farm na sua conta por{' '}
+                    <strong className="text-amber-200">{AUTO_FARM_VIP_COST_DWCOIN} DL Din</strong> e
+                    ganhe{' '}
+                    <strong className="text-emerald-300">
+                      +{AUTO_FARM_VIP_XP_BONUS_PCT}% de EXP no servidor
+                    </strong>{' '}
+                    sempre que o Auto Farm estiver <strong>ATIVADO</strong>!
+                  </p>
+                  <p className="text-[10px] font-bold text-cyan-200/85">
+                    O bônus de +{AUTO_FARM_VIP_XP_BONUS_PCT}% EXP funciona exclusivamente enquanto o Auto Farm estiver ligado.
+                  </p>
+                </div>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-amber-300/60 bg-amber-500/20 text-amber-200">
+                  <Lock className="h-4 w-4" />
                 </span>
               </div>
-              <p className="text-[10.5px] leading-snug text-slate-300">
-                {currentMapId === 'dats-center'
-                  ? 'Você está no DATS Center (zona segura). Ao entrar em um mapa de caça, o Auto-Ataque começará automaticamente.'
-                  : config.targetSpecies.length === 0
-                    ? 'Selecione ao menos 1 Digimon abaixo para seu parceiro caçar automaticamente no mapa.'
-                    : 'Seu parceiro atacará os Digimons selecionados e você pode mover-se livremente a qualquer momento.'}
-              </p>
-            </div>
 
-            <button
-              type="button"
-              onClick={handleToggleMaster}
-              className={`flex min-h-[42px] shrink-0 items-center justify-center gap-2 rounded-xl border px-4 text-xs font-black tracking-wide transition active:scale-95 ${
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300/30 bg-[#04102a]/85 px-2.5 py-2">
+                <div className="flex items-center gap-1.5 text-[11px] font-black">
+                  <Coins className="h-3.5 w-3.5 text-amber-300" />
+                  <span className="text-slate-300">Seu saldo:</span>
+                  <span className={hasEnoughDwCoin ? 'text-emerald-300' : 'text-rose-300'}>
+                    {dCoinBalance.toLocaleString('pt-BR')} DL Din
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {!hasEnoughDwCoin && onOpenDwCoinShop && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onPlayTone('click');
+                        onOpenDwCoinShop();
+                      }}
+                      className="flex min-h-[36px] items-center gap-1.5 rounded-lg border border-cyan-300/75 bg-gradient-to-b from-sky-500 to-blue-700 px-3 text-[11px] font-black text-white shadow-[0_0_12px_rgba(56,189,248,0.35)] transition hover:brightness-110 active:scale-95"
+                    >
+                      <Coins className="h-3.5 w-3.5" />
+                      <span>COMPRAR DL DIN</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleUnlockVip}
+                    className={`flex min-h-[36px] items-center gap-1.5 rounded-lg border px-3.5 text-[11px] font-black tracking-wide transition active:scale-95 ${
+                      hasEnoughDwCoin
+                        ? 'border-amber-200 bg-gradient-to-b from-amber-400 to-amber-600 text-slate-950 shadow-[0_0_16px_rgba(251,191,36,0.45)] hover:brightness-110'
+                        : 'border-amber-400/45 bg-amber-950/60 text-amber-200/80 hover:bg-amber-900/60'
+                    }`}
+                  >
+                    <Crown className="h-3.5 w-3.5" />
+                    <span>ATIVAR VIP ({AUTO_FARM_VIP_COST_DWCOIN} DL Din)</span>
+                  </button>
+                </div>
+              </div>
+
+              {vipFeedback && (
+                <p
+                  className={`rounded-lg border px-2.5 py-1.5 text-[10.5px] font-bold ${
+                    vipFeedback.tone === 'success'
+                      ? 'border-emerald-300/60 bg-emerald-950/70 text-emerald-200'
+                      : 'border-rose-400/60 bg-rose-950/70 text-rose-200'
+                  }`}
+                >
+                  {vipFeedback.text}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div
+              className={`flex flex-col gap-2.5 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between ${
                 config.enabled
-                  ? 'border-rose-300/80 bg-gradient-to-b from-rose-600 to-rose-800 text-white shadow-[0_0_14px_rgba(244,63,94,0.4)] hover:brightness-110'
-                  : 'border-emerald-300/85 bg-gradient-to-b from-emerald-500 to-emerald-700 text-white shadow-[0_0_16px_rgba(16,185,129,0.45)] hover:brightness-110'
+                  ? 'border-emerald-300/75 bg-gradient-to-r from-[#06382d]/90 to-[#041d38]/90 shadow-[0_0_18px_rgba(16,185,129,0.22)]'
+                  : 'border-cyan-400/35 bg-[#041335]'
               }`}
             >
-              {config.enabled ? (
-                <>
-                  <Pause className="h-4 w-4" />
-                  <span>PAUSAR AUTO</span>
-                </>
-              ) : (
-                <>
-                  <Play className="h-4 w-4" />
-                  <span>ATIVAR AUTO</span>
-                </>
-              )}
-            </button>
-          </div>
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Crosshair
+                    className={`h-4 w-4 ${
+                      config.enabled ? 'text-emerald-300' : 'text-cyan-300'
+                    }`}
+                  />
+                  <span className="text-xs font-black tracking-wide text-white">
+                    {config.enabled ? 'VIP Auto Farm Ativado' : 'VIP Auto Farm Desligado'}
+                  </span>
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[9.5px] font-black ${
+                      config.enabled
+                        ? 'border-amber-300/80 bg-amber-400/20 text-amber-200 shadow-[0_0_8px_rgba(251,191,36,0.3)]'
+                        : 'border-slate-500/60 bg-slate-800/80 text-slate-300'
+                    }`}
+                  >
+                    <Crown className="h-2.5 w-2.5" />
+                    {config.enabled
+                      ? `+${AUTO_FARM_VIP_XP_BONUS_PCT}% EXP ATIVO`
+                      : `+${AUTO_FARM_VIP_XP_BONUS_PCT}% EXP PAUSADO`}
+                  </span>
+                </div>
+                <p className="text-[10.5px] leading-snug text-slate-300">
+                  {currentMapId === 'dats-center'
+                    ? 'Você está no DATS Center (zona segura). Ao entrar em um mapa de caça, o Auto Farm e o bônus de +50% EXP começarão automaticamente.'
+                    : config.targetSpecies.length === 0
+                      ? 'Selecione ao menos 1 Digimon abaixo para seu parceiro caçar automaticamente no mapa.'
+                      : config.enabled
+                        ? `Seu parceiro está caçando automaticamente com +${AUTO_FARM_VIP_XP_BONUS_PCT}% de EXP ativo!`
+                        : `Ative o Auto Farm para caçar automaticamente e receber +${AUTO_FARM_VIP_XP_BONUS_PCT}% de EXP.`}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleToggleMaster}
+                className={`flex min-h-[42px] shrink-0 items-center justify-center gap-2 rounded-xl border px-4 text-xs font-black tracking-wide transition active:scale-95 ${
+                  config.enabled
+                    ? 'border-rose-300/80 bg-gradient-to-b from-rose-600 to-rose-800 text-white shadow-[0_0_14px_rgba(244,63,94,0.4)] hover:brightness-110'
+                    : 'border-emerald-300/85 bg-gradient-to-b from-emerald-500 to-emerald-700 text-white shadow-[0_0_16px_rgba(16,185,129,0.45)] hover:brightness-110'
+                }`}
+              >
+                {config.enabled ? (
+                  <>
+                    <Pause className="h-4 w-4" />
+                    <span>PAUSAR AUTO</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-4 w-4" />
+                    <span>ATIVAR AUTO</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
 
           {/* 1. Target Digimons Selector */}
           <section className="rounded-xl border border-cyan-400/30 bg-[#041232] p-3">

@@ -24,6 +24,9 @@ const activeDatabaseId = hasProductionEnvConfig
   ? (import.meta.env.VITE_FIREBASE_DATABASE_ID ?? '').trim() || '(default)'
   : firebaseConfig.firestoreDatabaseId;
 
+export const activeFirebaseProjectId = activeFirebaseConfig.projectId;
+export const activeFirebaseDatabaseId = activeDatabaseId || '(default)';
+
 const app = initializeApp(activeFirebaseConfig);
 
 export const db =

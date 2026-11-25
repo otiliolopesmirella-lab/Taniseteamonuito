@@ -1,20 +1,26 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Archive,
   ArrowLeft,
   Backpack,
+  Check,
   CheckCircle2,
+  Copy,
   CreditCard,
   Crown,
+  ExternalLink,
   Flame,
   Info,
+  Loader2,
   Package,
   QrCode,
+  RefreshCw,
   ShoppingBag,
   Sparkles,
   X,
 } from 'lucide-react';
+import { doc, onSnapshot } from 'firebase/firestore';
 import {
   DWCOIN_PROMO_OFFER,
   DWCOIN_PURCHASE_TERMS_ITEMS,
@@ -31,6 +37,7 @@ import {
   HATCH_BACKUP_ICON_URL,
   isXpBoostIconUrl,
 } from '../../data/itemsCatalog';
+import { db } from '../../firebase';
 import { ARCHIVE_TOTAL_SLOTS } from '../../services/archiveService';
 import {
   cancelDwCoinPurchaseOrder,
@@ -40,6 +47,12 @@ import {
   type DwCoinPurchaseOrder,
 } from '../../services/dwCoinOrderService';
 import { INVENTORY_TOTAL_SLOTS } from '../../services/hudGameService';
+import {
+  checkMercadoPagoOrderStatus,
+  createMercadoPagoCheckout,
+  type MercadoPagoCheckoutResult,
+  type MercadoPagoStatusResult,
+} from '../../services/mercadoPagoService';
 
 interface DwCoinShopModalProps {
   dCoin: number;
@@ -104,11 +117,11 @@ export function DwCoinEmblem({ className = 'h-5 w-5' }: { className?: string }) 
         y="19.6"
         textAnchor="middle"
         fill="#fef9c3"
-        fontSize="9.5"
+        fontSize="10"
         fontWeight="900"
         fontFamily="system-ui, sans-serif"
       >
-        DW
+        DL
       </text>
     </svg>
   );
@@ -144,6 +157,14 @@ export function DwCoinShopModal({
   const [checkoutNoticeTone, setCheckoutNoticeTone] = useState<
     'pending' | 'cancelled' | 'approved' | 'error' | null
   >(null);
+  const [mpCheckout, setMpCheckout] = useState<MercadoPagoCheckoutResult | null>(
+    null
+  );
+  const [mpLoading, setMpLoading] = useState(false);
+  const [mpChecking, setMpChecking] = useState(false);
+  const [mpStatus, setMpStatus] = useState<MercadoPagoStatusResult | null>(null);
+  const [pixCopied, setPixCopied] = useState(false);
+  const [orderCreditedInCloud, setOrderCreditedInCloud] = useState(false);
   const [feedback, setFeedback] = useState<{
     tone: 'ok' | 'error' | 'info';
     text: string;
@@ -157,6 +178,12 @@ export function DwCoinShopModal({
     setCheckoutNotice(null);
     setCheckoutNoticeTone(null);
     setIsSubmittingTermsOrder(false);
+    setMpCheckout(null);
+    setMpLoading(false);
+    setMpChecking(false);
+    setMpStatus(null);
+    setPixCopied(false);
+    setOrderCreditedInCloud(false);
   }
 
   function openPackCheckoutModal(pack: DwCoinRechargePack) {
@@ -167,6 +194,12 @@ export function DwCoinShopModal({
     setCheckoutNotice(null);
     setCheckoutNoticeTone(null);
     setIsSubmittingTermsOrder(false);
+    setMpCheckout(null);
+    setMpLoading(false);
+    setMpChecking(false);
+    setMpStatus(null);
+    setPixCopied(false);
+    setOrderCreditedInCloud(false);
   }
 
   function handleSelectPaymentMethod(method: DwCoinPaymentMethod) {
@@ -198,19 +231,36 @@ export function DwCoinShopModal({
     setRechargeStep('select_method');
   }
 
-  function startExistingPackCheckout(
+  async function launchMercadoPagoCheckout(
     pack: DwCoinRechargePack,
     method: DwCoinPaymentMethod,
     order: DwCoinPurchaseOrder
   ) {
-    setActiveCheckoutOrder(order);
-    setRechargeStep('checkout');
-    setCheckoutNoticeTone('pending');
-    setCheckoutNotice(
-      `Pacote ${pack.dwCoinAmount} DWcoin (${pack.priceBrlLabel} via ${
-        method === 'pix' ? 'PIX' : 'Cartão'
-      }): o checkout real está em ativação final para o lançamento oficial. Nenhuma cobrança foi realizada.`
-    );
+    setMpLoading(true);
+    setMpCheckout(null);
+    setMpStatus(null);
+    setPixCopied(false);
+    setCheckoutNotice(null);
+    setCheckoutNoticeTone(null);
+
+    const mpResult = await createMercadoPagoCheckout({
+      orderId: order.orderId,
+      packId: pack.id,
+      paymentMethod: method,
+    });
+
+    setMpLoading(false);
+    setMpCheckout(mpResult);
+
+    if (!mpResult.ok) {
+      setCheckoutNoticeTone(
+        mpResult.code === 'MP_NOT_CONFIGURED' ||
+          mpResult.code === 'BACKEND_UNAVAILABLE'
+          ? 'pending'
+          : 'error'
+      );
+      setCheckoutNotice(mpResult.error);
+    }
   }
 
   async function handleConfirmTermsAndStartCheckout() {
@@ -228,7 +278,10 @@ export function DwCoinShopModal({
         termsVersion: DWCOIN_PURCHASE_TERMS_VERSION,
       });
       onPlayTone('confirm');
-      startExistingPackCheckout(selectedPack, paymentMethod, order);
+      setActiveCheckoutOrder(order);
+      setOrderCreditedInCloud(false);
+      setRechargeStep('checkout');
+      void launchMercadoPagoCheckout(selectedPack, paymentMethod, order);
     } catch {
       onPlayTone('error');
       setCheckoutNoticeTone('error');
@@ -239,11 +292,120 @@ export function DwCoinShopModal({
     }
   }
 
+  const handleCheckMercadoPagoStatus = useCallback(
+    async (silent = false) => {
+      if (!activeCheckoutOrder || mpChecking || orderCreditedInCloud) return;
+      if (!silent) setMpChecking(true);
+      try {
+        const paymentId =
+          mpCheckout && mpCheckout.ok && mpCheckout.mode === 'pix'
+            ? mpCheckout.paymentId
+            : null;
+        const result = await checkMercadoPagoOrderStatus({
+          orderId: activeCheckoutOrder.orderId,
+          paymentId,
+        });
+        if (result.ok) {
+          setMpStatus(result);
+          if (result.approved && !silent) {
+            onPlayTone('confirm');
+          }
+        }
+      } finally {
+        if (!silent) setMpChecking(false);
+      }
+    },
+    [activeCheckoutOrder, mpChecking, mpCheckout, onPlayTone, orderCreditedInCloud]
+  );
+
+  // Watch Firestore order status in real time so instant credit confirmation appears automatically
+  useEffect(() => {
+    if (
+      rechargeStep !== 'checkout' ||
+      !activeCheckoutOrder ||
+      !activeCheckoutOrder.persistedInCloud
+    ) {
+      return;
+    }
+
+    const orderRef = doc(db, 'dwCoinOrders', activeCheckoutOrder.orderId);
+    const unsub = onSnapshot(
+      orderRef,
+      (snap) => {
+        if (!snap.exists()) return;
+        const status = snap.data()?.status;
+        if (status === 'approved') {
+          setOrderCreditedInCloud(true);
+          onPlayTone('confirm');
+        }
+      },
+      () => {
+        // Ignore transient listener errors; manual verification remains available
+      }
+    );
+    return () => unsub();
+  }, [activeCheckoutOrder, onPlayTone, rechargeStep]);
+
+  // Auto-poll Mercado Pago every 6 seconds while awaiting PIX or Checkout Pro confirmation
+  useEffect(() => {
+    if (
+      rechargeStep !== 'checkout' ||
+      !activeCheckoutOrder ||
+      !mpCheckout ||
+      !mpCheckout.ok ||
+      mpStatus?.approved ||
+      orderCreditedInCloud
+    ) {
+      return;
+    }
+
+    const intervalMs = mpCheckout.mode === 'pix' ? 6000 : 8000;
+    const timer = window.setInterval(() => {
+      void handleCheckMercadoPagoStatus(true);
+    }, intervalMs);
+
+    return () => window.clearInterval(timer);
+  }, [
+    activeCheckoutOrder,
+    handleCheckMercadoPagoStatus,
+    mpCheckout,
+    mpStatus?.approved,
+    orderCreditedInCloud,
+    rechargeStep,
+  ]);
+
+  async function handleCopyPixCode(code: string) {
+    if (!code) return;
+    onPlayTone('click');
+    try {
+      await navigator.clipboard.writeText(code);
+      setPixCopied(true);
+      window.setTimeout(() => setPixCopied(false), 2600);
+    } catch {
+      // Fallback for older mobile WebViews
+      const textarea = document.createElement('textarea');
+      textarea.value = code;
+      textarea.setAttribute('readonly', 'true');
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      setPixCopied(true);
+      window.setTimeout(() => setPixCopied(false), 2600);
+    }
+  }
+
   async function handleCancelActiveCheckout() {
     onPlayTone('click');
     const currentOrder = activeCheckoutOrder;
     setActiveCheckoutOrder(null);
     setTermsChecked(false);
+    setMpCheckout(null);
+    setMpStatus(null);
+    setMpLoading(false);
+    setOrderCreditedInCloud(false);
     setRechargeStep('select_method');
     setCheckoutNoticeTone('cancelled');
     setCheckoutNotice(DWCOIN_PAYMENT_MESSAGES.cancelled);
@@ -367,7 +529,7 @@ export function DwCoinShopModal({
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label="Loja DWcoin"
+      aria-label="Loja DL Din"
       className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#010716]/86 p-2 backdrop-blur-[2px] sm:p-3"
     >
       {/* Top Mode Switcher Strip */}
@@ -408,7 +570,7 @@ export function DwCoinShopModal({
             }`}
           >
             <DwCoinEmblem className="h-4 w-4 shrink-0" />
-            <span className="truncate">DWcoin (R$)</span>
+            <span className="truncate">DL Din (R$)</span>
           </button>
 
           <button
@@ -437,7 +599,7 @@ export function DwCoinShopModal({
             onPlayTone('click');
             onClose();
           }}
-          aria-label="Fechar Loja DWcoin"
+          aria-label="Fechar Loja DL Din"
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-cyan-200/70 bg-[#051d52] text-cyan-100 transition hover:bg-sky-700 active:scale-95"
         >
           <X className="h-4 w-4" />
@@ -473,7 +635,7 @@ export function DwCoinShopModal({
                 setReturnTabAfterRecharge('promo');
                 setMainTab('recharge');
               }}
-              title="Comprar mais DWcoin"
+              title="Comprar mais DL Din"
               className="flex shrink-0 items-center gap-1.5 rounded-xl border border-amber-300/75 bg-[#041336] px-2.5 py-1.5 transition hover:border-amber-200 hover:bg-[#072059] active:scale-95"
             >
               <DwCoinEmblem className="h-4.5 w-4.5 shrink-0" />
@@ -515,12 +677,12 @@ export function DwCoinShopModal({
                 setFeedback(null);
                 setSelectedPromoOffer(DWCOIN_PROMO_OFFER);
               }}
-              aria-label="Comprar Pack Comece na Frente: Egg do Veemon 5/5 + 12 Evoluters por 50 DWcoin"
+              aria-label={`Comprar Pack Comece na Frente: Egg do Veemon 5/5 + 12 Evoluters por ${DWCOIN_PROMO_OFFER.priceDwCoin} DL Din`}
               className="group relative aspect-square w-full max-w-[min(430px,56dvh)] cursor-pointer overflow-hidden rounded-2xl border-2 border-amber-300/85 bg-[#020b24] shadow-[0_0_32px_rgba(56,189,248,0.42),0_12px_28px_rgba(0,0,0,0.7)] transition-transform duration-150 hover:scale-[1.015] hover:border-amber-200 hover:shadow-[0_0_40px_rgba(251,191,36,0.5)] active:scale-[0.985] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
             >
               <img
                 src={DWCOIN_PROMO_OFFER.bannerImageUrl}
-                alt="Comece na Frente: Egg do Veemon 5/5 + 12 Evoluters por apenas 50 DWcoins"
+                alt={`Comece na Frente: Egg do Veemon 5/5 + 12 Evoluters por apenas ${DWCOIN_PROMO_OFFER.priceDwCoin} DL Din`}
                 draggable={false}
                 className="block h-full w-full object-contain"
               />
@@ -538,7 +700,7 @@ export function DwCoinShopModal({
                   className="h-6 w-6 shrink-0 object-contain"
                 />
                 <span className="font-bold">
-                  Veemon <span className="text-amber-300">5/5</span> +{' '}
+                  Veemon <span className="text-amber-300">5/5 (Nv. 1)</span> +{' '}
                   <span className="text-fuchsia-300">12 Evoluters</span>
                 </span>
               </div>
@@ -552,7 +714,7 @@ export function DwCoinShopModal({
                 className="flex min-h-[34px] items-center gap-1.5 rounded-lg border border-amber-200 bg-gradient-to-b from-amber-300 via-amber-400 to-amber-600 px-3 text-[11px] font-black text-[#081226] shadow transition hover:brightness-110 active:scale-95"
               >
                 <DwCoinEmblem className="h-3.5 w-3.5 shrink-0" />
-                <span>Comprar · 50 DWcoin</span>
+                <span>Comprar · {DWCOIN_PROMO_OFFER.priceDwCoin} DL Din</span>
               </button>
             </div>
           </div>
@@ -608,7 +770,7 @@ export function DwCoinShopModal({
                         </span>
                       </p>
                       <p className="mt-0.5 text-[10.5px] leading-snug text-cyan-200/90">
-                        Pronto! Só colocar na Incubadora DATS e chocar.
+                        Não precisa de DATA! Só colocar na Incubadora DATS e chocar seu Veemon Nv. 1 para jogar na hora.
                       </p>
                     </div>
                   </div>
@@ -637,7 +799,7 @@ export function DwCoinShopModal({
                       <div className="mt-0.5 flex items-center gap-1.5">
                         <DwCoinEmblem className="h-4.5 w-4.5 shrink-0" />
                         <span className="text-base font-black tabular-nums text-amber-300">
-                          {selectedPromoOffer.priceDwCoin} DWcoin
+                          {selectedPromoOffer.priceDwCoin} DL Din
                         </span>
                       </div>
                     </div>
@@ -652,7 +814,7 @@ export function DwCoinShopModal({
                             : 'text-rose-300'
                         }`}
                       >
-                        {formattedBalance} DWcoin
+                        {formattedBalance} DL Din
                       </p>
                     </div>
                   </div>
@@ -670,7 +832,7 @@ export function DwCoinShopModal({
                     >
                       <CheckCircle2 className="h-4 w-4" />
                       <span>
-                        Confirmar Compra · {selectedPromoOffer.priceDwCoin} DWcoin
+                        Confirmar Compra · {selectedPromoOffer.priceDwCoin} DL Din
                       </span>
                     </button>
                   ) : (
@@ -678,7 +840,7 @@ export function DwCoinShopModal({
                       <p className="rounded-lg border border-rose-400/50 bg-rose-950/65 px-3 py-1.5 text-center text-[11px] font-bold text-rose-200">
                         Saldo insuficiente! Faltam{' '}
                         {(selectedPromoOffer.priceDwCoin - dCoin).toLocaleString('pt-BR')}{' '}
-                        DWcoin.
+                        DL Din.
                       </p>
                       <button
                         type="button"
@@ -691,7 +853,7 @@ export function DwCoinShopModal({
                         className="flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl border border-amber-200 bg-gradient-to-b from-amber-300 via-amber-400 to-amber-600 px-4 text-xs font-black text-[#081226] transition hover:brightness-110 active:scale-95"
                       >
                         <DwCoinEmblem className="h-4 w-4 shrink-0" />
-                        <span>Recarregar DWcoin (R$)</span>
+                        <span>Recarregar DL Din (R$)</span>
                       </button>
                     </div>
                   )}
@@ -709,14 +871,14 @@ export function DwCoinShopModal({
           {/* Official Artwork Layer */}
           <img
             src={DWCOIN_SHOP_ARTWORK_URL}
-            alt="Loja oficial de DWcoin"
+            alt="Loja oficial de DL Din"
             draggable={false}
             className="pointer-events-none block h-full w-full object-fill"
           />
 
-          {/* Live Dynamic DWcoin Balance Overlay */}
+          {/* Live Dynamic DL Din Balance Overlay */}
           <div
-            aria-label={`Saldo atual: ${formattedBalance} DWcoin`}
+            aria-label={`Saldo atual: ${formattedBalance} DL Din`}
             style={{
               left: '17.2%',
               top: '2.1%',
@@ -736,8 +898,8 @@ export function DwCoinShopModal({
           <button
             type="button"
             onClick={handlePlusButtonClick}
-            aria-label="Recarregar DWcoin"
-            title="Escolha um pacote de DWcoin abaixo"
+            aria-label="Recarregar DL Din"
+            title="Escolha um pacote de DL Din abaixo"
             style={{
               left: '39.2%',
               top: '0.8%',
@@ -747,7 +909,7 @@ export function DwCoinShopModal({
             className="absolute cursor-pointer rounded-xl transition-all hover:bg-amber-300/18 hover:ring-2 hover:ring-amber-300/90 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
           />
 
-          {/* 5 Clickable Official DWcoin Recharge Pack Hotspots */}
+          {/* 5 Clickable Official DL Din Recharge Pack Hotspots */}
           {DWCOIN_RECHARGE_PACKS.map((pack) => {
             const isSelected = selectedPack?.id === pack.id;
             return (
@@ -758,7 +920,7 @@ export function DwCoinShopModal({
                   onPlayTone('click');
                   openPackCheckoutModal(pack);
                 }}
-                aria-label={`Comprar ${pack.dwCoinAmount} DWcoin por ${pack.priceBrlLabel}${
+                aria-label={`Comprar ${pack.dwCoinAmount} DL Din por ${pack.priceBrlLabel}${
                   pack.discountLabel ? ` (${pack.discountLabel})` : ''
                 }`}
                 style={{
@@ -776,7 +938,7 @@ export function DwCoinShopModal({
                 }`}
               >
                 <span className="sr-only">
-                  {pack.dwCoinAmount} DWcoin — {pack.priceBrlLabel}
+                  {pack.dwCoinAmount} DL Din — {pack.priceBrlLabel}
                 </span>
               </button>
             );
@@ -825,7 +987,7 @@ export function DwCoinShopModal({
                   <div className="flex items-center gap-1.5 text-center">
                     <ShoppingBag className="h-4 w-4 shrink-0 text-amber-300" />
                     <h3 className="font-[family-name:var(--font-display)] text-xs font-black tracking-wide text-white sm:text-sm">
-                      COMPRAR DCOIN
+                      COMPRAR DL DIN
                     </h3>
                   </div>
 
@@ -861,7 +1023,7 @@ export function DwCoinShopModal({
                         <DwCoinEmblem className="h-5 w-5 shrink-0" />
                         <div>
                           <p className="text-xs font-black text-white">
-                            {selectedPack.dwCoinAmount} DWcoin
+                            {selectedPack.dwCoinAmount} DL Din
                           </p>
                           <p className="text-[10.5px] font-bold text-amber-300">
                             {selectedPack.priceBrlLabel}
@@ -961,19 +1123,19 @@ export function DwCoinShopModal({
             >
               <div
                 onClick={(e) => e.stopPropagation()}
-                className="animate-dmo-window w-full max-w-[340px] overflow-hidden rounded-2xl border-2 border-amber-300/85 bg-gradient-to-b from-[#0b3d9e] via-[#061f58] to-[#030e2c] text-white shadow-[0_0_38px_rgba(251,191,36,0.42)]"
+                className="animate-dmo-window flex max-h-[88dvh] w-full max-w-[360px] flex-col overflow-hidden rounded-2xl border-2 border-amber-300/85 bg-gradient-to-b from-[#0b3d9e] via-[#061f58] to-[#030e2c] text-white shadow-[0_0_38px_rgba(251,191,36,0.42)]"
               >
                 {/* Modal Header */}
-                <div className="flex items-center justify-between border-b border-cyan-400/35 bg-[#082d7a] px-3.5 py-2.5">
+                <div className="flex shrink-0 items-center justify-between border-b border-cyan-400/35 bg-[#082d7a] px-3.5 py-2.5">
                   <div className="flex items-center gap-2">
                     <DwCoinEmblem className="h-6 w-6 shrink-0" />
                     <div>
                       <p className="text-xs font-black tracking-wide text-white">
-                        {selectedPack.dwCoinAmount} DWcoin
+                        {selectedPack.dwCoinAmount} DL Din
                       </p>
                       <p className="text-[10px] font-bold text-cyan-200/85">
                         {rechargeStep === 'checkout'
-                          ? `Checkout · ${paymentMethod === 'pix' ? 'PIX' : 'Cartão'}`
+                          ? `Mercado Pago · ${paymentMethod === 'pix' ? 'PIX' : 'Cartão'}`
                           : 'Recarga Oficial · Conta DATS'}
                       </p>
                     </div>
@@ -992,7 +1154,7 @@ export function DwCoinShopModal({
                 </div>
 
                 {/* Modal Body */}
-                <div className="space-y-3 p-3.5 text-xs">
+                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3.5 text-xs">
                   {/* Price Summary */}
                   <div className="flex items-center justify-between rounded-xl border border-amber-300/45 bg-[#041232] px-3 py-2.5">
                     <div>
@@ -1035,8 +1197,8 @@ export function DwCoinShopModal({
                           </span>
                           <span className="font-black text-emerald-300">
                             {activeCheckoutOrder.paymentMethod === 'pix'
-                              ? 'PIX'
-                              : 'Cartão'}
+                              ? 'PIX · Mercado Pago'
+                              : 'Cartão · Mercado Pago'}
                           </span>
                         </div>
                         <div className="flex items-center justify-between gap-2">
@@ -1055,24 +1217,201 @@ export function DwCoinShopModal({
                         </div>
                       </div>
 
-                      {/* Pending Payment Confirmation Banner (Zero client-side DCoin credit) */}
-                      <div className="flex items-start gap-2 rounded-xl border border-amber-300/55 bg-amber-950/60 p-2.5 text-[11px] leading-snug text-amber-100">
-                        <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
-                        <div className="space-y-1">
-                          <p className="font-black text-amber-200">
-                            {DWCOIN_PAYMENT_MESSAGES.pending}
+                      {/* Real Mercado Pago Checkout States */}
+                      {orderCreditedInCloud ? (
+                        <div className="space-y-2 rounded-xl border border-emerald-300/80 bg-emerald-950/75 p-3 text-center">
+                          <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-300" />
+                          <p className="text-xs font-black text-emerald-200">
+                            {DWCOIN_PAYMENT_MESSAGES.approved}
                           </p>
-                          {checkoutNotice && <p>{checkoutNotice}</p>}
+                          <button
+                            type="button"
+                            onClick={resetPackCheckoutFlow}
+                            className="mt-1 flex min-h-[38px] w-full items-center justify-center rounded-xl border border-emerald-300/70 bg-emerald-600 px-3 text-[11px] font-black text-white transition hover:bg-emerald-500"
+                          >
+                            Voltar para a Loja
+                          </button>
                         </div>
-                      </div>
+                      ) : mpStatus?.approved ? (
+                        <div className="space-y-2 rounded-xl border border-emerald-300/75 bg-emerald-950/70 p-3 text-[11px] leading-snug text-emerald-100">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-300" />
+                            <p className="font-black text-emerald-200">
+                              Pagamento confirmado no Mercado Pago!
+                            </p>
+                          </div>
+                          <p>
+                            Comprovante MP{' '}
+                            <strong className="tabular-nums text-white">
+                              #{mpStatus.mpPaymentId}
+                            </strong>{' '}
+                            aprovado. Seus{' '}
+                            <strong>{selectedPack.dwCoinAmount} DL Din</strong>{' '}
+                            estão prontos para liberação na sua conta.
+                          </p>
+                        </div>
+                      ) : mpLoading ? (
+                        <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-cyan-400/35 bg-[#041232] px-3 py-6 text-center">
+                          <Loader2 className="h-6 w-6 animate-spin text-cyan-300" />
+                          <p className="text-[11px] font-bold text-cyan-100">
+                            Conectando ao Mercado Pago...
+                          </p>
+                        </div>
+                      ) : mpCheckout?.ok && mpCheckout.mode === 'pix' ? (
+                        <div className="space-y-2.5 rounded-xl border border-emerald-400/45 bg-[#041232] p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10.5px] font-black uppercase tracking-wide text-emerald-300">
+                              Escaneie ou copie o PIX
+                            </span>
+                            <span className="text-[10px] font-bold text-slate-300">
+                              Expira em 30 min
+                            </span>
+                          </div>
 
-                      <button
-                        type="button"
-                        onClick={handleCancelActiveCheckout}
-                        className="flex min-h-[40px] w-full items-center justify-center rounded-xl border border-rose-300/60 bg-rose-950/65 px-3 text-[11px] font-black text-rose-100 transition hover:bg-rose-900/75 active:scale-95"
-                      >
-                        Cancelar Pagamento
-                      </button>
+                          {mpCheckout.qrCodeBase64 && (
+                            <div className="mx-auto flex w-fit items-center justify-center rounded-xl bg-white p-2.5 shadow-md">
+                              <img
+                                src={`data:image/png;base64,${mpCheckout.qrCodeBase64}`}
+                                alt="QR Code PIX Mercado Pago"
+                                className="h-40 w-40 object-contain"
+                              />
+                            </div>
+                          )}
+
+                          {mpCheckout.qrCode && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleCopyPixCode(mpCheckout.qrCode)
+                              }
+                              className={`flex min-h-[42px] w-full items-center justify-center gap-1.5 rounded-xl border px-3 text-[11px] font-black transition active:scale-95 ${
+                                pixCopied
+                                  ? 'border-emerald-300 bg-emerald-600 text-white'
+                                  : 'border-amber-200 bg-gradient-to-b from-amber-300 via-amber-400 to-amber-600 text-[#081226] hover:brightness-110'
+                              }`}
+                            >
+                              {pixCopied ? (
+                                <>
+                                  <Check className="h-4 w-4 shrink-0" />
+                                  <span>Código PIX Copiado!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="h-4 w-4 shrink-0" />
+                                  <span>Copiar Código PIX (Copia e Cola)</span>
+                                </>
+                              )}
+                            </button>
+                          )}
+
+                          {mpCheckout.ticketUrl && (
+                            <a
+                              href={mpCheckout.ticketUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex min-h-[36px] w-full items-center justify-center gap-1.5 rounded-xl border border-cyan-400/40 bg-[#061c52] px-3 text-[10.5px] font-bold text-cyan-200 transition hover:bg-[#092970]"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                              <span>Abrir no site do Mercado Pago</span>
+                            </a>
+                          )}
+
+                          <button
+                            type="button"
+                            disabled={mpChecking}
+                            onClick={() => void handleCheckMercadoPagoStatus(false)}
+                            className="flex min-h-[38px] w-full items-center justify-center gap-1.5 rounded-xl border border-emerald-400/60 bg-emerald-950/75 px-3 text-[11px] font-black text-emerald-200 transition hover:bg-emerald-900/80 disabled:opacity-60"
+                          >
+                            <RefreshCw
+                              className={`h-3.5 w-3.5 shrink-0 ${
+                                mpChecking ? 'animate-spin' : ''
+                              }`}
+                            />
+                            <span>
+                              {mpChecking
+                                ? 'Verificando no Mercado Pago...'
+                                : 'Já Paguei · Verificar Pagamento'}
+                            </span>
+                          </button>
+
+                          <p className="text-center text-[10px] text-slate-300">
+                            Verificação automática ativa a cada 6 segundos.
+                          </p>
+                        </div>
+                      ) : mpCheckout?.ok &&
+                        mpCheckout.mode === 'checkout_pro' ? (
+                        <div className="space-y-2.5 rounded-xl border border-cyan-400/45 bg-[#041232] p-3">
+                          <p className="text-[11px] leading-relaxed text-sky-100">
+                            Finalize seu pagamento com segurança na página
+                            oficial do <strong>Mercado Pago</strong> (Cartão de
+                            Crédito, Débito ou Saldo MP).
+                          </p>
+
+                          <a
+                            href={mpCheckout.checkoutUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-amber-200 bg-gradient-to-b from-amber-300 via-amber-400 to-amber-600 px-3 text-xs font-black text-[#081226] shadow-[0_0_16px_rgba(251,191,36,0.4)] transition hover:brightness-110 active:scale-95"
+                          >
+                            <ExternalLink className="h-4 w-4 shrink-0" />
+                            <span>Pagar no Mercado Pago</span>
+                          </a>
+
+                          <button
+                            type="button"
+                            disabled={mpChecking}
+                            onClick={() => void handleCheckMercadoPagoStatus(false)}
+                            className="flex min-h-[38px] w-full items-center justify-center gap-1.5 rounded-xl border border-emerald-400/60 bg-emerald-950/75 px-3 text-[11px] font-black text-emerald-200 transition hover:bg-emerald-900/80 disabled:opacity-60"
+                          >
+                            <RefreshCw
+                              className={`h-3.5 w-3.5 shrink-0 ${
+                                mpChecking ? 'animate-spin' : ''
+                              }`}
+                            />
+                            <span>
+                              {mpChecking
+                                ? 'Verificando no Mercado Pago...'
+                                : 'Já Paguei · Verificar Status'}
+                            </span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2 rounded-xl border border-amber-300/55 bg-amber-950/60 p-2.5 text-[11px] leading-snug text-amber-100">
+                          <div className="flex items-start gap-2">
+                            <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+                            <div className="space-y-1">
+                              <p className="font-black text-amber-200">
+                                {DWCOIN_PAYMENT_MESSAGES.pending}
+                              </p>
+                              {checkoutNotice && <p>{checkoutNotice}</p>}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void launchMercadoPagoCheckout(
+                                selectedPack,
+                                paymentMethod,
+                                activeCheckoutOrder
+                              )
+                            }
+                            className="flex min-h-[36px] w-full items-center justify-center gap-1.5 rounded-lg border border-amber-300/60 bg-amber-500/20 px-3 text-[10.5px] font-black text-amber-100 hover:bg-amber-500/30"
+                          >
+                            <RefreshCw className="h-3.5 w-3.5" />
+                            <span>Tentar Gerar Pagamento Novamente</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {!orderCreditedInCloud && !mpStatus?.approved && (
+                        <button
+                          type="button"
+                          onClick={handleCancelActiveCheckout}
+                          className="flex min-h-[40px] w-full items-center justify-center rounded-xl border border-rose-300/60 bg-rose-950/65 px-3 text-[11px] font-black text-rose-100 transition hover:bg-rose-900/75 active:scale-95"
+                        >
+                          Cancelar Pagamento
+                        </button>
+                      )}
                     </>
                   ) : (
                     <>
@@ -1132,7 +1471,7 @@ export function DwCoinShopModal({
                         className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-amber-200 bg-gradient-to-b from-amber-300 via-amber-400 to-amber-600 px-4 text-xs font-black text-[#081226] shadow-[0_0_16px_rgba(251,191,36,0.4)] transition hover:brightness-110 active:scale-95"
                       >
                         <span>
-                          Confirmar {selectedPack.dwCoinAmount} DWcoin ·{' '}
+                          Confirmar {selectedPack.dwCoinAmount} DL Din ·{' '}
                           {selectedPack.priceBrlLabel}
                         </span>
                       </button>
@@ -1152,7 +1491,7 @@ export function DwCoinShopModal({
                     >
                       <Crown className="h-3.5 w-3.5 text-amber-300" />
                       <span>
-                        Testar Recarga (GM · +{selectedPack.dwCoinAmount} DWcoin)
+                        Testar Recarga (GM · +{selectedPack.dwCoinAmount} DL Din)
                       </span>
                     </button>
                   )}
@@ -1173,10 +1512,10 @@ export function DwCoinShopModal({
               <DwCoinEmblem className="h-7 w-7 shrink-0" />
               <div>
                 <h2 className="font-[family-name:var(--font-display)] text-sm font-black tracking-wide text-white">
-                  ITENS PREMIUM (DWCOIN)
+                  ITENS PREMIUM (DL DIN)
                 </h2>
                 <p className="text-[10.5px] font-semibold text-amber-200/90">
-                  Troque seus DWcoin por itens exclusivos
+                  Troque seus DL Din por itens exclusivos
                 </p>
               </div>
             </div>
@@ -1188,7 +1527,7 @@ export function DwCoinShopModal({
                 setReturnTabAfterRecharge('catalog');
                 setMainTab('recharge');
               }}
-              title="Comprar mais DWcoin"
+              title="Comprar mais DL Din"
               className="flex items-center gap-1.5 rounded-xl border border-amber-300/70 bg-[#041336] px-2.5 py-1.5 transition hover:border-amber-200 hover:bg-[#072059] active:scale-95"
             >
               <DwCoinEmblem className="h-4.5 w-4.5 shrink-0" />
@@ -1312,7 +1651,7 @@ export function DwCoinShopModal({
                         <div className="flex items-center gap-1">
                           <DwCoinEmblem className="h-4 w-4 shrink-0" />
                           <span className="text-xs font-black tabular-nums text-amber-200">
-                            {offer.priceDwCoin.toLocaleString('pt-BR')} DWcoin
+                            {offer.priceDwCoin.toLocaleString('pt-BR')} DL Din
                           </span>
                         </div>
 
@@ -1336,7 +1675,7 @@ export function DwCoinShopModal({
             )}
 
             <p className="rounded-xl border border-cyan-400/20 bg-[#041232]/75 px-3 py-2 text-center text-[10.5px] text-slate-300">
-              Itens de recuperação HP/DS e equipamentos por Bits continuam disponíveis na loja do{' '}
+              Itens de recuperação HP/DS por Bits continuam disponíveis na loja do{' '}
               <span className="font-bold text-cyan-200">MudFrigimon</span> no DATS Center.
             </p>
           </div>

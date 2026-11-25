@@ -215,6 +215,7 @@ export interface AccountHudPersistence {
   tamerPhotoUrl?: string | null;
   tamerCoverUrl?: string | null;
   xpBoostUntilMs?: number | null;
+  autoFarmVipUnlocked?: boolean;
   defeatedEnemiesTotal: number;
   updatedAt: string;
 }

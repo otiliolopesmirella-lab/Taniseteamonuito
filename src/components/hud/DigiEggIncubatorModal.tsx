@@ -946,7 +946,7 @@ export function DigiEggIncubatorModal({
                                           {!nextStepHasBreakRisk
                                             ? 'Estágio seguro (não consome)'
                                             : ownedHatchBackups === 0
-                                              ? 'Na Loja DWcoin por 5 DWcoin'
+                                              ? 'Na Loja DL Din por 5 DL Din'
                                               : isHatchBackupActive
                                                 ? 'Ovo protegido · consome 1 se falhar'
                                                 : 'Proteção desativada'}
@@ -995,7 +995,7 @@ export function DigiEggIncubatorModal({
                                   5/5 · Muito Forte (Máximo!)
                                 </p>
                                 <p className="text-[9px] text-amber-100/85">
-                                  Pronto para chocar com +{String(DMO_HATCH_QUALITY_PROFILES[5].powerBonusPct).replace('.', ',')}% de poder e qualidade {DMO_HATCH_QUALITY_PROFILES[5].sizeRangeLabel}!
+                                  Não precisa de DATA! Pronto para chocar Nv. 1 com +{String(DMO_HATCH_QUALITY_PROFILES[5].powerBonusPct).replace('.', ',')}% de poder e qualidade {DMO_HATCH_QUALITY_PROFILES[5].sizeRangeLabel}!
                                 </p>
                               </div>
                             )}

@@ -155,7 +155,7 @@ export function GmOverviewTab({
 
         <div className="rounded-xl border border-sky-400/25 bg-[#041232] p-2.5">
           <div className="flex items-center justify-between text-[10px] font-bold text-slate-300">
-            <span>DWcoin em Contas</span>
+            <span>DL Din em Contas</span>
             <Gem className="h-3.5 w-3.5 text-cyan-300" />
           </div>
           <p className="mt-1 text-lg font-black tabular-nums text-cyan-300">

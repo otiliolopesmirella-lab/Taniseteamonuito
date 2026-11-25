@@ -40,7 +40,7 @@
         },
         "hudState": {
           "type": "object",
-          "description": "Tamer & Digimon levels, EXP, HP, DS, active evolution, Bits, D-Coin, inventory, equipped items, optional custom Tamer portrait photo data URL (tamerPhotoUrl), optional custom Rank cover banner data URL (tamerCoverUrl), active XP boost expiration timestamp (xpBoostUntilMs), and battle counters."
+          "description": "Tamer & Digimon levels, EXP, HP, DS, active evolution, Bits, DWcoin, inventory, equipped items, optional custom Tamer portrait photo data URL (tamerPhotoUrl), optional custom Rank cover banner data URL (tamerCoverUrl), active XP boost expiration timestamp (xpBoostUntilMs), VIP Auto Farm unlock flag (autoFarmVipUnlocked), and battle counters."
         },
         "createdAt": {
           "type": "string",

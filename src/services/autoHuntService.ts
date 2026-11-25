@@ -68,6 +68,9 @@ export interface AutoHuntMapGroup {
   mobs: readonly AutoHuntMobCatalogEntry[];
 }
 
+export const AUTO_FARM_VIP_COST_DWCOIN = 20;
+export const AUTO_FARM_VIP_XP_BONUS_PCT = 50;
+
 export const AUTO_HUNT_THRESHOLD_PRESETS = [20, 35, 50, 70, 85] as const;
 
 export const DEFAULT_AUTO_HUNT_CONFIG: AutoHuntConfig = {

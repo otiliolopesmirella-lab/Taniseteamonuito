@@ -335,7 +335,7 @@ export const WORLD_MAP_REGIONS: readonly WorldMapRegion[] = [
       {
         id: 'dats-bits',
         label: 'Loja por Bits',
-        detail: 'Equipamentos e suprimentos iniciais disponíveis na Loja',
+        detail: 'Comidas HP e vitaminas DS disponíveis na loja do MudFrigimon',
         kind: 'bits',
         iconUrl: REWARD_ICONS.bits,
       },

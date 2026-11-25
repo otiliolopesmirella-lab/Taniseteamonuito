@@ -14,9 +14,9 @@ export type DwCoinPaymentMethod = 'pix' | 'card';
 export type DwCoinOrderStatus = 'pending' | 'cancelled' | 'approved' | 'error';
 
 export const DWCOIN_PAYMENT_MESSAGES = {
-  cancelled: 'Pagamento cancelado. Nenhum DCoin foi adicionado.',
+  cancelled: 'Pagamento cancelado. Nenhum DL Din foi adicionado.',
   pending: 'Pagamento pendente. Aguarde a confirmação.',
-  approved: 'Pagamento aprovado! Seus DCoins foram adicionados à sua conta.',
+  approved: 'Pagamento aprovado! Seus DL Din foram adicionados à sua conta.',
   error:
     'Não foi possível processar o pagamento. Tente novamente ou entre em contato com o suporte.',
 } as const;

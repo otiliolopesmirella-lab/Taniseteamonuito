@@ -327,7 +327,7 @@ export function addDigimonToArchiveForAdmin(
     return {
       ok: false,
       next: state,
-      error: `Digimon Archive cheio (${unlockedSlots}/${unlockedSlots} slots liberados). Expanda seus slots na Loja de DWcoin.`,
+      error: `Digimon Archive cheio (${unlockedSlots}/${unlockedSlots} slots liberados). Expanda seus slots na Loja de DL Din.`,
     };
   }
 

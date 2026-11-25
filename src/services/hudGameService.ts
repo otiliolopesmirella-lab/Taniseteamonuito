@@ -905,6 +905,7 @@ export function createDefaultAccountHudState(
     tamerPhotoUrl: null,
     tamerCoverUrl: null,
     xpBoostUntilMs: null,
+    autoFarmVipUnlocked: false,
     defeatedEnemiesTotal: 0,
     updatedAt: new Date().toISOString(),
   };
@@ -920,10 +921,19 @@ export function loadAccountHudState(
     if (!raw) return createDefaultAccountHudState(accountUsername);
     const parsed = JSON.parse(raw) as Partial<AccountHudPersistence>;
     const fallback = createDefaultAccountHudState(accountUsername);
-    const equippedItems =
-      parsed.equippedItems && typeof parsed.equippedItems === 'object'
-        ? parsed.equippedItems
-        : {};
+    const equippedItems: Partial<Record<EquipmentSlotId, InventoryItem>> = {};
+    if (parsed.equippedItems && typeof parsed.equippedItems === 'object') {
+      for (const [slot, item] of Object.entries(parsed.equippedItems)) {
+        if (
+          item &&
+          typeof item === 'object' &&
+          !isRemovedLegacyItemKey(item.itemKey) &&
+          item.category !== 'equip'
+        ) {
+          equippedItems[slot as EquipmentSlotId] = item;
+        }
+      }
+    }
     const mergedTamer: TamerRuntimeStats = {
       ...fallback.tamer,
       ...(parsed.tamer ?? {}),
@@ -1013,6 +1023,7 @@ export function loadAccountHudState(
         parsed.xpBoostUntilMs > 0
           ? Math.round(parsed.xpBoostUntilMs)
           : null,
+      autoFarmVipUnlocked: parsed.autoFarmVipUnlocked === true,
       defeatedEnemiesTotal:
         typeof parsed.defeatedEnemiesTotal === 'number' && parsed.defeatedEnemiesTotal >= 0
           ? parsed.defeatedEnemiesTotal
@@ -1444,51 +1455,5 @@ export const BASIC_BITS_SHOP_ITEMS: ReadonlyArray<{
   dsRestore?: number;
   equipSlot?: EquipmentSlotId;
   statBonuses?: InventoryItem['statBonuses'];
-}> = [
-  {
-    itemKey: 'equip_cap_dats',
-    name: 'Boné Tático DATS',
-    category: 'equip',
-    priceBits: 85,
-    equipSlot: 'head',
-    statBonuses: { hp: 20, accuracy: 12 },
-    description: 'Equipamento de Tamer (Cabeça): +20 HP e +12 HT.',
-  },
-  {
-    itemKey: 'equip_jacket_dats',
-    name: 'Jaqueta Operacional DATS',
-    category: 'equip',
-    priceBits: 125,
-    equipSlot: 'top',
-    statBonuses: { hp: 35, defense: 7 },
-    description: 'Equipamento de Tamer (Superior): +35 HP e +7 DE.',
-  },
-  {
-    itemKey: 'equip_gloves_dats',
-    name: 'Luvas Táticas DATS',
-    category: 'equip',
-    priceBits: 90,
-    equipSlot: 'gloves',
-    statBonuses: { attack: 8, critRate: 1.0 },
-    description: 'Equipamento de Tamer (Luvas): +8 AT e +1.0% CT.',
-  },
-  {
-    itemKey: 'equip_ring_digital',
-    name: 'Anel de Dados DATS',
-    category: 'equip',
-    priceBits: 110,
-    equipSlot: 'ring',
-    statBonuses: { hp: 30, ds: 20, defense: 5 },
-    description: 'Equipamento de Tamer (Anel): +30 HP, +20 DS e +5 DE.',
-  },
-  {
-    itemKey: 'equip_digivice_proto',
-    name: 'Digivice Protótipo v1',
-    category: 'equip',
-    priceBits: 140,
-    equipSlot: 'digivice',
-    statBonuses: { attack: 10, accuracy: 25, ds: 25 },
-    description: 'Equipamento de Tamer (Digivice): +10 AT, +25 HT e +25 DS.',
-  },
-];
+}> = [];
 

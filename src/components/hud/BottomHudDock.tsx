@@ -460,7 +460,7 @@ export const BottomHudDock = memo(function BottomHudDock({
               alt=""
               className="h-4 w-4 rounded object-cover"
             />
-            <span>AUTO ON ({autoHuntTargetsCount})</span>
+            <span>AUTO ON ({autoHuntTargetsCount}) · +50% EXP</span>
           </button>
         )}
         {/* Server EXP Booster Widget (100% / 150% / 200% / 250%) + GM Quick Popover */}

@@ -4,6 +4,7 @@ import {
   Clock,
   CreditCard,
   Gem,
+  RefreshCw,
   ShoppingBag,
   TrendingUp,
   XCircle,
@@ -12,6 +13,10 @@ import type {
   GmDwCoinOrderEntry,
   GmServerSnapshot,
 } from '../../../services/gmControlService';
+import {
+  batchCheckMercadoPagoOrdersForGm,
+  type MercadoPagoStatusResult,
+} from '../../../services/mercadoPagoService';
 
 interface GmEconomyTabProps {
   snapshot: GmServerSnapshot | null;
@@ -63,11 +68,27 @@ export function GmEconomyTab({
     'all'
   );
   const [busyOrderId, setBusyOrderId] = useState<string | null>(null);
+  const [mpCheckingAll, setMpCheckingAll] = useState(false);
+  const [mpCreditingAll, setMpCreditingAll] = useState(false);
+  const [mpNotice, setMpNotice] = useState<string | null>(null);
+  const [mpStatuses, setMpStatuses] = useState<
+    Record<string, MercadoPagoStatusResult>
+  >({});
 
   const orders = snapshot?.orders ?? [];
   const transactions = snapshot?.transactions ?? [];
   const analytics = snapshot?.spendAnalytics;
   const metrics = snapshot?.metrics;
+
+  const pendingOrders = useMemo(
+    () => orders.filter((o) => o.status === 'pending'),
+    [orders]
+  );
+
+  const mpApprovedPendingOrders = useMemo(
+    () => pendingOrders.filter((o) => mpStatuses[o.orderId]?.approved === true),
+    [pendingOrders, mpStatuses]
+  );
 
   const filteredOrders = useMemo(() => {
     if (orderFilter === 'all') return orders;
@@ -78,6 +99,55 @@ export function GmEconomyTab({
     1,
     analytics?.topItems[0]?.totalDwCoin ?? 1
   );
+
+  const handleCheckMercadoPagoPending = async () => {
+    if (pendingOrders.length === 0) {
+      setMpNotice('Não há pedidos pendentes para consultar no Mercado Pago.');
+      return;
+    }
+    setMpCheckingAll(true);
+    setMpNotice(null);
+    try {
+      const res = await batchCheckMercadoPagoOrdersForGm(
+        pendingOrders.map((o) => o.orderId)
+      );
+      if (!res.ok) {
+        setMpNotice(res.error ?? 'Falha ao consultar Mercado Pago.');
+        return;
+      }
+      setMpStatuses(res.results);
+      const approvedCount = Object.values(res.results).filter(
+        (r) => r.approved
+      ).length;
+      setMpNotice(
+        approvedCount > 0
+          ? `${approvedCount} pedido(s) confirmado(s) como PAGO no Mercado Pago!`
+          : 'Nenhum pedido pendente consta como pago no Mercado Pago ainda.'
+      );
+    } finally {
+      setMpCheckingAll(false);
+    }
+  };
+
+  const handleCreditAllMpApproved = async () => {
+    if (mpApprovedPendingOrders.length === 0) return;
+    setMpCreditingAll(true);
+    setMpNotice(null);
+    let credited = 0;
+    try {
+      for (const ord of mpApprovedPendingOrders) {
+        setBusyOrderId(ord.orderId);
+        await onApproveOrder(ord.orderId);
+        credited += 1;
+      }
+      setMpNotice(
+        `${credited} recarga(s) confirmada(s) no Mercado Pago creditada(s) com sucesso!`
+      );
+    } finally {
+      setBusyOrderId(null);
+      setMpCreditingAll(false);
+    }
+  };
 
   const handleApprove = async (orderId: string) => {
     setBusyOrderId(orderId);
@@ -109,7 +179,7 @@ export function GmEconomyTab({
             {formatBrlFromCents(metrics?.approvedOrdersBrlCents ?? 0)}
           </p>
           <p className="text-[10px] font-semibold tabular-nums text-slate-400">
-            {metrics?.approvedDwCoinSold ?? 0} DWcoin ({metrics?.approvedOrdersCount ?? 0} pedidos)
+            {metrics?.approvedDwCoinSold ?? 0} DL Din ({metrics?.approvedOrdersCount ?? 0} pedidos)
           </p>
         </div>
 
@@ -127,10 +197,10 @@ export function GmEconomyTab({
 
         <div className="rounded-xl border border-cyan-400/30 bg-[#041232] p-2.5">
           <p className="text-[10px] font-bold text-slate-300">
-            DWcoin Gasto na Loja
+            DL Din Gasto na Loja
           </p>
           <p className="mt-1 text-base font-black tabular-nums text-cyan-300">
-            {(analytics?.totalSpent ?? 0).toLocaleString('pt-BR')} DWcoin
+            {(analytics?.totalSpent ?? 0).toLocaleString('pt-BR')} DL Din
           </p>
           <p className="text-[10px] font-semibold tabular-nums text-slate-400">
             {analytics?.spendCount ?? 0} compras registradas
@@ -156,14 +226,14 @@ export function GmEconomyTab({
           <div className="mb-2 flex items-center justify-between">
             <span className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wide text-amber-200">
               <TrendingUp className="h-4 w-4 text-amber-300" />
-              <span>No que os Players Mais Gastam DWcoin</span>
+              <span>No que os Players Mais Gastam DL Din</span>
             </span>
             <span className="text-[10px] text-slate-400">Ranking</span>
           </div>
 
           {!analytics || analytics.topItems.length === 0 ? (
             <p className="py-5 text-center text-xs text-slate-400">
-              Nenhuma compra com DWcoin registrada na loja ainda.
+              Nenhuma compra com DL Din registrada na loja ainda.
             </p>
           ) : (
             <div className="space-y-2">
@@ -179,7 +249,7 @@ export function GmEconomyTab({
                         {item.itemName}
                       </span>
                       <span className="shrink-0 font-black tabular-nums text-cyan-300">
-                        {item.totalDwCoin.toLocaleString('pt-BR')} DWcoin ·{' '}
+                        {item.totalDwCoin.toLocaleString('pt-BR')} DL Din ·{' '}
                         {item.purchases}×
                       </span>
                     </div>
@@ -207,7 +277,7 @@ export function GmEconomyTab({
 
           {!analytics || analytics.byCategory.length === 0 ? (
             <p className="py-5 text-center text-xs text-slate-400">
-              As categorias aparecem automaticamente após compras na Loja DWcoin.
+              As categorias aparecem automaticamente após compras na Loja DL Din.
             </p>
           ) : (
             <div className="space-y-1.5">
@@ -225,7 +295,7 @@ export function GmEconomyTab({
                     </p>
                   </div>
                   <span className="font-black tabular-nums text-amber-300">
-                    {cat.totalDwCoin.toLocaleString('pt-BR')} DWcoin
+                    {cat.totalDwCoin.toLocaleString('pt-BR')} DL Din
                   </span>
                 </div>
               ))}
@@ -239,32 +309,73 @@ export function GmEconomyTab({
         <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
           <span className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wide text-cyan-200">
             <CreditCard className="h-4 w-4 text-emerald-300" />
-            <span>Pedidos de Recarga de DWcoin ({orders.length})</span>
+            <span>Pedidos de Recarga de DL Din ({orders.length})</span>
           </span>
 
-          <div className="flex gap-1">
-            {(
-              [
-                { id: 'all', label: 'Todos' },
-                { id: 'pending', label: `Pendentes (${metrics?.pendingOrdersCount ?? 0})` },
-                { id: 'approved', label: 'Aprovados' },
-              ] as const
-            ).map((f) => (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              disabled={mpCheckingAll || mpCreditingAll}
+              onClick={() => void handleCheckMercadoPagoPending()}
+              className="flex min-h-[32px] items-center gap-1 rounded-lg border border-sky-400/60 bg-sky-900/70 px-2.5 text-[10.5px] font-black text-sky-100 hover:bg-sky-800 disabled:opacity-50"
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${mpCheckingAll ? 'animate-spin' : ''}`}
+              />
+              <span>
+                {mpCheckingAll ? 'Consultando MP...' : 'Verificar Mercado Pago'}
+              </span>
+            </button>
+
+            {mpApprovedPendingOrders.length > 0 && (
               <button
-                key={f.id}
                 type="button"
-                onClick={() => setOrderFilter(f.id)}
-                className={`min-h-[32px] rounded-lg border px-2.5 text-[10.5px] font-black ${
-                  orderFilter === f.id
-                    ? 'border-amber-300 bg-amber-500/20 text-amber-100'
-                    : 'border-white/15 bg-[#061844] text-slate-300'
-                }`}
+                disabled={mpCreditingAll}
+                onClick={() => void handleCreditAllMpApproved()}
+                className="flex min-h-[32px] items-center gap-1 rounded-lg border border-emerald-300/80 bg-emerald-600 px-2.5 text-[10.5px] font-black text-white hover:bg-emerald-500 disabled:opacity-50"
               >
-                {f.label}
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                <span>
+                  {mpCreditingAll
+                    ? 'Creditando...'
+                    : `Creditar ${mpApprovedPendingOrders.length} Pago(s) no MP`}
+                </span>
               </button>
-            ))}
+            )}
+
+            <div className="flex gap-1">
+              {(
+                [
+                  { id: 'all', label: 'Todos' },
+                  {
+                    id: 'pending',
+                    label: `Pendentes (${metrics?.pendingOrdersCount ?? 0})`,
+                  },
+                  { id: 'approved', label: 'Aprovados' },
+                ] as const
+              ).map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setOrderFilter(f.id)}
+                  className={`min-h-[32px] rounded-lg border px-2.5 text-[10.5px] font-black ${
+                    orderFilter === f.id
+                      ? 'border-amber-300 bg-amber-500/20 text-amber-100'
+                      : 'border-white/15 bg-[#061844] text-slate-300'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
+
+        {mpNotice && (
+          <div className="mb-2.5 rounded-lg border border-cyan-400/40 bg-sky-950/70 px-3 py-2 text-[11px] font-bold text-cyan-100">
+            {mpNotice}
+          </div>
+        )}
 
         {loading && orders.length === 0 ? (
           <p className="py-5 text-center text-xs text-slate-300">
@@ -278,6 +389,7 @@ export function GmEconomyTab({
           <div className="space-y-1.5">
             {filteredOrders.map((ord) => {
               const busy = busyOrderId === ord.orderId;
+              const mpInfo = mpStatuses[ord.orderId];
               return (
                 <div
                   key={ord.orderId}
@@ -306,10 +418,20 @@ export function GmEconomyTab({
                             ? 'PENDENTE'
                             : ord.status.toUpperCase()}
                       </span>
+                      {mpInfo?.approved && (
+                        <span className="rounded border border-emerald-300/80 bg-emerald-600/35 px-1.5 py-[1px] text-[9px] font-black uppercase text-emerald-200">
+                          PAGO NO MP #{mpInfo.mpPaymentId}
+                        </span>
+                      )}
+                      {mpInfo && !mpInfo.approved && mpInfo.found && (
+                        <span className="rounded border border-sky-400/50 bg-sky-950/70 px-1.5 py-[1px] text-[9px] font-black uppercase text-sky-200">
+                          MP: {mpInfo.mpStatus}
+                        </span>
+                      )}
                     </div>
                     <p className="mt-0.5 text-[10.5px] tabular-nums text-slate-300">
                       <strong className="text-cyan-200">
-                        +{ord.dwCoinAmount} DWcoin
+                        +{ord.dwCoinAmount} DL Din
                       </strong>{' '}
                       · {ord.priceBrlLabel} · {ord.paymentMethod.toUpperCase()} ·{' '}
                       {formatDateTime(ord.createdAtMs)}
@@ -385,7 +507,7 @@ export function GmEconomyTab({
                     <p className="mt-0.5 text-[10px] text-slate-400">
                       {formatDateTime(tx.createdAtMs)} · Saldo após:{' '}
                       <span className="tabular-nums text-slate-200">
-                        {tx.balanceAfter.toLocaleString('pt-BR')} DWcoin
+                        {tx.balanceAfter.toLocaleString('pt-BR')} DL Din
                       </span>
                     </p>
                   </div>

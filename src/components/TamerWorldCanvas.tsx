@@ -288,6 +288,8 @@ import {
   type GuildRecord,
 } from '../services/guildService';
 import {
+  AUTO_FARM_VIP_COST_DWCOIN,
+  AUTO_FARM_VIP_XP_BONUS_PCT,
   loadAutoHuntConfig,
   pickBestRecoveryItem,
   saveAutoHuntConfig,
@@ -321,6 +323,8 @@ import {
   drawDigimonAttackPoseFrame,
   drawDigimonPartnerFrame,
   drawDigimonSpecialVfx,
+  getPartnerAerialProfile,
+  getPartnerLiveHoverAltitude,
   preloadDigimonPartnerAssets,
 } from '../sprites/digimonPartnerSprites';
 import {
@@ -1035,17 +1039,34 @@ export function TamerWorldCanvas({
 
   useEffect(() => {
     const loaded = loadAutoHuntConfig(autoHuntStorageKey);
-    autoHuntConfigRef.current = loaded;
-    setAutoHuntConfig(loaded);
-  }, [autoHuntStorageKey]);
+    const hasVip = hudAccountRef.current.autoFarmVipUnlocked === true || isGM;
+    const safeLoaded = !hasVip && loaded.enabled ? { ...loaded, enabled: false } : loaded;
+    autoHuntConfigRef.current = safeLoaded;
+    setAutoHuntConfig(safeLoaded);
+    if (safeLoaded !== loaded) {
+      saveAutoHuntConfig(autoHuntStorageKey, safeLoaded);
+    }
+  }, [autoHuntStorageKey, isGM]);
+
+  useEffect(() => {
+    const hasVip = hudAccount.autoFarmVipUnlocked === true || isGM;
+    if (!hasVip && autoHuntConfigRef.current.enabled) {
+      const disabledCfg: AutoHuntConfig = { ...autoHuntConfigRef.current, enabled: false };
+      autoHuntConfigRef.current = disabledCfg;
+      setAutoHuntConfig(disabledCfg);
+      saveAutoHuntConfig(autoHuntStorageKey, disabledCfg);
+    }
+  }, [hudAccount.autoFarmVipUnlocked, isGM, autoHuntStorageKey]);
 
   const handleUpdateAutoHuntConfig = useCallback(
     (next: AutoHuntConfig) => {
-      autoHuntConfigRef.current = next;
-      setAutoHuntConfig(next);
-      saveAutoHuntConfig(autoHuntStorageKey, next);
+      const hasVip = hudAccountRef.current.autoFarmVipUnlocked === true || isGM;
+      const gatedNext = !hasVip && next.enabled ? { ...next, enabled: false } : next;
+      autoHuntConfigRef.current = gatedNext;
+      setAutoHuntConfig(gatedNext);
+      saveAutoHuntConfig(autoHuntStorageKey, gatedNext);
     },
-    [autoHuntStorageKey]
+    [autoHuntStorageKey, isGM]
   );
 
   const [remotePlayers, setRemotePlayers] = useState<RemoteWorldPlayer[]>([]);
@@ -1258,6 +1279,74 @@ export function TamerWorldCanvas({
     });
   }, []);
 
+  const handleUnlockAutoFarmVip = useCallback((): { ok: boolean; message: string } => {
+    const cur = hudAccountRef.current;
+    if (cur.autoFarmVipUnlocked === true || isGM) {
+      const enabledCfg: AutoHuntConfig = { ...autoHuntConfigRef.current, enabled: true };
+      autoHuntConfigRef.current = enabledCfg;
+      setAutoHuntConfig(enabledCfg);
+      saveAutoHuntConfig(autoHuntStorageKey, enabledCfg);
+      return {
+        ok: true,
+        message: `VIP Auto Farm ativado! Bônus de +${AUTO_FARM_VIP_XP_BONUS_PCT}% EXP ativo enquanto o Auto Farm estiver ligado.`,
+      };
+    }
+
+    if (cur.dCoin < AUTO_FARM_VIP_COST_DWCOIN) {
+      return {
+        ok: false,
+        message: `Saldo insuficiente! Você precisa de ${AUTO_FARM_VIP_COST_DWCOIN} DL Din para desbloquear o VIP Auto Farm.`,
+      };
+    }
+
+    const nextDCoin = cur.dCoin - AUTO_FARM_VIP_COST_DWCOIN;
+    const nextAcc: AccountHudPersistence = {
+      ...cur,
+      dCoin: nextDCoin,
+      autoFarmVipUnlocked: true,
+      updatedAt: new Date().toISOString(),
+    };
+    commitHudAccount(nextAcc, true);
+
+    void recordDwCoinSpendTransaction({
+      username: selection.accountUsername || actorUid,
+      tamerName: selection.tamerName,
+      itemKey: 'vip_auto_farm',
+      itemName: `VIP Auto Farm (+${AUTO_FARM_VIP_XP_BONUS_PCT}% EXP)`,
+      category: 'vip',
+      dwCoinAmount: AUTO_FARM_VIP_COST_DWCOIN,
+      balanceAfter: nextDCoin,
+    });
+
+    const enabledCfg: AutoHuntConfig = { ...autoHuntConfigRef.current, enabled: true };
+    autoHuntConfigRef.current = enabledCfg;
+    setAutoHuntConfig(enabledCfg);
+    saveAutoHuntConfig(autoHuntStorageKey, enabledCfg);
+
+    pushNotification(
+      'VIP Auto Farm Ativado!',
+      `Auto Farm liberado por ${AUTO_FARM_VIP_COST_DWCOIN} DL Din! Ganhe +${AUTO_FARM_VIP_XP_BONUS_PCT}% EXP enquanto o Auto Farm estiver ativo.`
+    );
+    pushChatMessage(
+      'system',
+      `[VIP AUTO FARM] Desbloqueado por ${AUTO_FARM_VIP_COST_DWCOIN} DL Din! +${AUTO_FARM_VIP_XP_BONUS_PCT}% EXP ativo enquanto o Auto Farm estiver ligado.`,
+      { tone: 'loot' }
+    );
+
+    return {
+      ok: true,
+      message: `VIP Auto Farm liberado com sucesso! +${AUTO_FARM_VIP_XP_BONUS_PCT}% EXP ativo enquanto o Auto Farm estiver ligado.`,
+    };
+  }, [
+    actorUid,
+    autoHuntStorageKey,
+    isGM,
+    pushChatMessage,
+    pushNotification,
+    selection.accountUsername,
+    selection.tamerName,
+  ]);
+
   // Subscribe to Server-wide EXP Rate (100% / 150% / 200% / 250%)
   useEffect(() => {
     const unsub = subscribeServerExpRate((state) => {
@@ -1349,6 +1438,18 @@ export function TamerWorldCanvas({
             : null;
         if (cloudBits === null || cloudDCoin === null) return;
 
+        const cloudAutoFarmVip = cloudHud.autoFarmVipUnlocked === true;
+        if (cloudAutoFarmVip && hudAccountRef.current.autoFarmVipUnlocked !== true) {
+          const syncedVipState: AccountHudPersistence = {
+            ...hudAccountRef.current,
+            autoFarmVipUnlocked: true,
+            updatedAt: new Date().toISOString(),
+          };
+          hudAccountRef.current = syncedVipState;
+          setHudAccount(syncedVipState);
+          saveAccountHudState(syncedVipState, true);
+        }
+
         const prevObserved = lastCloudMoneyRef.current;
         lastCloudMoneyRef.current = { bits: cloudBits, dCoin: cloudDCoin };
         if (!prevObserved) return;
@@ -1376,6 +1477,7 @@ export function TamerWorldCanvas({
           ...cur,
           bits: nextBits,
           dCoin: nextDCoin,
+          autoFarmVipUnlocked: cur.autoFarmVipUnlocked === true || cloudAutoFarmVip,
           updatedAt: new Date().toISOString(),
         };
         hudAccountRef.current = nextState;
@@ -1383,11 +1485,11 @@ export function TamerWorldCanvas({
         saveAccountHudState(nextState, true);
         pushNotification(
           'Saldo Atualizado pelo GM',
-          `Novo saldo: ${formatDigitalCurrency(nextBits)} · ${nextDCoin.toLocaleString('pt-BR')} DWcoin.`
+          `Novo saldo: ${formatDigitalCurrency(nextBits)} · ${nextDCoin.toLocaleString('pt-BR')} DL Din.`
         );
         pushChatMessage(
           'system',
-          `[GM] Seu saldo foi atualizado pela administração (${formatDigitalCurrency(nextBits)} · ${nextDCoin.toLocaleString('pt-BR')} DWcoin).`,
+          `[GM] Seu saldo foi atualizado pela administração (${formatDigitalCurrency(nextBits)} · ${nextDCoin.toLocaleString('pt-BR')} DL Din).`,
           { tone: 'loot' }
         );
       },
@@ -1627,15 +1729,20 @@ export function TamerWorldCanvas({
 
         const totalGuildExpBonusPct = guildDailyEventXpRef.current;
         const playerXpBoostPct = getActiveXpBoostBonusPct(prevAcc.xpBoostUntilMs);
+        const autoFarmVipXpBonusPct =
+          autoHuntConfigRef.current.enabled &&
+          (prevAcc.autoFarmVipUnlocked === true || isGM)
+            ? AUTO_FARM_VIP_XP_BONUS_PCT
+            : 0;
         const gainedDigimonExp = applyServerExpMultiplier(
           baseSharedDigimonExp,
           serverExpRateRef.current,
-          totalGuildExpBonusPct + playerXpBoostPct
+          totalGuildExpBonusPct + playerXpBoostPct + autoFarmVipXpBonusPct
         );
         const gainedTamerExp = applyServerExpMultiplier(
           baseSharedTamerExp,
           serverExpRateRef.current,
-          totalGuildExpBonusPct + playerXpBoostPct
+          totalGuildExpBonusPct + playerXpBoostPct + autoFarmVipXpBonusPct
         );
 
         const tamerRes = applyExpToTamer(
@@ -2086,6 +2193,13 @@ export function TamerWorldCanvas({
     const handleOfflineSignal = () => {
       void markLocalWorldPresenceOffline(myEpoch);
     };
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'hidden') {
+        void markLocalWorldPresenceOffline(myEpoch);
+      } else if (document.visibilityState === 'visible') {
+        pushFullPresenceNow();
+      }
+    };
     const handleReturnOnline = () => {
       if (document.visibilityState === 'visible') {
         pushFullPresenceNow();
@@ -2095,7 +2209,7 @@ export function TamerWorldCanvas({
     window.addEventListener('beforeunload', handleOfflineSignal);
     window.addEventListener('focus', handleReturnOnline);
     window.addEventListener('online', handleReturnOnline);
-    document.addEventListener('visibilitychange', handleReturnOnline);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
 
     return () => {
       active = false;
@@ -2103,7 +2217,7 @@ export function TamerWorldCanvas({
       window.removeEventListener('beforeunload', handleOfflineSignal);
       window.removeEventListener('focus', handleReturnOnline);
       window.removeEventListener('online', handleReturnOnline);
-      document.removeEventListener('visibilitychange', handleReturnOnline);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
       unsubscribe();
       void markLocalWorldPresenceOffline(myEpoch);
     };
@@ -2254,15 +2368,20 @@ export function TamerWorldCanvas({
           );
           const totalGuildExpBonusPct = guildDailyEventXpRef.current;
           const playerXpBoostPct = getActiveXpBoostBonusPct(prevAcc.xpBoostUntilMs);
+          const autoFarmVipXpBonusPct =
+            autoHuntConfigRef.current.enabled &&
+            (prevAcc.autoFarmVipUnlocked === true || isGM)
+              ? AUTO_FARM_VIP_XP_BONUS_PCT
+              : 0;
           const gainedDigimonExp = applyServerExpMultiplier(
             baseRaidDigimonExp,
             serverExpRateRef.current,
-            totalGuildExpBonusPct + playerXpBoostPct
+            totalGuildExpBonusPct + playerXpBoostPct + autoFarmVipXpBonusPct
           );
           const gainedTamerExp = applyServerExpMultiplier(
             baseRaidTamerExp,
             serverExpRateRef.current,
-            totalGuildExpBonusPct + playerXpBoostPct
+            totalGuildExpBonusPct + playerXpBoostPct + autoFarmVipXpBonusPct
           );
           const bitsDrop = 450;
 
@@ -3644,7 +3763,7 @@ export function TamerWorldCanvas({
       playDigitalTone('confirm', soundEnabled);
       const parts: string[] = [];
       if (bitsDelta > 0) parts.push(`+${formatDigitalCurrency(bitsDelta)}`);
-      if (dCoinDelta > 0) parts.push(`+${dCoinDelta.toLocaleString('pt-BR')} DWcoin`);
+      if (dCoinDelta > 0) parts.push(`+${dCoinDelta.toLocaleString('pt-BR')} DL Din`);
       pushChatMessage('system', `[GM] Creditado: ${parts.join(' · ')}.`, {
         tone: 'loot',
       });
@@ -5021,8 +5140,11 @@ export function TamerWorldCanvas({
         }
       }
 
-      if (
+      const canRunAutoFarm =
         autoCfg.enabled &&
+        (hudAccountRef.current.autoFarmVipUnlocked === true || isGM);
+      if (
+        canRunAutoFarm &&
         autoCfg.targetSpecies.length > 0 &&
         isCombatMap &&
         !isEvolving
@@ -5384,15 +5506,20 @@ export function TamerWorldCanvas({
             );
             const totalGuildExpBonusPct = guildDailyEventXpRef.current;
             const playerXpBoostPct = getActiveXpBoostBonusPct(prevAcc.xpBoostUntilMs);
+            const autoFarmVipXpBonusPct =
+              autoHuntConfigRef.current.enabled &&
+              (prevAcc.autoFarmVipUnlocked === true || isGM)
+                ? AUTO_FARM_VIP_XP_BONUS_PCT
+                : 0;
             const gainedDigimonExp = applyServerExpMultiplier(
               baseMobDigimonExp,
               serverExpRateRef.current,
-              totalGuildExpBonusPct + playerXpBoostPct
+              totalGuildExpBonusPct + playerXpBoostPct + autoFarmVipXpBonusPct
             );
             const gainedTamerExp = applyServerExpMultiplier(
               baseMobTamerExp,
               serverExpRateRef.current,
-              totalGuildExpBonusPct + playerXpBoostPct
+              totalGuildExpBonusPct + playerXpBoostPct + autoFarmVipXpBonusPct
             );
             const bitsDrop = 10 + enemy.level * 5;
 
@@ -6313,25 +6440,42 @@ export function TamerWorldCanvas({
             }
 
             ctx!.save();
-            ctx!.fillStyle = 'rgba(0, 0, 0, 0.22)';
+            const rAerial = getPartnerAerialProfile(rForm.id);
+            const rLiveAlt = rAerial.isAerial
+              ? getPartnerLiveHoverAltitude(
+                  rForm.id,
+                  isRemotePartnerMoving ? 'walk' : 'idle',
+                  elapsed
+                )
+              : 0;
+            const rAltRatio = rAerial.isAerial
+              ? Math.max(0, Math.min(1, rLiveAlt / 36))
+              : 0;
+            const rShadowScale = rAerial.isAerial ? 0.9 - rAltRatio * 0.22 : 1;
+
+            ctx!.fillStyle = rAerial.isAerial
+              ? `rgba(0, 0, 0, ${(0.2 - rAltRatio * 0.06).toFixed(2)})`
+              : 'rgba(0, 0, 0, 0.22)';
             ctx!.beginPath();
             ctx!.ellipse(
               rpX,
               rpY + 1.5,
-              rDims.shadowRx * 1.06,
-              rDims.shadowRy * 1.06,
+              rDims.shadowRx * 1.08 * rShadowScale,
+              rDims.shadowRy * 1.06 * rShadowScale,
               0,
               0,
               Math.PI * 2
             );
             ctx!.fill();
-            ctx!.fillStyle = 'rgba(0, 0, 0, 0.34)';
+            ctx!.fillStyle = rAerial.isAerial
+              ? `rgba(0, 0, 0, ${(0.29 - rAltRatio * 0.09).toFixed(2)})`
+              : 'rgba(0, 0, 0, 0.34)';
             ctx!.beginPath();
             ctx!.ellipse(
               rpX,
               rpY + 1,
-              rDims.shadowRx * 0.78,
-              rDims.shadowRy * 0.72,
+              rDims.shadowRx * 0.78 * rShadowScale,
+              rDims.shadowRy * 0.72 * rShadowScale,
               0,
               0,
               Math.PI * 2
@@ -6339,12 +6483,7 @@ export function TamerWorldCanvas({
             ctx!.fill();
             ctx!.restore();
 
-            if (
-              isRemotePartnerMoving &&
-              rForm.id !== 'giromon' &&
-              rForm.id !== 'aquilamon' &&
-              rForm.id !== 'gryphonmon'
-            ) {
+            if (isRemotePartnerMoving && !rAerial.isAerial) {
               const stepVector =
                 rp.partnerDir === 'W'
                   ? { vx: 1, vy: 0.1 }
@@ -6382,7 +6521,7 @@ export function TamerWorldCanvas({
             const remotePartnerFont = '700 10px "Exo 2", sans-serif';
             ctx!.font = remotePartnerFont;
             ctx!.textAlign = 'center';
-            const pTagY = rpY - rDims.nameplateOffsetY;
+            const pTagY = rpY - rDims.nameplateOffsetY - rAerial.nameplateLift;
             const pName = `${rForm.name}`;
             const ptw = measureTextCached(ctx!, remotePartnerFont, pName) + 10;
             ctx!.fillStyle = 'rgba(4, 17, 46, 0.84)';
@@ -6418,13 +6557,22 @@ export function TamerWorldCanvas({
             ctx!.translate(-sim.partner.x, -sim.partner.y);
           }
 
-          const isFlyingBird =
-            renderForm.id === 'aquilamon' || renderForm.id === 'gryphonmon';
-          const shadowScale = isFlyingBird ? 0.82 : 1;
+          const aerial = getPartnerAerialProfile(renderForm.id);
+          const liveHoverAlt = aerial.isAerial
+            ? getPartnerLiveHoverAltitude(
+                renderForm.id,
+                sim.partner.isMoving ? 'walk' : 'idle',
+                elapsed
+              )
+            : 0;
+          const altRatio = aerial.isAerial
+            ? Math.max(0, Math.min(1, liveHoverAlt / 36))
+            : 0;
+          const shadowScale = aerial.isAerial ? 0.9 - altRatio * 0.22 : 1;
 
           ctx!.save();
-          ctx!.fillStyle = isFlyingBird
-            ? 'rgba(0, 0, 0, 0.18)'
+          ctx!.fillStyle = aerial.isAerial
+            ? `rgba(0, 0, 0, ${(0.2 - altRatio * 0.06).toFixed(2)})`
             : 'rgba(0, 0, 0, 0.24)';
           ctx!.beginPath();
           ctx!.ellipse(
@@ -6437,8 +6585,8 @@ export function TamerWorldCanvas({
             Math.PI * 2
           );
           ctx!.fill();
-          ctx!.fillStyle = isFlyingBird
-            ? 'rgba(0, 0, 0, 0.28)'
+          ctx!.fillStyle = aerial.isAerial
+            ? `rgba(0, 0, 0, ${(0.3 - altRatio * 0.1).toFixed(2)})`
             : 'rgba(0, 0, 0, 0.38)';
           ctx!.beginPath();
           ctx!.ellipse(
@@ -6500,7 +6648,7 @@ export function TamerWorldCanvas({
           }
 
           if (sim.partner.isMoving && !sim.partner.activeAttack) {
-            if (isFlyingBird) {
+            if (aerial.showsWindWisps) {
               // Crisp mid-air wind stream wisps trailing behind soaring wings (zero ground dust)
               const airDirX =
                 sim.partner.dir === 'W'
@@ -6514,25 +6662,28 @@ export function TamerWorldCanvas({
                   : sim.partner.dir === 'S'
                     ? -0.7
                     : 0.08;
-              const flyY = sim.partner.y - (renderForm.id === 'gryphonmon' ? 54 : 44);
+              const flyY = sim.partner.y - (liveHoverAlt + 24);
               ctx!.save();
               ctx!.lineCap = 'round';
               for (let wi = 0; wi < 3; wi++) {
                 const phase = (elapsed * 3.8 + wi * 0.33) % 1;
                 const spreadY = (wi - 1) * 14;
-                const sx = sim.partner.x + airDirX * (14 + phase * 32) + (airDirX === 0 ? (wi - 1) * 18 : 0);
+                const sx =
+                  sim.partner.x +
+                  airDirX * (14 + phase * 32) +
+                  (airDirX === 0 ? (wi - 1) * 18 : 0);
                 const sy = flyY + spreadY + airDirY * (8 + phase * 18);
-                ctx!.globalAlpha = (1 - phase) * 0.42;
+                ctx!.globalAlpha = (1 - phase) * 0.44;
                 ctx!.strokeStyle =
                   wi === 1 ? renderForm.theme.accentHex : 'rgba(224, 242, 254, 0.9)';
                 ctx!.lineWidth = Math.max(1.2, (1 - phase) * 2.6);
                 ctx!.beginPath();
                 ctx!.moveTo(sx, sy);
-                ctx!.lineTo(sx + airDirX * 14, sy + airDirY * 8);
+                ctx!.lineTo(sx + airDirX * 16, sy + airDirY * 9);
                 ctx!.stroke();
               }
               ctx!.restore();
-            } else if (renderForm.id !== 'giromon') {
+            } else if (!aerial.isAerial) {
               const stepVector =
                 sim.partner.dir === 'W'
                   ? { vx: 1, vy: 0.1 }
@@ -6624,12 +6775,7 @@ export function TamerWorldCanvas({
           ctx!.save();
           ctx!.font = '700 10.5px "Exo 2", sans-serif';
           ctx!.textAlign = 'center';
-          const flyingNameLift =
-            renderForm.id === 'gryphonmon'
-              ? 30
-              : renderForm.id === 'aquilamon'
-                ? 24
-                : 0;
+          const flyingNameLift = aerial.nameplateLift;
           const pTagY = sim.partner.y - dims.nameplateOffsetY - flyingNameLift;
           const pName =
             renderForm.id === activeFormRef.current.id
@@ -6971,9 +7117,10 @@ export function TamerWorldCanvas({
         const movedEnough =
           (movedDist >= 12 || sim.dir !== syncMeta.dir || sim.state !== syncMeta.state) &&
           elapsedSinceSync >= 450;
-        const heartbeatDue = elapsedSinceSync >= 15_000;
+        const heartbeatDue = elapsedSinceSync >= 10_000;
 
         if (
+          document.visibilityState === 'visible' &&
           !syncMeta.inFlight &&
           (mapOrFormChanged || stoppedMoving || movedEnough || heartbeatDue)
         ) {
@@ -7688,7 +7835,7 @@ export function TamerWorldCanvas({
     if (cur.dCoin < offer.priceDwCoin) {
       return {
         ok: false,
-        message: `Saldo insuficiente. Você precisa de ${offer.priceDwCoin.toLocaleString('pt-BR')} DWcoin.`,
+        message: `Saldo insuficiente. Você precisa de ${offer.priceDwCoin.toLocaleString('pt-BR')} DL Din.`,
       };
     }
 
@@ -7715,7 +7862,7 @@ export function TamerWorldCanvas({
         balanceAfter: nextDCoin,
       });
       const msg = `Mochila expandida para ${nextSlots} slots permanentes!`;
-      pushNotification('Compra na Loja DWcoin', `${offer.name} ativado (${nextSlots} slots).`);
+      pushNotification('Compra na Loja DL Din', `${offer.name} ativado (${nextSlots} slots).`);
       return { ok: true, message: msg };
     }
 
@@ -7745,7 +7892,7 @@ export function TamerWorldCanvas({
         balanceAfter: nextDCoin,
       });
       const msg = `Digimon Archive expandido para ${nextArch} slots permanentes!`;
-      pushNotification('Compra na Loja DWcoin', `${offer.name} ativado (${nextArch} slots).`);
+      pushNotification('Compra na Loja DL Din', `${offer.name} ativado (${nextArch} slots).`);
       return { ok: true, message: msg };
     }
 
@@ -7836,8 +7983,8 @@ export function TamerWorldCanvas({
       dwCoinAmount: offer.priceDwCoin,
       balanceAfter: nextDCoin,
     });
-    const msg = `${offer.name} adquirido por ${offer.priceDwCoin.toLocaleString('pt-BR')} DWcoin! Itens enviados ao seu Inventário.`;
-    pushNotification('Compra na Loja DWcoin', `${offer.name} adicionado ao seu Inventário.`);
+    const msg = `${offer.name} adquirido por ${offer.priceDwCoin.toLocaleString('pt-BR')} DL Din! Itens enviados ao seu Inventário.`;
+    pushNotification('Compra na Loja DL Din', `${offer.name} adicionado ao seu Inventário.`);
     return { ok: true, message: msg };
   }
 
@@ -9231,6 +9378,8 @@ export function TamerWorldCanvas({
         onClearNotifications={() => setNotifications([])}
         autoHuntConfig={autoHuntConfig}
         onUpdateAutoHuntConfig={handleUpdateAutoHuntConfig}
+        onUnlockAutoFarmVip={handleUnlockAutoFarmVip}
+        onOpenDwCoinShop={() => setActiveHudWindow('shop')}
         isGM={isGM}
         cloudIsGm={isServerGm}
         onOpenFeedback={

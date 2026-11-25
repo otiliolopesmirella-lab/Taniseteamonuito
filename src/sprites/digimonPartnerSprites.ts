@@ -2204,19 +2204,19 @@ const DIRECTION_CELL_MAP: Record<
     N: { idle: { col: 0, row: 2 }, walk: [{ col: 0, row: 2 }, { col: 1, row: 2 }, { col: 2, row: 2 }, { col: 3, row: 2 }] },
   },
   biyomon: {
-    S: { idle: { col: 0, row: 0 }, walk: [{ col: 0, row: 0 }, { col: 1, row: 0 }, { col: 2, row: 0 }, { col: 3, row: 0 }] },
+    S: { idle: { col: 0, row: 0 }, walk: [{ col: 2, row: 0 }, { col: 0, row: 0 }, { col: 3, row: 0 }, { col: 0, row: 0 }] },
     N: { idle: { col: 0, row: 1 }, walk: [{ col: 0, row: 1 }, { col: 1, row: 1 }, { col: 2, row: 1 }, { col: 3, row: 1 }] },
     W: { idle: { col: 0, row: 2 }, walk: [{ col: 0, row: 2 }, { col: 1, row: 2 }, { col: 2, row: 2 }, { col: 3, row: 2 }] },
     E: { idle: { col: 0, row: 3 }, walk: [{ col: 0, row: 3 }, { col: 1, row: 3 }, { col: 2, row: 3 }, { col: 3, row: 3 }] },
   },
   birdramon: {
-    S: { idle: { col: 0, row: 0 }, walk: [{ col: 0, row: 0 }, { col: 1, row: 0 }, { col: 2, row: 0 }, { col: 3, row: 0 }] },
+    S: { idle: { col: 0, row: 0 }, walk: [{ col: 0, row: 0 }, { col: 2, row: 0 }, { col: 1, row: 0 }, { col: 3, row: 0 }] },
     N: { idle: { col: 0, row: 1 }, walk: [{ col: 0, row: 1 }, { col: 1, row: 1 }, { col: 2, row: 1 }, { col: 3, row: 1 }] },
     W: { idle: { col: 0, row: 2 }, walk: [{ col: 0, row: 2 }, { col: 1, row: 2 }, { col: 2, row: 2 }, { col: 3, row: 2 }] },
     E: { idle: { col: 0, row: 3 }, walk: [{ col: 0, row: 3 }, { col: 1, row: 3 }, { col: 2, row: 3 }, { col: 3, row: 3 }] },
   },
   garudamon: {
-    S: { idle: { col: 0, row: 0 }, walk: [{ col: 0, row: 0 }, { col: 1, row: 0 }, { col: 2, row: 0 }, { col: 3, row: 0 }] },
+    S: { idle: { col: 0, row: 0 }, walk: [{ col: 2, row: 0 }, { col: 0, row: 0 }, { col: 3, row: 0 }, { col: 1, row: 0 }] },
     N: { idle: { col: 0, row: 1 }, walk: [{ col: 0, row: 1 }, { col: 1, row: 1 }, { col: 2, row: 1 }, { col: 3, row: 1 }] },
     W: { idle: { col: 0, row: 2 }, walk: [{ col: 0, row: 2 }, { col: 1, row: 2 }, { col: 2, row: 2 }, { col: 3, row: 2 }] },
     E: { idle: { col: 0, row: 3 }, walk: [{ col: 0, row: 3 }, { col: 1, row: 3 }, { col: 2, row: 3 }, { col: 3, row: 3 }] },
@@ -2234,19 +2234,19 @@ const DIRECTION_CELL_MAP: Record<
     E: { idle: { col: 0, row: 3 }, walk: [{ col: 0, row: 3 }, { col: 1, row: 3 }, { col: 2, row: 3 }, { col: 3, row: 3 }] },
   },
   flymon: {
-    S: { idle: { col: 0, row: 0 }, walk: [{ col: 0, row: 0 }, { col: 1, row: 0 }, { col: 2, row: 0 }, { col: 3, row: 0 }] },
+    S: { idle: { col: 0, row: 0 }, walk: [{ col: 0, row: 0 }, { col: 2, row: 0 }, { col: 1, row: 0 }, { col: 3, row: 0 }] },
     N: { idle: { col: 0, row: 1 }, walk: [{ col: 0, row: 1 }, { col: 1, row: 1 }, { col: 2, row: 1 }, { col: 3, row: 1 }] },
     W: { idle: { col: 0, row: 2 }, walk: [{ col: 0, row: 2 }, { col: 1, row: 2 }, { col: 2, row: 2 }, { col: 3, row: 2 }] },
     E: { idle: { col: 0, row: 3 }, walk: [{ col: 0, row: 3 }, { col: 1, row: 3 }, { col: 2, row: 3 }, { col: 3, row: 3 }] },
   },
   okuwamon: {
-    S: { idle: { col: 0, row: 0 }, walk: [{ col: 0, row: 0 }, { col: 1, row: 0 }, { col: 2, row: 0 }, { col: 3, row: 0 }] },
+    S: { idle: { col: 0, row: 0 }, walk: [{ col: 2, row: 0 }, { col: 1, row: 0 }, { col: 3, row: 0 }, { col: 1, row: 0 }] },
     N: { idle: { col: 0, row: 1 }, walk: [{ col: 0, row: 1 }, { col: 1, row: 1 }, { col: 2, row: 1 }, { col: 3, row: 1 }] },
     W: { idle: { col: 0, row: 2 }, walk: [{ col: 0, row: 2 }, { col: 1, row: 2 }, { col: 2, row: 2 }, { col: 3, row: 2 }] },
     E: { idle: { col: 0, row: 3 }, walk: [{ col: 0, row: 3 }, { col: 1, row: 3 }, { col: 2, row: 3 }, { col: 3, row: 3 }] },
   },
   grankuwagamon: {
-    S: { idle: { col: 0, row: 0 }, walk: [{ col: 0, row: 0 }, { col: 1, row: 0 }, { col: 2, row: 0 }, { col: 3, row: 0 }] },
+    S: { idle: { col: 0, row: 0 }, walk: [{ col: 2, row: 0 }, { col: 0, row: 0 }, { col: 3, row: 0 }, { col: 1, row: 0 }] },
     N: { idle: { col: 0, row: 1 }, walk: [{ col: 0, row: 1 }, { col: 1, row: 1 }, { col: 2, row: 1 }, { col: 3, row: 1 }] },
     W: { idle: { col: 0, row: 2 }, walk: [{ col: 0, row: 2 }, { col: 1, row: 2 }, { col: 2, row: 2 }, { col: 3, row: 2 }] },
     E: { idle: { col: 0, row: 3 }, walk: [{ col: 0, row: 3 }, { col: 1, row: 3 }, { col: 2, row: 3 }, { col: 3, row: 3 }] },
@@ -2257,9 +2257,106 @@ function getPartnerScale(formId: DigimonFormId): number {
   return getDigimonFormProfile(formId).worldScale;
 }
 
+export type PartnerAerialMode = 'soaring' | 'wing_hover' | 'float' | 'ground';
+
+export interface PartnerAerialProfile {
+  mode: PartnerAerialMode;
+  baseAltitude: number;
+  nameplateLift: number;
+  isAerial: boolean;
+  showsWindWisps: boolean;
+}
+
+/**
+ * Single source of truth for which Digimon forms soar/fly, wing-hover, float, or walk on the ground.
+ * Used by both `drawDigimonPartnerFrame` and `TamerWorldCanvas` (shadows, air ribbons, nameplates).
+ */
+export function getPartnerAerialProfile(formId: DigimonFormId): PartnerAerialProfile {
+  switch (formId) {
+    // True soaring winged flyers (continuous rhythmic wingbeats & thermal glide in idle & movement)
+    case 'gryphonmon':
+    case 'phoenixmon':
+      return { mode: 'soaring', baseAltitude: 28, nameplateLift: 28, isAerial: true, showsWindWisps: true };
+    case 'aquilamon':
+    case 'birdramon':
+    case 'flymon':
+      return { mode: 'soaring', baseAltitude: 24, nameplateLift: 24, isAerial: true, showsWindWisps: true };
+    case 'kabuterimon':
+    case 'herculeskabuterimon':
+      return { mode: 'soaring', baseAltitude: 20, nameplateLift: 20, isAerial: true, showsWindWisps: true };
+
+    // Winged aerial fighters (calm hover stance in idle so col 0 doesn't snap into midair jogging, smooth aerial glide when moving)
+    case 'grankuwagamon':
+      return { mode: 'wing_hover', baseAltitude: 24, nameplateLift: 24, isAerial: true, showsWindWisps: true };
+    case 'garudamon':
+    case 'okuwamon':
+      return { mode: 'wing_hover', baseAltitude: 22, nameplateLift: 22, isAerial: true, showsWindWisps: true };
+
+    // Pure levitating / hovering Digimons (silky continuous hover with zero ground dust)
+    case 'giromon':
+      return { mode: 'float', baseAltitude: 20, nameplateLift: 18, isAerial: true, showsWindWisps: false };
+    case 'rosemon':
+      return { mode: 'float', baseAltitude: 18, nameplateLift: 16, isAerial: true, showsWindWisps: false };
+    case 'lilamon':
+      return { mode: 'float', baseAltitude: 16, nameplateLift: 14, isAerial: true, showsWindWisps: false };
+    case 'sunflowmon':
+    case 'chrysalimon':
+      return { mode: 'float', baseAltitude: 14, nameplateLift: 12, isAerial: true, showsWindWisps: false };
+    case 'lalamon':
+    case 'demimeramon':
+      return { mode: 'float', baseAltitude: 12, nameplateLift: 10, isAerial: true, showsWindWisps: false };
+
+    default:
+      return { mode: 'ground', baseAltitude: 0, nameplateLift: 0, isAerial: false, showsWindWisps: false };
+  }
+}
+
+/**
+ * Computes the live vertical elevation (positive px above ground) for any Digimon form
+ * so ground shadows scale and soften harmoniously in real time with wingbeats & gliding.
+ */
+export function getPartnerLiveHoverAltitude(
+  formId: DigimonFormId,
+  state: TamerMovementState,
+  elapsedSec: number
+): number {
+  const aerial = getPartnerAerialProfile(formId);
+  if (!aerial.isAerial) return 0;
+
+  if (aerial.mode === 'soaring') {
+    if (state === 'idle') {
+      const wingWave = Math.sin(elapsedSec * 3.8);
+      const thermalWave = Math.sin(elapsedSec * 1.45) * 2.4;
+      return Math.max(8, aerial.baseAltitude + wingWave * 4.6 + thermalWave);
+    }
+    const soarWave = Math.sin(elapsedSec * 5.0);
+    const thermalGlide = Math.sin(elapsedSec * 1.8) * 2.2;
+    return Math.max(10, aerial.baseAltitude + 6 + soarWave * 4.2 + thermalGlide);
+  }
+
+  if (aerial.mode === 'wing_hover') {
+    if (state === 'idle') {
+      const hoverWave = Math.sin(elapsedSec * 2.9);
+      const thermalWave = Math.sin(elapsedSec * 1.35) * 2.0;
+      return Math.max(8, aerial.baseAltitude + hoverWave * 4.0 + thermalWave);
+    }
+    const glideWave = Math.sin(elapsedSec * 4.4);
+    return Math.max(10, aerial.baseAltitude + 5 + glideWave * 3.8);
+  }
+
+  // 'float' mode (Giromon, Lalamon line, Chrysalimon, DemiMeramon)
+  if (state === 'idle') {
+    const floatWave = Math.sin(elapsedSec * 2.75);
+    const driftWave = Math.sin(elapsedSec * 1.25) * 1.6;
+    return Math.max(6, aerial.baseAltitude + floatWave * 3.6 + driftWave);
+  }
+  const glideWave = Math.sin(elapsedSec * 4.1);
+  return Math.max(8, aerial.baseAltitude + 3.5 + glideWave * 3.0);
+}
+
 /**
  * Draws the companion partner Digimon using its untouched reference spritesheet
- * in Idle or 4-Direction Walk states.
+ * in Idle or 4-Direction Walk / Flight states.
  */
 export function drawDigimonPartnerFrame(
   ctx: CanvasRenderingContext2D,
@@ -2282,25 +2379,17 @@ export function drawDigimonPartnerFrame(
   touchDigimonCacheForm(formId);
 
   const dirEntry = DIRECTION_CELL_MAP[formId][direction];
-  const isFlyingWingedForm =
-    formId === 'aquilamon' ||
-    formId === 'gryphonmon' ||
-    formId === 'birdramon' ||
-    formId === 'garudamon' ||
-    formId === 'phoenixmon' ||
-    formId === 'flymon' ||
-    formId === 'okuwamon' ||
-    formId === 'grankuwagamon';
+  const aerial = getPartnerAerialProfile(formId);
   const safeWalkIdx =
     ((frameIndex % DIGIMON_FRAME_COUNT) + DIGIMON_FRAME_COUNT) %
     DIGIMON_FRAME_COUNT;
-  // Flying winged Digimon (Aquilamon, Gryphonmon, Birdramon, Garudamon, Phoenixmon, Flymon, Okuwamon, GranKuwagamon)
-  // flap smoothly even when hovering in place; grounded Digimon hold a calm stance when idle.
+
+  // True soaring flyers beat their wings gracefully in idle; wing_hover & grounded hold calm stance in idle.
   const hoverWingIdx =
-    Math.floor(elapsedSec * 5.4) % DIGIMON_FRAME_COUNT;
+    Math.floor(elapsedSec * 4.6) % DIGIMON_FRAME_COUNT;
   const cell =
     state === 'idle'
-      ? isFlyingWingedForm
+      ? aerial.mode === 'soaring'
         ? (dirEntry.walk[hoverWingIdx] ?? dirEntry.idle)
         : dirEntry.idle
       : (dirEntry.walk[safeWalkIdx] ?? dirEntry.idle);
@@ -2348,134 +2437,102 @@ export function drawDigimonPartnerFrame(
     formId === 'monodramon' ||
     formId === 'biyomon' ||
     formId === 'kunemon';
-  const isPureHoverForm = formId === 'giromon';
-  const isLalamonFloatForm =
-    formId === 'lalamon' ||
-    formId === 'sunflowmon' ||
-    formId === 'lilamon' ||
-    formId === 'rosemon';
-  const isFloatingPlantForm =
-    formId === 'chrysalimon' ||
-    formId === 'demimeramon' ||
-    formId === 'kabuterimon' ||
-    formId === 'herculeskabuterimon';
 
   // Lifelike cubic-eased inhale/exhale breathing cycle when standing still (planted at the soles of the feet)
-  const breathSpeed = isRookieForm ? 2.65 : isMegaForm ? 2.05 : 2.35;
+  const breathSpeed = isRookieForm ? 2.55 : isMegaForm ? 1.95 : 2.25;
   const rawBreath = (Math.sin(elapsedSec * breathSpeed) + 1) * 0.5;
   const smoothBreath = rawBreath * rawBreath * (3 - 2 * rawBreath);
   const breathSigned = smoothBreath * 2 - 1; // -1 (relaxed exhale) .. +1 (full inhale)
 
-  const strideFreq = isRookieForm ? 12.6 : isMegaForm ? 9.8 : 11.2;
-  const strideSin = Math.sin(elapsedSec * strideFreq);
-  const impact = 1 - Math.abs(strideSin);
-
   let scaleX = baseScale;
   let scaleY = baseScale;
-  let idleHoverY = 0;
-  let walkTilt = 0;
+  let offsetX = 0;
+  let offsetY = 0;
+  let tiltAngle = 0;
 
-  if (isPureHoverForm) {
-    // True floating/hovering sphere (Giromon): glides smoothly above its shadow with zero footstep bounce
+  if (aerial.mode === 'soaring') {
+    const liveAlt = getPartnerLiveHoverAltitude(formId, state, elapsedSec);
+    offsetY = -liveAlt;
     if (state === 'idle') {
-      const hoverWave = Math.sin(elapsedSec * 3.5);
-      scaleX = baseScale * (1 - hoverWave * 0.012);
-      scaleY = baseScale * (1 + hoverWave * 0.016);
-      idleHoverY = -19 - hoverWave * 5.2;
-      walkTilt = Math.sin(elapsedSec * 2.1) * 0.04;
+      const wingBeat = Math.sin(elapsedSec * 3.8);
+      scaleX = baseScale * (1 + wingBeat * 0.014);
+      scaleY = baseScale * (1 - wingBeat * 0.011);
+      // Graceful slow figure-8 thermal drift while hovering in place
+      offsetX = Math.sin(elapsedSec * 1.6) * 2.4;
+      tiltAngle = Math.sin(elapsedSec * 1.6) * 0.024;
     } else {
-      const glideWave = Math.sin(elapsedSec * 5.2);
-      scaleX = baseScale * (1 + glideWave * 0.012);
-      scaleY = baseScale * (1 - glideWave * 0.012);
-      idleHoverY = -23 - glideWave * 4.4;
-      walkTilt =
+      const soarBeat = Math.sin(elapsedSec * 5.0);
+      scaleX = baseScale * (1 + soarBeat * 0.016);
+      scaleY = baseScale * (1 - soarBeat * 0.012);
+      // Aerodynamic banking & forward swoop lean
+      tiltAngle =
         direction === 'W'
-          ? -0.115
+          ? -0.088 - soarBeat * 0.022
           : direction === 'E'
-            ? 0.115
-            : Math.sin(elapsedSec * 4.2) * 0.038;
+            ? 0.088 + soarBeat * 0.022
+            : Math.sin(elapsedSec * 3.6) * 0.024;
     }
-  } else if (isFlyingWingedForm) {
-    // True aerial flight (Aquilamon, Gryphonmon, Birdramon, Garudamon, Phoenixmon, Flymon, Okuwamon, GranKuwagamon):
-    // soaring continuously above ground shadow with smooth wing-beat lift & banking
-    const baseAltitude =
-      formId === 'gryphonmon' || formId === 'phoenixmon' || formId === 'grankuwagamon'
-        ? 28
-        : formId === 'garudamon' || formId === 'okuwamon'
-          ? 26
-          : 23;
+  } else if (aerial.mode === 'wing_hover') {
+    const liveAlt = getPartnerLiveHoverAltitude(formId, state, elapsedSec);
+    offsetY = -liveAlt;
     if (state === 'idle') {
-      const flapWave = Math.sin(elapsedSec * 5.4);
-      scaleX = baseScale * (1 + flapWave * 0.016);
-      scaleY = baseScale * (1 - flapWave * 0.012);
-      idleHoverY = -baseAltitude - flapWave * 5.8;
-      walkTilt = Math.sin(elapsedSec * 2.4) * 0.028;
+      const hoverWave = Math.sin(elapsedSec * 2.9);
+      scaleX = baseScale * (1 - hoverWave * 0.01);
+      scaleY = baseScale * (1 + hoverWave * 0.014);
+      offsetX = Math.sin(elapsedSec * 1.4) * 1.8;
+      tiltAngle = Math.sin(elapsedSec * 1.4) * 0.02;
     } else {
-      const soarWave = Math.sin(elapsedSec * 7.2);
-      scaleX = baseScale * (1 + soarWave * 0.018);
-      scaleY = baseScale * (1 - soarWave * 0.014);
-      idleHoverY = -(baseAltitude + 6) - soarWave * 5.2;
-      walkTilt =
+      const glideWave = Math.sin(elapsedSec * 4.4);
+      scaleX = baseScale * (1 + glideWave * 0.013);
+      scaleY = baseScale * (1 - glideWave * 0.01);
+      tiltAngle =
         direction === 'W'
-          ? -0.095
+          ? -0.072 - glideWave * 0.018
           : direction === 'E'
-            ? 0.095
-            : Math.sin(elapsedSec * 5.4) * 0.032;
+            ? 0.072 + glideWave * 0.018
+            : Math.sin(elapsedSec * 3.2) * 0.02;
     }
-  } else if (isLalamonFloatForm) {
-    // Entire Lalamon evolution line floats continuously in BOTH idle and walk — never walks on the ground
-    const baseFloat =
-      formId === 'rosemon'
-        ? 18
-        : formId === 'lilamon'
-          ? 16
-          : formId === 'sunflowmon'
-            ? 14
-            : 12;
+  } else if (aerial.mode === 'float') {
+    const liveAlt = getPartnerLiveHoverAltitude(formId, state, elapsedSec);
+    offsetY = -liveAlt;
     if (state === 'idle') {
-      const floatWave = Math.sin(elapsedSec * 3.1);
-      scaleX = baseScale * (1 - floatWave * 0.012);
-      scaleY = baseScale * (1 + floatWave * 0.018);
-      idleHoverY = -baseFloat - floatWave * 3.8;
-      walkTilt = Math.sin(elapsedSec * 2.1) * 0.032;
+      const floatWave = Math.sin(elapsedSec * 2.75);
+      scaleX = baseScale * (1 - floatWave * 0.011);
+      scaleY = baseScale * (1 + floatWave * 0.015);
+      offsetX = Math.sin(elapsedSec * 1.45) * 1.6;
+      tiltAngle = Math.sin(elapsedSec * 1.45) * 0.026;
     } else {
-      const glideWave = Math.sin(elapsedSec * 4.6);
-      scaleX = baseScale * (1 + glideWave * 0.012);
-      scaleY = baseScale * (1 - glideWave * 0.012);
-      idleHoverY = -(baseFloat + 3) - glideWave * 3.2;
-      walkTilt =
+      const glideWave = Math.sin(elapsedSec * 4.1);
+      scaleX = baseScale * (1 + glideWave * 0.011);
+      scaleY = baseScale * (1 - glideWave * 0.011);
+      tiltAngle =
         direction === 'W'
-          ? -0.075
+          ? -0.078
           : direction === 'E'
-            ? 0.075
-            : Math.sin(elapsedSec * 3.8) * 0.028;
+            ? 0.078
+            : Math.sin(elapsedSec * 3.2) * 0.022;
     }
   } else {
+    // Grounded Digimons: crisp, natural walk synced directly to the 4-frame stride cycle
+    // (zero out-of-phase drunken wobble or penguin rocking on N/S!)
     if (state === 'idle') {
-      // Natural chest inhale (gentle vertical rise & slight horizontal expansion/contraction)
-      scaleX = baseScale * (1 - breathSigned * 0.015);
-      scaleY = baseScale * (1 + breathSigned * 0.032);
-      if (isFloatingPlantForm) {
-        idleHoverY = -smoothBreath * 2.4;
-      }
+      scaleX = baseScale * (1 - breathSigned * 0.013);
+      scaleY = baseScale * (1 + breathSigned * 0.026);
     } else {
-      // Grounded stride squash/stretch anchored strictly at the soles of the feet
-      scaleX = baseScale * (1 + impact * 0.02);
-      scaleY = baseScale * (1 - impact * 0.018);
-    }
-
-    const forwardRunLean =
-      state === 'walk'
-        ? direction === 'W'
-          ? -0.036
+      // Frame 0 & 2 = foot contact/passing, Frame 1 & 3 = full stride extension (gentle 1.8px lift)
+      const isLiftStep = safeWalkIdx === 1 || safeWalkIdx === 3;
+      const stepBouncePx = isRookieForm ? 2.0 : isMegaForm ? 1.2 : 1.6;
+      offsetY = isLiftStep ? -stepBouncePx : 0;
+      scaleX = baseScale * (isLiftStep ? 0.992 : 1.012);
+      scaleY = baseScale * (isLiftStep ? 1.012 : 0.99);
+      // Subtle forward momentum lean ONLY when running East/West; keep N/S upright & clean
+      tiltAngle =
+        direction === 'W'
+          ? -0.018
           : direction === 'E'
-            ? 0.036
-            : 0
-        : 0;
-    walkTilt =
-      state === 'idle'
-        ? 0
-        : strideSin * (direction === 'N' ? 0.02 : 0.026) + forwardRunLean;
+            ? 0.018
+            : 0;
+    }
   }
 
   const { width: imgWidth } = getSourceSize(img);
@@ -2487,14 +2544,13 @@ export function drawDigimonPartnerFrame(
   const sy = cell.row * srcCell;
   const dw = DIGIMON_SHEET_CELL * scaleX;
   const dh = DIGIMON_SHEET_CELL * scaleY;
-  // Offset cell bottom padding so both front toes & rear heel rest inside the ground shadow
-  const feetPad =
-    isPureHoverForm || isFlyingWingedForm || isLalamonFloatForm ? 0 : 9.0 * scaleY;
+  // Offset cell bottom padding so grounded soles rest inside the ground shadow
+  const feetPad = aerial.isAerial ? 0 : 9.0 * scaleY;
 
   ctx.save();
-  ctx.translate(footX, footY + idleHoverY);
-  if (walkTilt !== 0) {
-    ctx.rotate(walkTilt);
+  ctx.translate(footX + offsetX, footY + offsetY);
+  if (tiltAngle !== 0) {
+    ctx.rotate(tiltAngle);
   }
   if (cell.flipX) {
     ctx.scale(-1, 1);
@@ -2629,22 +2685,7 @@ export function drawDigimonAttackPoseFrame(
   const dh = targetH * strikeScale;
   const dw = dh * ratio;
   const atkPulse = Math.sin(Math.min(1, progress) * Math.PI);
-  const hoverBaseLift =
-    formId === 'gryphonmon' || formId === 'phoenixmon' || formId === 'grankuwagamon'
-      ? 28
-      : formId === 'garudamon' || formId === 'okuwamon'
-        ? 26
-        : formId === 'aquilamon' || formId === 'birdramon' || formId === 'flymon'
-          ? 23
-          : formId === 'giromon' || formId === 'rosemon'
-            ? 18
-            : formId === 'lilamon'
-              ? 16
-              : formId === 'sunflowmon'
-                ? 14
-                : formId === 'lalamon'
-                  ? 12
-                  : 0;
+  const hoverBaseLift = getPartnerAerialProfile(formId).baseAltitude;
   const liftY =
     hoverBaseLift +
     atkPulse *

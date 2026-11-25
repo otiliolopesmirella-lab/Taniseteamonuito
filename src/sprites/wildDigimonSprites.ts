@@ -919,18 +919,38 @@ export function drawWildDigimonSprite(
   }
 
   const pScale = opts.perspectiveScale;
-  const phase = opts.elapsed * 3.4 + opts.phaseOffset;
+  const phase = opts.elapsed * 3.1 + opts.phaseOffset;
+  const isFlyingWild = baked.hoverAltitudePx > 0;
 
-  // Ground shadow + target ring
-  const shadowRx = baked.shadowRx * pScale;
-  const shadowRy = baked.shadowRy * pScale;
+  // Multi-harmonic graceful soaring for flying wild Digimons; calm grounded stride for walkers
+  const wingBeatWave = Math.sin(phase * 1.15);
+  const thermalWave = Math.sin(phase * 0.52) * 2.4;
+  const hoverOffset = isFlyingWild
+    ? (baked.hoverAltitudePx + 4 + wingBeatWave * 5.2 + thermalWave) * pScale
+    : Math.abs(Math.sin(phase * 1.15)) * 0.85 * pScale;
+
+  // Dynamic altitude-coupled shadow: softens & shrinks smoothly as flying Digimons soar higher
+  const altitudeRatio = isFlyingWild
+    ? Math.max(0, Math.min(1, hoverOffset / Math.max(1, 36 * pScale)))
+    : 0;
+  const shadowScale = isFlyingWild ? 0.92 - altitudeRatio * 0.22 : 1;
+  const shadowRx = baked.shadowRx * pScale * shadowScale;
+  const shadowRy = baked.shadowRy * pScale * shadowScale;
 
   if (opts.isTargeted) {
     ctx.save();
     ctx.strokeStyle = baked.isBoss ? '#facc15' : '#f43f5e';
     ctx.lineWidth = baked.isBoss ? 3 : 2.2;
     ctx.beginPath();
-    ctx.ellipse(0, 2, shadowRx * 1.38, shadowRy * 1.48, 0, 0, Math.PI * 2);
+    ctx.ellipse(
+      0,
+      2,
+      baked.shadowRx * pScale * 1.38,
+      baked.shadowRy * pScale * 1.48,
+      0,
+      0,
+      Math.PI * 2
+    );
     ctx.stroke();
     ctx.restore();
   }
@@ -939,8 +959,8 @@ export function drawWildDigimonSprite(
     // Lightweight crimson Raid Boss ground aura (pre-baked radial sprite, zero per-frame gradient)
     const auraPulse = 0.88 + Math.sin(opts.elapsed * 3.8) * 0.12;
     const auraCanvas = getCachedBossAuraCanvas();
-    const auraRx = shadowRx * 1.75 * auraPulse;
-    const auraRy = shadowRy * 2.1 * auraPulse;
+    const auraRx = baked.shadowRx * pScale * 1.75 * auraPulse;
+    const auraRy = baked.shadowRy * pScale * 2.1 * auraPulse;
     ctx.drawImage(
       auraCanvas,
       -auraRx,
@@ -950,46 +970,59 @@ export function drawWildDigimonSprite(
     );
   }
 
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.36)';
+  ctx.fillStyle = isFlyingWild
+    ? `rgba(0, 0, 0, ${(0.31 - altitudeRatio * 0.1).toFixed(2)})`
+    : 'rgba(0, 0, 0, 0.36)';
   ctx.beginPath();
   ctx.ellipse(0, 2, shadowRx, shadowRy, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Select compact pre-baked frame
+  // Select compact pre-baked frame at a smooth, legible cadence
   let frameCanvas: HTMLCanvasElement;
   if (opts.isAttacking) {
     frameCanvas = opts.isHitFlash ? baked.flashAttackFrame : baked.attackFrame;
   } else if (opts.isHitFlash) {
     frameCanvas = baked.flashWalkFrame;
   } else {
+    const fps = isFlyingWild ? 4.8 : 4.6;
     const walkIdx =
-      Math.floor(Math.abs(opts.elapsed * 5.8 + opts.phaseOffset)) %
+      Math.floor(Math.abs(opts.elapsed * fps + opts.phaseOffset)) %
       baked.walkFrames.length;
     frameCanvas = baked.walkFrames[walkIdx] ?? baked.walkFrames[0];
   }
 
   const targetH = baked.worldHeightPx * pScale;
   const aspect = frameCanvas.width / Math.max(1, frameCanvas.height);
-  const drawH = targetH;
-  const drawW = targetH * aspect;
+  const wingStretchX = isFlyingWild && !opts.isAttacking ? 1 + wingBeatWave * 0.015 : 1;
+  const wingStretchY = isFlyingWild && !opts.isAttacking ? 1 - wingBeatWave * 0.012 : 1;
+  const drawH = targetH * wingStretchY;
+  const drawW = targetH * aspect * wingStretchX;
 
-  // Subtle organic movement & attack lunge
-  const hoverOffset = baked.hoverAltitudePx
-    ? baked.hoverAltitudePx * pScale + Math.sin(phase * 1.35) * 4.5 * pScale
-    : Math.abs(Math.sin(phase * 1.25)) * 2.2 * pScale;
+  // Subtle organic movement, aerodynamic flight banking, & attack lunge
   const lungeCurve = opts.isAttacking
     ? Math.sin(Math.min(1, opts.attackProgress) * Math.PI)
     : 0;
   const lungeX = lungeCurve * (opts.facingRight ? 13 : -13) * pScale;
   const lungeLift = lungeCurve * 6.5 * pScale;
-  const feetPad = baked.isBoss ? 4 * pScale : 7 * pScale;
+  const flightSwayX =
+    isFlyingWild && !opts.isAttacking
+      ? Math.sin(phase * 0.65) * 2.2 * pScale
+      : 0;
+  const flightBankRad =
+    isFlyingWild && !opts.isAttacking
+      ? (opts.facingRight ? 0.055 : -0.055) + wingBeatWave * 0.02
+      : 0;
+  const feetPad = isFlyingWild ? 0 : baked.isBoss ? 4 * pScale : 7 * pScale;
 
   // All playable sheets (Row 3) & attack poses natively face East (facingRight = true).
   // Kuwagamon's sheet also faces right on frames 0..3; flip horizontally when facing left.
   const flipX = !opts.facingRight;
 
   ctx.save();
-  ctx.translate(lungeX, -(hoverOffset + lungeLift));
+  ctx.translate(lungeX + flightSwayX, -(hoverOffset + lungeLift));
+  if (flightBankRad !== 0) {
+    ctx.rotate(flightBankRad);
+  }
   if (flipX) {
     ctx.scale(-1, 1);
   }

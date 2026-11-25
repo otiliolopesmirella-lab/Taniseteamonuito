@@ -169,6 +169,8 @@ interface HudWindowsOverlayProps {
   onClearNotifications?: () => void;
   autoHuntConfig?: AutoHuntConfig;
   onUpdateAutoHuntConfig?: (next: AutoHuntConfig) => void;
+  onUnlockAutoFarmVip?: () => { ok: boolean; message: string };
+  onOpenDwCoinShop?: () => void;
   isGM: boolean;
   cloudIsGm?: boolean;
   onOpenFeedback?: () => void;
@@ -243,6 +245,8 @@ export function HudWindowsOverlay({
   onClearNotifications,
   autoHuntConfig,
   onUpdateAutoHuntConfig,
+  onUnlockAutoFarmVip,
+  onOpenDwCoinShop,
   isGM: isGmProp,
   cloudIsGm = false,
   onOpenFeedback,
@@ -453,6 +457,10 @@ export function HudWindowsOverlay({
         digimonDs={digimonStats.ds}
         digimonMaxDs={digimonStats.maxDs}
         inventory={inventory}
+        autoFarmVipUnlocked={Boolean(hudAccount.autoFarmVipUnlocked || isGM)}
+        dCoinBalance={dCoin}
+        onUnlockAutoFarmVip={onUnlockAutoFarmVip}
+        onOpenDwCoinShop={onOpenDwCoinShop}
         onUpdateConfig={onUpdateAutoHuntConfig}
         onPlayTone={onPlayTone}
         onClose={onClose}

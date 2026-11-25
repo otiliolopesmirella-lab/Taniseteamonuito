@@ -1040,6 +1040,11 @@ export const REMOVED_LEGACY_ITEM_KEYS: ReadonlySet<string> = new Set([
   'digiegg_kiwimon',
   'chip_hp_small',
   'disk_ds_small',
+  'equip_cap_dats',
+  'equip_jacket_dats',
+  'equip_gloves_dats',
+  'equip_ring_digital',
+  'equip_digivice_proto',
 ]);
 
 export function isRemovedLegacyItemKey(itemKey: string): boolean {

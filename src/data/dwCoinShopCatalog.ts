@@ -65,27 +65,27 @@ export interface DwCoinRechargePack {
 export const DWCOIN_PURCHASE_TERMS_VERSION = 'v1.0' as const;
 
 export const DWCOIN_PURCHASE_TERMS_ITEMS: readonly string[] = [
-  'DCoins são a moeda da loja do jogo. Elas não podem ser sacadas, convertidas em dinheiro real ou vendidas por dinheiro real.',
-  'Após a compra, os DCoins ficam disponíveis na conta do jogador de acordo com o processamento do pagamento.',
-  'O jogador pode solicitar cancelamento dentro do prazo aplicável, desde que os DCoins comprados ainda não tenham sido utilizados, observadas as regras e a legislação aplicável.',
-  'Itens adquiridos com DCoins, como Eggs, VIP, Passes, boosts, roupas, pacotes, roletas e outros conteúdos, podem ser entregues imediatamente e, quando já utilizados ou consumidos, podem não ser elegíveis para reembolso, conforme os Termos de Uso e a legislação aplicável.',
+  'DL Din é a moeda da loja do jogo. Ela não pode ser sacada, convertida em dinheiro real ou vendida por dinheiro real.',
+  'Após a compra, os DL Din ficam disponíveis na conta do jogador de acordo com o processamento do pagamento.',
+  'O jogador pode solicitar cancelamento dentro do prazo aplicável, desde que os DL Din comprados ainda não tenham sido utilizados, observadas as regras e a legislação aplicável.',
+  'Itens adquiridos com DL Din, como Eggs, VIP, Passes, boosts, pacotes, roletas e outros conteúdos, podem ser entregues imediatamente e, quando já utilizados ou consumidos, podem não ser elegíveis para reembolso, conforme os Termos de Uso e a legislação aplicável.',
   'Não faça contestação indevida do pagamento, como chargeback, disputa ou MED no Pix. Em caso de problema com uma compra, o jogador deve entrar em contato com o suporte do jogo antes de contestar o pagamento.',
 ];
 
 export const DWCOIN_SHOP_ARTWORK_URL =
-  '/assets/aistudio/file_0000000038b8820e8bb2d96574ca4f64_4cc2c6b9.webp';
+  '/assets/aistudio/file_000000006d04820e87eafab8bd82356c_06707c7f.webp';
 
 export const VEEMON_PROMO_BANNER_URL =
-  '/assets/aistudio/file_00000000c6fc820e9d64112d1c614a36_df270aa6.webp';
+  '/assets/aistudio/file_00000000b300820e8f5f746961f4f58d_9332b011.webp';
 
 export const DWCOIN_PROMO_OFFER: DwCoinShopOffer = {
   id: 'promo_comece_na_frente_veemon_5_5',
   name: 'Pack Comece na Frente · Veemon 5/5 + 12 Evoluters',
-  subtitle: 'Egg do Veemon 5/5 (Pronto p/ Chocar!) + 12 Evoluters',
+  subtitle: 'Egg do Veemon 5/5 (Nv. 1 · Sem DATA!) + 12 Evoluters',
   description:
-    'Receba 1 DigiEgg do Veemon 5/5 (basta colocar na Incubadora DATS e chocar direto!) + 12 Evoluters no seu Inventário.',
+    'Receba 1 DigiEgg do Veemon 5/5 (não precisa de DATA — basta colocar na Incubadora DATS e chocar seu Veemon Nv. 1 para jogar na hora!) + 12 Evoluters no seu Inventário.',
   category: 'promocoes',
-  priceDwCoin: 50,
+  priceDwCoin: 25,
   iconUrl: '/assets/items/digieggs/egg_veemon.png',
   bannerImageUrl: VEEMON_PROMO_BANNER_URL,
   highlight: 'PROMOÇÃO',

@@ -734,6 +734,9 @@ function buildValidHudStatePatch(
   if (typeof hud.xpBoostUntilMs === 'number' && Number.isFinite(hud.xpBoostUntilMs)) {
     nextHudState.xpBoostUntilMs = hud.xpBoostUntilMs;
   }
+  if (hud.autoFarmVipUnlocked === true) {
+    nextHudState.autoFarmVipUnlocked = true;
+  }
 
   return {
     nextHudState,
@@ -811,7 +814,7 @@ export async function adjustPlayerCurrencyForGm(input: {
   }
   if (input.dCoinDelta !== 0) {
     summaryParts.push(
-      `DWcoin ${input.dCoinDelta > 0 ? '+' : ''}${input.dCoinDelta} (saldo ${built.nextDCoin})`
+      `DL Din ${input.dCoinDelta > 0 ? '+' : ''}${input.dCoinDelta} (saldo ${built.nextDCoin})`
     );
   }
   if (input.reason?.trim()) {
@@ -944,7 +947,7 @@ export async function approveDwCoinOrderForGm(input: {
     type: 'recharge',
     dwCoinAmount,
     itemKey: packId || 'recharge',
-    itemName: `Recarga ${dwCoinAmount} DWcoin (${priceBrlLabel || packId})`,
+    itemName: `Recarga ${dwCoinAmount} DL Din (${priceBrlLabel || packId})`,
     category: 'recarga',
     balanceAfter: built.nextDCoin,
   });
@@ -953,7 +956,7 @@ export async function approveDwCoinOrderForGm(input: {
     action: 'order_approve',
     targetUid: ownerUid,
     targetName: tamerName,
-    summary: `Aprovou pedido ${input.orderId} (+${dwCoinAmount} DWcoin · ${priceBrlLabel}).`,
+    summary: `Aprovou pedido ${input.orderId} (+${dwCoinAmount} DL Din · ${priceBrlLabel}).`,
     gmName: input.gmName,
   });
 

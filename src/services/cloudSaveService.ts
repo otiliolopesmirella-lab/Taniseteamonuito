@@ -19,6 +19,7 @@ import {
   isValidAvatarPhotoDataUrl,
   isValidCoverPhotoDataUrl,
 } from '../utils/avatarPhoto';
+import { isRemovedLegacyItemKey } from '../data/itemsCatalog';
 
 export interface CloudTamerSelection {
   characterId: TamerId;
@@ -72,6 +73,7 @@ export interface CloudHudState {
   tamerPhotoUrl?: string | null;
   tamerCoverUrl?: string | null;
   xpBoostUntilMs?: number | null;
+  autoFarmVipUnlocked?: boolean;
   defeatedEnemiesTotal: number;
   updatedAt: string;
 }
@@ -280,7 +282,12 @@ function sanitizeHudStateForCloud(state: AccountHudPersistence): CloudHudState {
   const cleanInventory = (Array.isArray(state.inventory) ? state.inventory : [])
     .filter(
       (item): item is InventoryItem =>
-        Boolean(item && typeof item === 'object' && !Array.isArray(item))
+        Boolean(
+          item &&
+            typeof item === 'object' &&
+            !Array.isArray(item) &&
+            !isRemovedLegacyItemKey(item.itemKey)
+        )
     )
     .slice(0, 48)
     .map((item) => stripUndefined(item));
@@ -288,7 +295,13 @@ function sanitizeHudStateForCloud(state: AccountHudPersistence): CloudHudState {
   const cleanEquipped: Partial<Record<EquipmentSlotId, InventoryItem>> = {};
   const entries = Object.entries(state.equippedItems ?? {}).slice(0, 16);
   for (const [slot, item] of entries) {
-    if (item && typeof item === 'object' && !Array.isArray(item)) {
+    if (
+      item &&
+      typeof item === 'object' &&
+      !Array.isArray(item) &&
+      !isRemovedLegacyItemKey(item.itemKey) &&
+      item.category !== 'equip'
+    ) {
       cleanEquipped[slot as EquipmentSlotId] = stripUndefined(item);
     }
   }
@@ -354,6 +367,9 @@ function sanitizeHudStateForCloud(state: AccountHudPersistence): CloudHudState {
       4000000000000,
       Math.round(state.xpBoostUntilMs)
     );
+  }
+  if (state.autoFarmVipUnlocked === true) {
+    hudPayload.autoFarmVipUnlocked = true;
   }
 
   return hudPayload;
@@ -797,13 +813,26 @@ function diagnosePlayerSaveMismatch(
 
   const hud = normalized.hudState as CloudHudState | null;
   if (hud) {
+    const allowedHudKeys = new Set([
+      'tamer', 'digimon', 'bits', 'dCoin', 'inventory', 'equippedItems',
+      'guildName', 'tamerPhotoUrl', 'tamerCoverUrl', 'xpBoostUntilMs',
+      'autoFarmVipUnlocked', 'defeatedEnemiesTotal', 'updatedAt',
+    ]);
+    const extraHudKeys = Object.keys(hud).filter((k) => !allowedHudKeys.has(k));
+    if (extraHudKeys.length > 0) issues.push(`hud.extra(${extraHudKeys.join(',')})`);
+    const allowedStatsKeys = new Set([
+      'level', 'exp', 'expToNext', 'hp', 'maxHp', 'ds', 'maxDs',
+      'activeFormId', 'unlockedFormIds',
+    ]);
     for (const role of ['tamer', 'digimon'] as const) {
       const s = hud[role];
-      if (s.level < 1 || s.level > 200) issues.push(`${role}.lv(${s.level})`);
-      if (s.exp < 0 || s.exp > 100000000) issues.push(`${role}.exp(${s.exp})`);
-      if (s.expToNext < 1 || s.expToNext > 100000000) issues.push(`${role}.next(${s.expToNext})`);
-      if (s.hp < 0 || s.hp > 1000000 || s.maxHp < 1 || s.maxHp > 1000000) issues.push(`${role}.hp`);
-      if (s.ds < 0 || s.ds > 1000000 || s.maxDs < 1 || s.maxDs > 1000000) issues.push(`${role}.ds`);
+      const extraStatKeys = Object.keys(s).filter((k) => !allowedStatsKeys.has(k));
+      if (extraStatKeys.length > 0) issues.push(`${role}.extra(${extraStatKeys.join(',')})`);
+      if (!Number.isFinite(s.level) || s.level < 1 || s.level > 200) issues.push(`${role}.lv(${s.level})`);
+      if (!Number.isFinite(s.exp) || s.exp < 0 || s.exp > 100000000) issues.push(`${role}.exp(${s.exp})`);
+      if (!Number.isFinite(s.expToNext) || s.expToNext < 1 || s.expToNext > 100000000) issues.push(`${role}.next(${s.expToNext})`);
+      if (!Number.isFinite(s.hp) || s.hp < 0 || s.hp > 1000000 || !Number.isFinite(s.maxHp) || s.maxHp < 1 || s.maxHp > 1000000) issues.push(`${role}.hp`);
+      if (!Number.isFinite(s.ds) || s.ds < 0 || s.ds > 1000000 || !Number.isFinite(s.maxDs) || s.maxDs < 1 || s.maxDs > 1000000) issues.push(`${role}.ds`);
     }
     if (hud.digimon.activeFormId != null && (typeof hud.digimon.activeFormId !== 'string' || utf8ByteLength(hud.digimon.activeFormId) < 1 || utf8ByteLength(hud.digimon.activeFormId) > 32)) {
       issues.push('digi.formId');
@@ -811,8 +840,8 @@ function diagnosePlayerSaveMismatch(
     if (hud.digimon.unlockedFormIds != null && (!Array.isArray(hud.digimon.unlockedFormIds) || hud.digimon.unlockedFormIds.length > 24 || (hud.digimon.unlockedFormIds.length > 0 && typeof hud.digimon.unlockedFormIds[0] !== 'string'))) {
       issues.push('digi.forms');
     }
-    if (hud.bits < 0 || hud.bits > 1000000000) issues.push('hud.bits');
-    if (hud.dCoin < 0 || hud.dCoin > 1000000000) issues.push('hud.dCoin');
+    if (!Number.isFinite(hud.bits) || hud.bits < 0 || hud.bits > 1000000000) issues.push('hud.bits');
+    if (!Number.isFinite(hud.dCoin) || hud.dCoin < 0 || hud.dCoin > 1000000000) issues.push('hud.dCoin');
     if (hud.inventory.length > 48) issues.push('hud.inv');
     if (hud.inventory.length > 0 && (typeof hud.inventory[0] !== 'object' || hud.inventory[0] === null || Array.isArray(hud.inventory[0]))) {
       issues.push('hud.inv0');
@@ -823,10 +852,13 @@ function diagnosePlayerSaveMismatch(
     }
     if (hud.tamerPhotoUrl != null && !isValidAvatarPhotoDataUrl(hud.tamerPhotoUrl)) issues.push('hud.photo');
     if (hud.tamerCoverUrl != null && !isValidCoverPhotoDataUrl(hud.tamerCoverUrl)) issues.push('hud.cover');
-    if (hud.xpBoostUntilMs != null && (hud.xpBoostUntilMs < 0 || hud.xpBoostUntilMs > 4000000000000)) {
+    if (hud.xpBoostUntilMs != null && (!Number.isFinite(hud.xpBoostUntilMs) || hud.xpBoostUntilMs < 0 || hud.xpBoostUntilMs > 4000000000000)) {
       issues.push('hud.boost');
     }
-    if (hud.defeatedEnemiesTotal < 0 || hud.defeatedEnemiesTotal > 100000000) issues.push('hud.kills');
+    if (hud.autoFarmVipUnlocked !== undefined && typeof hud.autoFarmVipUnlocked !== 'boolean') {
+      issues.push('hud.vip');
+    }
+    if (!Number.isFinite(hud.defeatedEnemiesTotal) || hud.defeatedEnemiesTotal < 0 || hud.defeatedEnemiesTotal > 100000000) issues.push('hud.kills');
     if (hud.updatedAt.length < 10 || hud.updatedAt.length > 40) issues.push('hud.upd');
   }
 
