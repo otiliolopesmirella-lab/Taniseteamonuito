@@ -300,7 +300,10 @@ service cloud.firestore {
           'ownerUid', 'tamerName', 'characterId', 'tamerLevel', 'digimonFormId', 'digimonLevel',
           'mapId', 'channelId', 'worldX', 'worldY', 'facingDir', 'moveState',
           'partnerX', 'partnerY', 'partnerDir', 'partnerMoving',
-          'isGm', 'guildName', 'chatText', 'chatSeq', 'online', 'updatedAt'
+          'isGm', 'guildName', 'chatText', 'chatSeq',
+          'combatSeq', 'combatKind', 'combatTargetId', 'combatTargetX', 'combatTargetY',
+          'combatDamage', 'combatTargetHpAfter', 'combatKilled',
+          'online', 'updatedAt'
         ]) &&
         data.ownerUid is string && isValidId(data.ownerUid) && (data.ownerUid == request.auth.uid || isAdmin()) && data.ownerUid == userId &&
         data.tamerName is string && data.tamerName.size() >= 1 && data.tamerName.size() <= 24 &&
@@ -343,6 +346,14 @@ service cloud.firestore {
         (data.guildName == null || (data.guildName is string && data.guildName.size() <= 32)) &&
         data.chatText is string && data.chatText.size() <= 140 &&
         data.chatSeq is number && data.chatSeq >= 0 && data.chatSeq <= 1000000 &&
+        (!('combatSeq' in data) || (data.combatSeq is number && data.combatSeq >= 0 && data.combatSeq <= 1000000)) &&
+        (!('combatKind' in data) || data.combatKind in ['basic', 'special1', 'special2']) &&
+        (!('combatTargetId' in data) || (data.combatTargetId is string && data.combatTargetId.size() <= 64)) &&
+        (!('combatTargetX' in data) || (data.combatTargetX is number && data.combatTargetX >= 0 && data.combatTargetX <= 20000)) &&
+        (!('combatTargetY' in data) || (data.combatTargetY is number && data.combatTargetY >= 0 && data.combatTargetY <= 20000)) &&
+        (!('combatDamage' in data) || (data.combatDamage is number && data.combatDamage >= 0 && data.combatDamage <= 5000000)) &&
+        (!('combatTargetHpAfter' in data) || (data.combatTargetHpAfter is number && data.combatTargetHpAfter >= 0 && data.combatTargetHpAfter <= 50000000)) &&
+        (!('combatKilled' in data) || data.combatKilled is bool) &&
         data.online is bool &&
         data.updatedAt is timestamp;
     }
@@ -1009,18 +1020,32 @@ service cloud.firestore {
           (incoming().diff(existing()).affectedKeys().hasOnly(['chatText', 'chatSeq', 'online', 'updatedAt'])) ||
           // Action 3: Clean disconnect / mark offline
           (incoming().diff(existing()).affectedKeys().hasOnly(['online', 'updatedAt'])) ||
-          // Action 4: Combined live movement + chat broadcast / legacy schema self-heal
+          // Action 4: Combined live movement + chat + combat broadcast / legacy schema self-heal
           (incoming().diff(existing()).addedKeys().hasOnly([
             'ownerUid', 'tamerName', 'characterId', 'tamerLevel', 'digimonFormId', 'digimonLevel',
             'mapId', 'channelId', 'worldX', 'worldY', 'facingDir', 'moveState',
             'partnerX', 'partnerY', 'partnerDir', 'partnerMoving',
-            'isGm', 'guildName', 'chatText', 'chatSeq', 'online', 'updatedAt'
+            'isGm', 'guildName', 'chatText', 'chatSeq',
+            'combatSeq', 'combatKind', 'combatTargetId', 'combatTargetX', 'combatTargetY',
+            'combatDamage', 'combatTargetHpAfter', 'combatKilled',
+            'online', 'updatedAt'
           ]) &&
           incoming().diff(existing()).changedKeys().hasOnly([
             'ownerUid', 'tamerName', 'characterId', 'tamerLevel', 'digimonFormId', 'digimonLevel',
             'mapId', 'channelId', 'worldX', 'worldY', 'facingDir', 'moveState',
             'partnerX', 'partnerY', 'partnerDir', 'partnerMoving',
-            'isGm', 'guildName', 'chatText', 'chatSeq', 'online', 'updatedAt'
+            'isGm', 'guildName', 'chatText', 'chatSeq',
+            'combatSeq', 'combatKind', 'combatTargetId', 'combatTargetX', 'combatTargetY',
+            'combatDamage', 'combatTargetHpAfter', 'combatKilled',
+            'online', 'updatedAt'
+          ])) ||
+          // Action 5: Live Partner Digimon combat hit & shared wild mob HP/kill sync
+          (incoming().diff(existing()).affectedKeys().hasOnly([
+            'mapId', 'channelId', 'worldX', 'worldY',
+            'partnerX', 'partnerY', 'partnerDir', 'partnerMoving',
+            'combatSeq', 'combatKind', 'combatTargetId', 'combatTargetX', 'combatTargetY',
+            'combatDamage', 'combatTargetHpAfter', 'combatKilled',
+            'online', 'updatedAt'
           ])) ||
           isAdmin()
         );

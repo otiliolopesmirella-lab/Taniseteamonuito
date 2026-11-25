@@ -1,11 +1,16 @@
 import type { DatsCollider } from '../maps/datsCenterMap';
 import type { EnemyMonsterInstance } from '../maps/huntingFieldMap';
 import type { CardinalDirection } from '../sprites/tamerRealSheets';
-import type { PartnerAIState, PartnerAttackKind } from '../types/digimon';
+import type {
+  DigimonFormId,
+  PartnerAIState,
+  PartnerAttackKind,
+} from '../types/digimon';
 
 export interface ActiveCombatEffect {
   id: number;
   kind: PartnerAttackKind;
+  attackerFormId?: DigimonFormId;
   attackerX: number;
   attackerY: number;
   targetX: number;

@@ -385,6 +385,7 @@ import {
 import { TAMER_CHARACTERS } from '../sprites/tamerSprites';
 import {
   broadcastWorldChatBubble,
+  broadcastWorldCombatAction,
   bumpPresenceSessionEpoch,
   CHANNEL_HARD_CAPACITY,
   markLocalWorldPresenceOffline,
@@ -839,6 +840,12 @@ interface SmoothedRemotePlayer {
   partnerFrameIndex: number;
   bubbleText: string;
   bubbleExpiresAt: number;
+  activeAttack: {
+    kind: PartnerAttackKind;
+    facingRight: boolean;
+    elapsed: number;
+    duration: number;
+  } | null;
 }
 
 interface BossAoeWaveEffect {
@@ -941,12 +948,48 @@ export function TamerWorldCanvas({
   const assetsReady = loadedAssetsKey === targetAssetsKey;
 
   // Real Account HUD Persistence (Tamer Lv/HP/DS/EXP, Digimon Lv/HP/DS/EXP, Bits, D-Coin, Inventory, Active Evolution Form)
+  // Players always spawn in DATS Center (Safe Sanctuary) upon entering the server, so restore full HP & DS cleanly on entry.
   const initialHudAccount = useMemo(
-    () => loadAccountHudState(selection.accountUsername, starterDigimon.digimonId),
+    () =>
+      loadAccountHudState(selection.accountUsername, starterDigimon.digimonId, {
+        restoreFullVitalsOnSpawn: true,
+      }),
     [selection.accountUsername, starterDigimon.digimonId]
   );
   const [hudAccount, setHudAccount] = useState<AccountHudPersistence>(initialHudAccount);
   const hudAccountRef = useRef<AccountHudPersistence>(initialHudAccount);
+
+  // Immediately persist healthy full-vitals HUD state on login/spawn so brand-new accounts
+  // and accounts recovering from a previous drained/0-HP/0-DS session are healed in localStorage + Firestore.
+  useEffect(() => {
+    const cur = hudAccountRef.current;
+    const needsVitalHeal =
+      cur.digimon.hp <= 0 ||
+      cur.digimon.ds <= 0 ||
+      cur.tamer.hp <= 0 ||
+      cur.tamer.ds <= 0;
+    if (needsVitalHeal) {
+      const healed: AccountHudPersistence = {
+        ...cur,
+        tamer: {
+          ...cur.tamer,
+          hp: Math.max(1, cur.tamer.maxHp),
+          ds: Math.max(1, cur.tamer.maxDs),
+        },
+        digimon: {
+          ...cur.digimon,
+          hp: Math.max(1, cur.digimon.maxHp),
+          ds: Math.max(1, cur.digimon.maxDs),
+        },
+        updatedAt: new Date().toISOString(),
+      };
+      hudAccountRef.current = healed;
+      setHudAccount(healed);
+      saveAccountHudState(healed, true);
+    } else {
+      saveAccountHudState(cur, true);
+    }
+  }, [selection.accountUsername]);
 
   const activeFormProfile = useMemo(
     () =>
@@ -1362,11 +1405,15 @@ export function TamerWorldCanvas({
   const lastRemoteRosterSigRef = useRef<string>('');
   const localBubbleRef = useRef<{ text: string; expiresAt: number } | null>(null);
   const seenRemoteChatSeqRef = useRef<Map<string, number>>(new Map());
+  const seenRemoteCombatSeqRef = useRef<Map<string, number>>(new Map());
   const knownOnlineUidsRef = useRef<Set<string>>(new Set());
   const initialPresenceLoadedRef = useRef(false);
   const lastPresenceSyncRef = useRef<{
     x: number;
     y: number;
+    partnerX: number;
+    partnerY: number;
+    partnerMoving: boolean;
     dir: CardinalDirection;
     state: TamerMovementState;
     mapId: ActiveWorldMapId;
@@ -1379,6 +1426,9 @@ export function TamerWorldCanvas({
   }>({
     x: -9999,
     y: -9999,
+    partnerX: -9999,
+    partnerY: -9999,
+    partnerMoving: false,
     dir: 'S',
     state: 'idle',
     mapId: initialSpawn.mapId,
@@ -2631,6 +2681,116 @@ export function TamerWorldCanvas({
     return leader.channelId;
   }, [playerParty, actorUid, liveSnapshot.mapId]);
 
+  const applyRemoteCombatSnapshot = useCallback(
+    (
+      smooth: SmoothedRemotePlayer,
+      p: RemoteWorldPlayer,
+      opts?: { initialHydration?: boolean }
+    ) => {
+      const sim = simRef.current;
+      if (
+        p.mapId !== sim.mapId ||
+        p.channelId !== currentChannelRef.current ||
+        p.combatSeq <= 0 ||
+        !p.combatTargetId
+      ) {
+        return;
+      }
+
+      const ageMs = Math.max(0, Date.now() - p.updatedAtMs);
+      const isInitial = Boolean(opts?.initialHydration);
+      const enemy = sim.enemies.find((e) => e.id === p.combatTargetId);
+
+      // 1) Play remote Partner Digimon attack animation & species-authentic skill VFX
+      if (!isInitial || ageMs <= 3500) {
+        const atkX = smooth.partnerRenderX;
+        const atkY = smooth.partnerRenderY;
+        const tgtX = enemy && enemy.alive ? enemy.x : p.combatTargetX;
+        const tgtY = enemy && enemy.alive ? enemy.y : p.combatTargetY;
+        const facingRight = tgtX >= atkX;
+
+        smooth.partnerVisualDir = snapToCardinalVector(
+          tgtX - atkX,
+          tgtY - atkY
+        ).dir;
+        smooth.activeAttack = {
+          kind: p.combatKind,
+          facingRight,
+          elapsed: 0,
+          duration:
+            p.combatKind === 'basic'
+              ? 0.36
+              : p.combatKind === 'special1'
+                ? 0.56
+                : 0.68,
+        };
+
+        sim.combatEffects.push({
+          id: sim.nextFxId++,
+          kind: p.combatKind,
+          attackerFormId: p.digimonFormId,
+          attackerX: atkX,
+          attackerY: atkY,
+          targetX: tgtX,
+          targetY: tgtY,
+          elapsed: 0,
+          duration:
+            p.combatKind === 'basic'
+              ? 0.28
+              : p.combatKind === 'special1'
+                ? 0.72
+                : 0.84,
+        });
+
+        if (enemy && enemy.alive && p.combatDamage > 0) {
+          enemy.hitFlashTimer = 0.16;
+          sim.floatingTexts.push({
+            id: sim.nextFxId++,
+            x: tgtX,
+            y: tgtY - (enemy.isBoss ? 86 : 42),
+            text: `-${p.combatDamage}`,
+            color: '#cbd5e1',
+            elapsed: 0,
+            duration: 0.72,
+          });
+        }
+      }
+
+      // 2) Synchronize shared wild Digimon HP & death across all players in the same Map & Channel
+      // (World Raid Bosses already sync authoritatively through /worldBosses/{bossId})
+      if (enemy && !enemy.isBoss) {
+        if (p.combatKilled || p.combatTargetHpAfter <= 0) {
+          if (!isInitial || ageMs < 6300) {
+            enemy.hp = 0;
+            enemy.alive = false;
+            enemy.aggroed = false;
+            enemy.aggroTimer = 0;
+            enemy.attackAnimTimer = 0;
+            enemy.respawnTimer = isInitial
+              ? Math.max(0.5, 6.5 - ageMs / 1000)
+              : 6.5;
+            if (sim.partner.targetEnemyId === enemy.id) {
+              sim.partner.targetEnemyId = null;
+            }
+          }
+        } else if (enemy.alive && (!isInitial || ageMs < 5500)) {
+          enemy.hp = Math.max(1, Math.min(enemy.hp, p.combatTargetHpAfter));
+          if (
+            !enemy.aggroed &&
+            Math.hypot(
+              p.combatTargetX - enemy.homeX,
+              p.combatTargetY - enemy.homeY
+            ) <= 480
+          ) {
+            enemy.x = p.combatTargetX;
+            enemy.y = p.combatTargetY;
+          }
+        }
+      }
+    },
+    []
+  );
+
   const handleSwitchChannel = useCallback(
     (
       rawTargetChannel: WorldChannelId,
@@ -2694,16 +2854,26 @@ export function TamerWorldCanvas({
         // Ignore storage error
       }
 
-      // Cleanly disengage active mob aggro & reset remote inspector on channel hop
+      // Cleanly disengage active mob aggro, reset wild mobs for the destination Channel instance, & clear inspector
       sim.partner.targetEnemyId = null;
       sim.partner.aiState = 'FOLLOW';
+      sim.combatEffects = [];
       for (const enemy of sim.enemies) {
         enemy.aggroed = false;
         enemy.aggroTimer = 0;
+        enemy.hitFlashTimer = 0;
+        enemy.attackAnimTimer = 0;
+        if (!enemy.isBoss) {
+          enemy.alive = true;
+          enemy.hp = enemy.maxHp;
+          enemy.x = enemy.homeX;
+          enemy.y = enemy.homeY;
+          enemy.respawnTimer = 0;
+        }
       }
       setSelectedRemotePlayer(null);
 
-      // Snap positions AND immediately preload sprites for players waiting in the destination channel
+      // Snap positions, preload sprites, AND immediately hydrate ongoing combat & slain mobs in the destination channel
       const preloaded = preloadedRemoteAssetsRef.current;
       for (const smooth of remoteSmoothRef.current.values()) {
         if (
@@ -2732,12 +2902,26 @@ export function TamerWorldCanvas({
           smooth.partnerTargetY = smooth.player.partnerY;
           smooth.partnerVx = 0;
           smooth.partnerVy = 0;
+          smooth.activeAttack = null;
+
+          if (smooth.player.combatSeq > 0) {
+            seenRemoteCombatSeqRef.current.set(
+              smooth.player.uid,
+              smooth.player.combatSeq
+            );
+            applyRemoteCombatSnapshot(smooth, smooth.player, {
+              initialHydration: true,
+            });
+          }
         }
       }
 
       const snap = buildLocalPresenceSnapshot();
       lastPresenceSyncRef.current.x = snap.worldX;
       lastPresenceSyncRef.current.y = snap.worldY;
+      lastPresenceSyncRef.current.partnerX = snap.partnerX;
+      lastPresenceSyncRef.current.partnerY = snap.partnerY;
+      lastPresenceSyncRef.current.partnerMoving = snap.partnerMoving;
       lastPresenceSyncRef.current.dir = snap.facingDir;
       lastPresenceSyncRef.current.state = snap.moveState;
       lastPresenceSyncRef.current.mapId = snap.mapId;
@@ -2813,6 +2997,9 @@ export function TamerWorldCanvas({
       const snap = buildLocalPresenceSnapshot();
       lastPresenceSyncRef.current.x = snap.worldX;
       lastPresenceSyncRef.current.y = snap.worldY;
+      lastPresenceSyncRef.current.partnerX = snap.partnerX;
+      lastPresenceSyncRef.current.partnerY = snap.partnerY;
+      lastPresenceSyncRef.current.partnerMoving = snap.partnerMoving;
       lastPresenceSyncRef.current.dir = snap.facingDir;
       lastPresenceSyncRef.current.state = snap.moveState;
       lastPresenceSyncRef.current.mapId = snap.mapId;
@@ -2901,12 +3088,13 @@ export function TamerWorldCanvas({
         }
 
         const existingSmooth = smoothMap.get(p.uid);
+        let activeSmooth: SmoothedRemotePlayer;
         if (
           !existingSmooth ||
           existingSmooth.player.mapId !== p.mapId ||
           existingSmooth.player.channelId !== p.channelId
         ) {
-          smoothMap.set(p.uid, {
+          activeSmooth = {
             player: p,
             renderX: p.worldX,
             renderY: p.worldY,
@@ -2929,7 +3117,9 @@ export function TamerWorldCanvas({
             partnerFrameIndex: 0,
             bubbleText,
             bubbleExpiresAt,
-          });
+            activeAttack: null,
+          };
+          smoothMap.set(p.uid, activeSmooth);
         } else {
           const dtPacket = Math.max(
             0.08,
@@ -2990,6 +3180,23 @@ export function TamerWorldCanvas({
           existingSmooth.player = p;
           existingSmooth.bubbleText = bubbleText;
           existingSmooth.bubbleExpiresAt = bubbleExpiresAt;
+          activeSmooth = existingSmooth;
+        }
+
+        // Process live remote Partner Digimon combat attacks & shared wild mob HP/deaths
+        const prevCombatSeq = seenRemoteCombatSeqRef.current.get(p.uid);
+        if (prevCombatSeq === undefined) {
+          seenRemoteCombatSeqRef.current.set(p.uid, p.combatSeq);
+          if (isSameMapAndChannel && p.combatSeq > 0) {
+            applyRemoteCombatSnapshot(activeSmooth, p, {
+              initialHydration: true,
+            });
+          }
+        } else if (p.combatSeq > 0 && p.combatSeq !== prevCombatSeq) {
+          seenRemoteCombatSeqRef.current.set(p.uid, p.combatSeq);
+          if (isSameMapAndChannel) {
+            applyRemoteCombatSnapshot(activeSmooth, p);
+          }
         }
       }
 
@@ -2998,6 +3205,7 @@ export function TamerWorldCanvas({
         if (!activeUids.has(uid)) {
           smoothMap.delete(uid);
           knownOnlineUidsRef.current.delete(uid);
+          seenRemoteCombatSeqRef.current.delete(uid);
         }
       }
 
@@ -4042,6 +4250,16 @@ export function TamerWorldCanvas({
         smooth.partnerRenderY = smooth.player.partnerY;
         smooth.partnerTargetX = smooth.player.partnerX;
         smooth.partnerTargetY = smooth.player.partnerY;
+        smooth.activeAttack = null;
+        if (smooth.player.combatSeq > 0) {
+          seenRemoteCombatSeqRef.current.set(
+            smooth.player.uid,
+            smooth.player.combatSeq
+          );
+          applyRemoteCombatSnapshot(smooth, smooth.player, {
+            initialHydration: true,
+          });
+        }
       }
     }
 
@@ -5960,6 +6178,10 @@ export function TamerWorldCanvas({
                 digimon: {
                   ...cur.digimon,
                   hp: Math.max(25, Math.round(cur.digimon.maxHp * 0.35)),
+                  ds: Math.max(
+                    cur.digimon.ds,
+                    Math.max(20, Math.round(cur.digimon.maxDs * 0.35))
+                  ),
                 },
               };
               commitHudAccount(recoveredAccount);
@@ -6312,19 +6534,23 @@ export function TamerWorldCanvas({
             cur.digimon.hp < cur.digimon.maxHp ||
             cur.digimon.ds < cur.digimon.maxDs
           ) {
+            const tamerHpStep = Math.max(14, Math.round(liveTamerAttrs.maxHp * 0.08));
+            const tamerDsStep = Math.max(12, Math.round(liveTamerAttrs.maxDs * 0.08));
+            const digiHpStep = Math.max(18, Math.round(cur.digimon.maxHp * 0.08));
+            const digiDsStep = Math.max(16, Math.round(cur.digimon.maxDs * 0.08));
             const nextAccount: AccountHudPersistence = {
               ...cur,
               tamer: {
                 ...cur.tamer,
                 maxHp: liveTamerAttrs.maxHp,
                 maxDs: liveTamerAttrs.maxDs,
-                hp: Math.min(liveTamerAttrs.maxHp, cur.tamer.hp + 14),
-                ds: Math.min(liveTamerAttrs.maxDs, cur.tamer.ds + 12),
+                hp: Math.min(liveTamerAttrs.maxHp, cur.tamer.hp + tamerHpStep),
+                ds: Math.min(liveTamerAttrs.maxDs, cur.tamer.ds + tamerDsStep),
               },
               digimon: {
                 ...cur.digimon,
-                hp: Math.min(cur.digimon.maxHp, cur.digimon.hp + 18),
-                ds: Math.min(cur.digimon.maxDs, cur.digimon.ds + 16),
+                hp: Math.min(cur.digimon.maxHp, cur.digimon.hp + digiHpStep),
+                ds: Math.min(cur.digimon.maxDs, cur.digimon.ds + digiDsStep),
               },
             };
             hudAccountRef.current = nextAccount;
@@ -6755,6 +6981,29 @@ export function TamerWorldCanvas({
                 sim.partner.targetEnemyId = null;
               }
             }
+            void broadcastWorldCombatAction(
+              {
+                mapId: sim.mapId,
+                channelId: currentChannelRef.current,
+                worldX: sim.x,
+                worldY: sim.y,
+                partnerX: sim.partner.x,
+                partnerY: sim.partner.y,
+                partnerDir: sim.partner.dir,
+                kind,
+                targetId: enemy.id,
+                targetX: enemy.x,
+                targetY: enemy.y,
+                damage: finalDamage,
+                targetHpAfter: nextBossHp,
+                killed: nextBossHp <= 0,
+              },
+              buildLocalPresenceSnapshot()
+            );
+            lastPresenceSyncRef.current.partnerX = sim.partner.x;
+            lastPresenceSyncRef.current.partnerY = sim.partner.y;
+            lastPresenceSyncRef.current.partnerMoving = false;
+            lastPresenceSyncRef.current.sentAtMs = Date.now();
             enqueueWorldBossDamage(
               enemy.bossId,
               runtimeMetaRef.current.tamerName,
@@ -6764,9 +7013,36 @@ export function TamerWorldCanvas({
             return;
           }
 
-          enemy.hp = Math.max(0, enemy.hp - finalDamage);
+          const nextMobHp = Math.max(0, enemy.hp - finalDamage);
+          enemy.hp = nextMobHp;
+          const mobKilled = nextMobHp <= 0;
 
-          if (enemy.hp <= 0) {
+          // Broadcast live Partner Digimon hit + shared wild mob HP/kill to same-map, same-channel players
+          void broadcastWorldCombatAction(
+            {
+              mapId: sim.mapId,
+              channelId: currentChannelRef.current,
+              worldX: sim.x,
+              worldY: sim.y,
+              partnerX: sim.partner.x,
+              partnerY: sim.partner.y,
+              partnerDir: sim.partner.dir,
+              kind,
+              targetId: enemy.id,
+              targetX: enemy.x,
+              targetY: enemy.y,
+              damage: finalDamage,
+              targetHpAfter: nextMobHp,
+              killed: mobKilled,
+            },
+            buildLocalPresenceSnapshot()
+          );
+          lastPresenceSyncRef.current.partnerX = sim.partner.x;
+          lastPresenceSyncRef.current.partnerY = sim.partner.y;
+          lastPresenceSyncRef.current.partnerMoving = false;
+          lastPresenceSyncRef.current.sentAtMs = Date.now();
+
+          if (mobKilled) {
             enemy.alive = false;
             enemy.respawnTimer = 6.5;
             if (sim.partner.targetEnemyId === enemy.id) {
@@ -7792,8 +8068,16 @@ export function TamerWorldCanvas({
           smooth.frameIndex = 0;
         }
 
+        if (smooth.activeAttack) {
+          smooth.activeAttack.elapsed += dt;
+          if (smooth.activeAttack.elapsed >= smooth.activeAttack.duration) {
+            smooth.activeAttack = null;
+          }
+        }
+
         const isRemotePartnerMoving =
-          pDist > 2.5 || (rp.partnerMoving && packetAgeSec < 0.65);
+          !smooth.activeAttack &&
+          (pDist > 2.5 || (rp.partnerMoving && packetAgeSec < 0.65));
         if (isRemotePartnerMoving) {
           smooth.partnerFrameTime += dt;
           if (smooth.partnerFrameTime >= 0.14) {
@@ -7805,6 +8089,9 @@ export function TamerWorldCanvas({
           smooth.partnerFrameTime = 0;
           smooth.partnerFrameIndex = 0;
         }
+        const remoteAttackSnap = smooth.activeAttack
+          ? { ...smooth.activeAttack }
+          : null;
 
         const rX = smooth.renderX;
         const rY = smooth.renderY;
@@ -7989,16 +8276,31 @@ export function TamerWorldCanvas({
               ctx!.restore();
             }
 
-            drawDigimonPartnerFrame(
-              ctx!,
-              rForm.id,
-              isRemotePartnerMoving ? 'walk' : 'idle',
-              rpDir,
-              rpFrame,
-              elapsed,
-              rpX,
-              rpY
-            );
+            if (remoteAttackSnap) {
+              const prog =
+                remoteAttackSnap.elapsed /
+                Math.max(0.1, remoteAttackSnap.duration);
+              drawDigimonAttackPoseFrame(
+                ctx!,
+                rForm.id,
+                remoteAttackSnap.kind,
+                remoteAttackSnap.facingRight,
+                prog,
+                rpX,
+                rpY
+              );
+            } else {
+              drawDigimonPartnerFrame(
+                ctx!,
+                rForm.id,
+                isRemotePartnerMoving ? 'walk' : 'idle',
+                rpDir,
+                rpFrame,
+                elapsed,
+                rpX,
+                rpY
+              );
+            }
 
             ctx!.save();
             const remotePartnerFont = '700 10px "Exo 2", sans-serif';
@@ -8375,7 +8677,7 @@ export function TamerWorldCanvas({
       for (const fx of sim.combatEffects) {
         drawDigimonSpecialVfx(
           ctx!,
-          renderForm.id,
+          fx.attackerFormId ?? renderForm.id,
           fx.kind,
           fx.attackerX,
           fx.attackerY,
@@ -8542,6 +8844,10 @@ export function TamerWorldCanvas({
           syncMeta.inFlight = false;
         }
         const movedDist = Math.hypot(sim.x - syncMeta.x, sim.y - syncMeta.y);
+        const partnerMovedDist = Math.hypot(
+          sim.partner.x - syncMeta.partnerX,
+          sim.partner.y - syncMeta.partnerY
+        );
         const mapOrFormChanged =
           sim.mapId !== syncMeta.mapId ||
           currentChannelRef.current !== syncMeta.channelId ||
@@ -8549,13 +8855,15 @@ export function TamerWorldCanvas({
           hudAccountRef.current.tamer.level !== syncMeta.tamerLevel ||
           hudAccountRef.current.digimon.level !== syncMeta.digimonLevel;
         const stoppedMoving =
-          syncMeta.state === 'walk' &&
-          sim.state === 'idle' &&
+          ((syncMeta.state === 'walk' && sim.state === 'idle') ||
+            (syncMeta.partnerMoving && !sim.partner.isMoving)) &&
           elapsedSinceSync >= 100;
         const movedEnough =
           (movedDist >= 8 ||
+            partnerMovedDist >= 10 ||
             sim.dir !== syncMeta.dir ||
-            sim.state !== syncMeta.state) &&
+            sim.state !== syncMeta.state ||
+            sim.partner.isMoving !== syncMeta.partnerMoving) &&
           elapsedSinceSync >= 200;
         const heartbeatDue = elapsedSinceSync >= 12_000;
 
@@ -8567,6 +8875,9 @@ export function TamerWorldCanvas({
           syncMeta.inFlight = true;
           syncMeta.x = sim.x;
           syncMeta.y = sim.y;
+          syncMeta.partnerX = sim.partner.x;
+          syncMeta.partnerY = sim.partner.y;
+          syncMeta.partnerMoving = sim.partner.isMoving;
           syncMeta.dir = sim.dir;
           syncMeta.state = sim.state;
           syncMeta.mapId = sim.mapId;

@@ -669,22 +669,31 @@ function buildValidHudStatePatch(
       ? ({ ...(rawHud as Record<string, unknown>) } as Record<string, unknown>)
       : {};
 
-  const defaultStats = {
+  const defaultTamerStats = {
     level: 1,
     exp: 0,
-    expToNext: 100,
-    hp: 100,
-    maxHp: 100,
-    ds: 50,
-    maxDs: 50,
+    expToNext: 420,
+    hp: 160,
+    maxHp: 160,
+    ds: 100,
+    maxDs: 100,
+  };
+  const defaultDigimonStats = {
+    level: 1,
+    exp: 0,
+    expToNext: 300,
+    hp: 521,
+    maxHp: 521,
+    ds: 281,
+    maxDs: 281,
   };
 
   const tamer =
-    hud.tamer && typeof hud.tamer === 'object' ? hud.tamer : { ...defaultStats };
+    hud.tamer && typeof hud.tamer === 'object' ? hud.tamer : { ...defaultTamerStats };
   const digimon =
     hud.digimon && typeof hud.digimon === 'object'
       ? hud.digimon
-      : { ...defaultStats };
+      : { ...defaultDigimonStats };
 
   const prevBits =
     typeof hud.bits === 'number' && Number.isFinite(hud.bits)

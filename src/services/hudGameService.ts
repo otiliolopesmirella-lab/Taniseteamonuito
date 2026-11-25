@@ -885,11 +885,15 @@ export function evolveDigimonAccountState(
 }
 
 export function createDefaultAccountHudState(
-  accountUsername: string
+  accountUsername: string,
+  starterId: StarterDigimonId = 'agumon'
 ): AccountHudPersistence {
   const tamerLevel = 1;
   const digimonLevel = 1;
   const starterGrade: HatchQualityGrade = 3;
+  const initialForm = getEvolutionChainForStarter(starterId)[0];
+  const digiMaxHp = calcDigimonMaxHp(digimonLevel, initialForm.id, starterGrade, 100);
+  const digiMaxDs = calcDigimonMaxDs(digimonLevel, initialForm.id, starterGrade, 100);
   return {
     accountUsername: accountUsername.trim() || 'tamer_local',
     tamer: {
@@ -905,10 +909,12 @@ export function createDefaultAccountHudState(
       level: digimonLevel,
       exp: 0,
       expToNext: calcDigimonExpToNext(digimonLevel),
-      hp: calcDigimonMaxHp(digimonLevel, 'agumon', starterGrade),
-      maxHp: calcDigimonMaxHp(digimonLevel, 'agumon', starterGrade),
-      ds: calcDigimonMaxDs(digimonLevel, 'agumon', starterGrade),
-      maxDs: calcDigimonMaxDs(digimonLevel, 'agumon', starterGrade),
+      hp: digiMaxHp,
+      maxHp: digiMaxHp,
+      ds: digiMaxDs,
+      maxDs: digiMaxDs,
+      activeFormId: initialForm.id,
+      unlockedFormIds: [initialForm.id],
       hatchGrade: starterGrade,
       hatchSizePct: 100,
     },
@@ -933,14 +939,16 @@ export function createDefaultAccountHudState(
 
 export function loadAccountHudState(
   accountUsername: string,
-  starterId: StarterDigimonId = 'agumon'
+  starterId: StarterDigimonId = 'agumon',
+  options?: { restoreFullVitalsOnSpawn?: boolean }
 ): AccountHudPersistence {
   const cleanUser = (accountUsername.trim() || 'tamer_local').toLowerCase();
+  const restoreFullVitals = options?.restoreFullVitalsOnSpawn === true;
   try {
     const raw = window.localStorage.getItem(`${HUD_PERSISTENCE_PREFIX}${cleanUser}`);
-    if (!raw) return createDefaultAccountHudState(accountUsername);
+    if (!raw) return createDefaultAccountHudState(accountUsername, starterId);
     const parsed = JSON.parse(raw) as Partial<AccountHudPersistence>;
-    const fallback = createDefaultAccountHudState(accountUsername);
+    const fallback = createDefaultAccountHudState(accountUsername, starterId);
     const equippedItems: Partial<Record<EquipmentSlotId, InventoryItem>> = {};
     if (parsed.equippedItems && typeof parsed.equippedItems === 'object') {
       for (const [slot, item] of Object.entries(parsed.equippedItems)) {
@@ -958,18 +966,49 @@ export function loadAccountHudState(
       ...fallback.tamer,
       ...(parsed.tamer ?? {}),
     };
+    mergedTamer.level =
+      typeof mergedTamer.level === 'number' && Number.isFinite(mergedTamer.level)
+        ? Math.max(1, Math.min(MAX_GAME_LEVEL, Math.floor(mergedTamer.level)))
+        : 1;
     const computed = computeTamerAttributes(mergedTamer, equippedItems);
     mergedTamer.expToNext = calcTamerExpToNext(mergedTamer.level);
-    mergedTamer.exp = Math.max(0, Math.min(mergedTamer.expToNext - 1, mergedTamer.exp));
+    mergedTamer.exp =
+      typeof mergedTamer.exp === 'number' && Number.isFinite(mergedTamer.exp)
+        ? Math.max(0, Math.min(mergedTamer.expToNext - 1, Math.floor(mergedTamer.exp)))
+        : 0;
     mergedTamer.maxHp = computed.maxHp;
     mergedTamer.maxDs = computed.maxDs;
-    mergedTamer.hp = Math.min(computed.maxHp, mergedTamer.hp);
-    mergedTamer.ds = Math.min(computed.maxDs, mergedTamer.ds);
+    const rawTamerHp = parsed.tamer?.hp;
+    const rawTamerDs = parsed.tamer?.ds;
+    if (
+      restoreFullVitals ||
+      typeof rawTamerHp !== 'number' ||
+      !Number.isFinite(rawTamerHp) ||
+      rawTamerHp <= 0
+    ) {
+      mergedTamer.hp = computed.maxHp;
+    } else {
+      mergedTamer.hp = Math.max(1, Math.min(computed.maxHp, Math.round(rawTamerHp)));
+    }
+    if (
+      restoreFullVitals ||
+      typeof rawTamerDs !== 'number' ||
+      !Number.isFinite(rawTamerDs) ||
+      rawTamerDs <= 0
+    ) {
+      mergedTamer.ds = computed.maxDs;
+    } else {
+      mergedTamer.ds = Math.max(1, Math.min(computed.maxDs, Math.round(rawTamerDs)));
+    }
 
     const mergedDigi: DigimonRuntimeStats = {
       ...fallback.digimon,
       ...(parsed.digimon ?? {}),
     };
+    mergedDigi.level =
+      typeof mergedDigi.level === 'number' && Number.isFinite(mergedDigi.level)
+        ? Math.max(1, Math.min(MAX_GAME_LEVEL, Math.floor(mergedDigi.level)))
+        : 1;
     const qualityProfile = getHatchQualityProfile(mergedDigi.hatchGrade);
     mergedDigi.hatchGrade = qualityProfile.grade;
     mergedDigi.hatchSizePct = clampHatchSizePct(
@@ -1004,11 +1043,48 @@ export function loadAccountHudState(
       safeForm.id
     );
     mergedDigi.expToNext = calcDigimonExpToNext(mergedDigi.level);
-    mergedDigi.exp = Math.max(0, Math.min(mergedDigi.expToNext - 1, mergedDigi.exp));
+    mergedDigi.exp =
+      typeof mergedDigi.exp === 'number' && Number.isFinite(mergedDigi.exp)
+        ? Math.max(0, Math.min(mergedDigi.expToNext - 1, Math.floor(mergedDigi.exp)))
+        : 0;
     mergedDigi.maxHp = digiMaxHp;
     mergedDigi.maxDs = digiMaxDs;
-    mergedDigi.hp = Math.min(digiMaxHp, mergedDigi.hp);
-    mergedDigi.ds = Math.min(digiMaxDs, mergedDigi.ds);
+    const rawDigiHp = parsed.digimon?.hp;
+    const rawDigiDs = parsed.digimon?.ds;
+    const bothDrainedOrMissing =
+      (typeof rawDigiHp !== 'number' || !Number.isFinite(rawDigiHp) || rawDigiHp <= 0) &&
+      (typeof rawDigiDs !== 'number' || !Number.isFinite(rawDigiDs) || rawDigiDs <= 0);
+    if (
+      restoreFullVitals ||
+      bothDrainedOrMissing ||
+      typeof rawDigiHp !== 'number' ||
+      !Number.isFinite(rawDigiHp) ||
+      rawDigiHp <= 0
+    ) {
+      mergedDigi.hp = digiMaxHp;
+    } else {
+      mergedDigi.hp = Math.max(1, Math.min(digiMaxHp, Math.round(rawDigiHp)));
+    }
+    if (
+      restoreFullVitals ||
+      bothDrainedOrMissing ||
+      typeof rawDigiDs !== 'number' ||
+      !Number.isFinite(rawDigiDs) ||
+      rawDigiDs < 0
+    ) {
+      mergedDigi.ds = digiMaxDs;
+    } else {
+      mergedDigi.ds = Math.max(0, Math.min(digiMaxDs, Math.round(rawDigiDs)));
+    }
+
+    const sanitizedParty = sanitizePartyDigimons(parsed.partyDigimons);
+    const partyDigimons = restoreFullVitals
+      ? sanitizedParty.map((entry) => ({
+          ...entry,
+          hp: entry.maxHp,
+          ds: entry.maxDs,
+        }))
+      : sanitizedParty;
 
     return {
       accountUsername: parsed.accountUsername ?? fallback.accountUsername,
@@ -1022,7 +1098,7 @@ export function loadAccountHudState(
       unlockedInventorySlots: getUnlockedInventorySlots(
         parsed.unlockedInventorySlots
       ),
-      partyDigimons: sanitizePartyDigimons(parsed.partyDigimons),
+      partyDigimons,
       digimonArchive: sanitizeDigimonArchive(
         parsed.digimonArchive,
         getUnlockedArchiveSlots(parsed.unlockedArchiveSlots)
@@ -1058,7 +1134,7 @@ export function loadAccountHudState(
       updatedAt: parsed.updatedAt ?? fallback.updatedAt,
     };
   } catch {
-    return createDefaultAccountHudState(accountUsername);
+    return createDefaultAccountHudState(accountUsername, starterId);
   }
 }
 

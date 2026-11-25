@@ -377,6 +377,40 @@
           "type": "number",
           "description": "Monotonically increasing counter for chat messages (0..1000000)."
         },
+        "combatSeq": {
+          "type": "number",
+          "description": "Monotonically increasing counter for live Partner Digimon combat attacks (0..1000000)."
+        },
+        "combatKind": {
+          "type": "string",
+          "enum": ["basic", "special1", "special2"],
+          "description": "Latest Partner Digimon attack animation/VFX kind."
+        },
+        "combatTargetId": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Deterministic wild Digimon or boss target ID hit by the latest attack."
+        },
+        "combatTargetX": {
+          "type": "number",
+          "description": "Target enemy X coordinate at the moment of impact (0..20000)."
+        },
+        "combatTargetY": {
+          "type": "number",
+          "description": "Target enemy Y coordinate at the moment of impact (0..20000)."
+        },
+        "combatDamage": {
+          "type": "number",
+          "description": "Damage dealt on the latest combat hit (0..5000000)."
+        },
+        "combatTargetHpAfter": {
+          "type": "number",
+          "description": "Target enemy remaining HP after the latest hit (0 = defeated)."
+        },
+        "combatKilled": {
+          "type": "boolean",
+          "description": "Whether the latest hit defeated the target wild Digimon."
+        },
         "online": {
           "type": "boolean",
           "description": "Whether the player is actively present in the world."

@@ -241,16 +241,30 @@ function buildDefaultHudStateRestValue(
   dCoinAmount: number,
   nowIso: string
 ): FirestoreRestValue {
-  const defaultStats: FirestoreRestValue = {
+  const defaultTamerStats: FirestoreRestValue = {
     mapValue: {
       fields: {
         level: { integerValue: '1' },
         exp: { integerValue: '0' },
-        expToNext: { integerValue: '100' },
-        hp: { integerValue: '100' },
-        maxHp: { integerValue: '100' },
-        ds: { integerValue: '50' },
-        maxDs: { integerValue: '50' },
+        expToNext: { integerValue: '420' },
+        hp: { integerValue: '160' },
+        maxHp: { integerValue: '160' },
+        ds: { integerValue: '100' },
+        maxDs: { integerValue: '100' },
+      },
+    },
+  };
+
+  const defaultDigimonStats: FirestoreRestValue = {
+    mapValue: {
+      fields: {
+        level: { integerValue: '1' },
+        exp: { integerValue: '0' },
+        expToNext: { integerValue: '300' },
+        hp: { integerValue: '521' },
+        maxHp: { integerValue: '521' },
+        ds: { integerValue: '281' },
+        maxDs: { integerValue: '281' },
       },
     },
   };
@@ -258,8 +272,8 @@ function buildDefaultHudStateRestValue(
   return {
     mapValue: {
       fields: {
-        tamer: defaultStats,
-        digimon: defaultStats,
+        tamer: defaultTamerStats,
+        digimon: defaultDigimonStats,
         bits: { integerValue: '0' },
         dCoin: { integerValue: String(dCoinAmount) },
         inventory: { arrayValue: { values: [] } },

@@ -21,7 +21,7 @@ import {
 } from '../firebase';
 import type { CardinalDirection, TamerMovementState } from '../sprites/tamerRealSheets';
 import type { TamerId } from '../types/character';
-import type { DigimonFormId } from '../types/digimon';
+import type { DigimonFormId, PartnerAttackKind } from '../types/digimon';
 import { ensurePlayerDocBootstrapped } from './cloudSaveService';
 
 export type SharedWorldMapId =
@@ -83,7 +83,32 @@ export interface RemoteWorldPlayer {
   guildName: string | null;
   chatText: string;
   chatSeq: number;
+  combatSeq: number;
+  combatKind: PartnerAttackKind;
+  combatTargetId: string;
+  combatTargetX: number;
+  combatTargetY: number;
+  combatDamage: number;
+  combatTargetHpAfter: number;
+  combatKilled: boolean;
   updatedAtMs: number;
+}
+
+export interface WorldCombatActionPayload {
+  mapId: SharedWorldMapId;
+  channelId: WorldChannelId;
+  worldX: number;
+  worldY: number;
+  partnerX: number;
+  partnerY: number;
+  partnerDir: CardinalDirection;
+  kind: PartnerAttackKind;
+  targetId: string;
+  targetX: number;
+  targetY: number;
+  damage: number;
+  targetHpAfter: number;
+  killed: boolean;
 }
 
 export interface LocalPresenceState {
@@ -259,7 +284,19 @@ function parseTimestampMs(raw: unknown): number | null {
   return null;
 }
 
+function safeCombatKind(raw: unknown): PartnerAttackKind {
+  if (raw === 'special1' || raw === 'special2') return raw;
+  return 'basic';
+}
+
+function safeNonNegInt(raw: unknown, max: number): number {
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(max, Math.round(n)));
+}
+
 let activeChatSeq = Math.floor(Date.now() / 1000) % 900_000;
+let activeCombatSeq = Math.floor(Date.now() / 1000) % 850_000;
 let hasInitializedPresenceDocForUid: string | null = null;
 let presenceEpoch = 0;
 let cachedPresenceIdToken: { uid: string; token: string; fetchedAtMs: number } | null = null;
@@ -502,6 +539,97 @@ export async function broadcastWorldChatBubble(
 }
 
 /**
+ * Broadcasts a live Partner Digimon attack + wild mob damage/kill via `/worldPresence/{uid}`
+ * serialized on `presenceWriteChain` so nearby players on the same map & channel immediately
+ * see the remote Digimon's attack animation, skill VFX, mob HP drop, and mob death.
+ */
+export function broadcastWorldCombatAction(
+  action: WorldCombatActionPayload,
+  fallbackState?: LocalPresenceState
+): Promise<boolean> {
+  const run = () => executeBroadcastWorldCombatAction(action, fallbackState);
+  const next = presenceWriteChain.then(run, run);
+  presenceWriteChain = next.catch(() => false);
+  return next;
+}
+
+async function executeBroadcastWorldCombatAction(
+  action: WorldCombatActionPayload,
+  fallbackState?: LocalPresenceState
+): Promise<boolean> {
+  const user = auth.currentUser;
+  if (!user || !user.emailVerified) return false;
+  refreshCachedPresenceIdToken();
+
+  const ready = await ensurePlayerDocBootstrapped(user);
+  if (!ready) return false;
+
+  const targetId = String(action.targetId ?? '').trim().slice(0, 64);
+  if (!targetId) return false;
+
+  activeCombatSeq = activeCombatSeq >= 999_999 ? 1 : activeCombatSeq + 1;
+  const combatPayload = {
+    mapId: safeMapId(action.mapId),
+    channelId: safeChannelId(action.channelId),
+    worldX: safeCoord(action.worldX),
+    worldY: safeCoord(action.worldY),
+    partnerX: safeCoord(action.partnerX),
+    partnerY: safeCoord(action.partnerY),
+    partnerDir: safeDir(action.partnerDir),
+    partnerMoving: false,
+    combatSeq: activeCombatSeq,
+    combatKind: safeCombatKind(action.kind),
+    combatTargetId: targetId,
+    combatTargetX: safeCoord(action.targetX),
+    combatTargetY: safeCoord(action.targetY),
+    combatDamage: safeNonNegInt(action.damage, 5_000_000),
+    combatTargetHpAfter: safeNonNegInt(action.targetHpAfter, 50_000_000),
+    combatKilled: Boolean(action.killed),
+    online: true,
+    updatedAt: serverTimestamp(),
+  };
+
+  const ref = doc(db, 'worldPresence', user.uid);
+  try {
+    if (hasInitializedPresenceDocForUid !== user.uid && fallbackState) {
+      await executePublishLocalWorldPresence(fallbackState, {
+        forceFullWrite: true,
+      });
+    }
+    await updateDoc(ref, combatPayload);
+    return true;
+  } catch (error) {
+    // Retry once after ensuring presence doc exists (or fail gracefully if production rules aren't updated yet)
+    if (fallbackState) {
+      const initRes = await executePublishLocalWorldPresence(fallbackState, {
+        forceFullWrite: true,
+      });
+      if (initRes.ok) {
+        try {
+          await updateDoc(ref, combatPayload);
+          return true;
+        } catch {
+          // Non-fatal fallback
+        }
+      }
+    }
+    const rawMsg = error instanceof Error ? error.message : String(error);
+    if (!/permission|denied/i.test(rawMsg)) {
+      try {
+        handleFirestoreError(
+          error,
+          OperationType.UPDATE,
+          `worldPresence/${user.uid}`
+        );
+      } catch {
+        // Non-fatal
+      }
+    }
+    return false;
+  }
+}
+
+/**
  * Immediately removes the current user's live world presence on exit, sign-out, tab hide, or page close.
  * Uses BOTH a keepalive REST DELETE (survives mobile/tab close) and Firestore SDK deleteDoc
  * so ghost characters never remain inside the server after leaving.
@@ -673,6 +801,17 @@ export function subscribeOnlineWorldPlayers(
             typeof d.chatSeq === 'number' && Number.isFinite(d.chatSeq)
               ? d.chatSeq
               : 0,
+          combatSeq: safeNonNegInt(d.combatSeq, 1_000_000),
+          combatKind: safeCombatKind(d.combatKind),
+          combatTargetId:
+            typeof d.combatTargetId === 'string'
+              ? d.combatTargetId.slice(0, 64)
+              : '',
+          combatTargetX: safeCoord(d.combatTargetX),
+          combatTargetY: safeCoord(d.combatTargetY),
+          combatDamage: safeNonNegInt(d.combatDamage, 5_000_000),
+          combatTargetHpAfter: safeNonNegInt(d.combatTargetHpAfter, 50_000_000),
+          combatKilled: Boolean(d.combatKilled),
           updatedAtMs: serverMs ?? localNow,
           serverUpdatedAtMs: serverMs,
         });

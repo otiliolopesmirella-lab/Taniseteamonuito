@@ -307,14 +307,16 @@ function sanitizeHudStateForCloud(state: AccountHudPersistence): CloudHudState {
     }
   }
 
+  const digiMaxHp = safeInt(state.digimon?.maxHp, 1, 1000000, 521);
+  const digiMaxDs = safeInt(state.digimon?.maxDs, 1, 1000000, 281);
   const digimonPayload: CloudHudState['digimon'] = {
     level: safeInt(state.digimon?.level, 1, 200, 1),
     exp: safeInt(state.digimon?.exp, 0, 100000000, 0),
-    expToNext: safeInt(state.digimon?.expToNext, 1, 100000000, 100),
-    hp: safeInt(state.digimon?.hp, 0, 1000000, 100),
-    maxHp: safeInt(state.digimon?.maxHp, 1, 1000000, 100),
-    ds: safeInt(state.digimon?.ds, 0, 1000000, 50),
-    maxDs: safeInt(state.digimon?.maxDs, 1, 1000000, 50),
+    expToNext: safeInt(state.digimon?.expToNext, 1, 100000000, 300),
+    hp: safeInt(state.digimon?.hp, 0, digiMaxHp, digiMaxHp),
+    maxHp: digiMaxHp,
+    ds: safeInt(state.digimon?.ds, 0, digiMaxDs, digiMaxDs),
+    maxDs: digiMaxDs,
   };
   if (
     typeof state.digimon?.activeFormId === 'string' &&
@@ -330,15 +332,17 @@ function sanitizeHudStateForCloud(state: AccountHudPersistence): CloudHudState {
       .filter((id) => id.length > 0);
   }
 
+  const tamerMaxHp = safeInt(state.tamer?.maxHp, 1, 1000000, 160);
+  const tamerMaxDs = safeInt(state.tamer?.maxDs, 1, 1000000, 100);
   const hudPayload: CloudHudState = {
     tamer: {
       level: safeInt(state.tamer?.level, 1, 200, 1),
       exp: safeInt(state.tamer?.exp, 0, 100000000, 0),
-      expToNext: safeInt(state.tamer?.expToNext, 1, 100000000, 100),
-      hp: safeInt(state.tamer?.hp, 0, 1000000, 100),
-      maxHp: safeInt(state.tamer?.maxHp, 1, 1000000, 100),
-      ds: safeInt(state.tamer?.ds, 0, 1000000, 50),
-      maxDs: safeInt(state.tamer?.maxDs, 1, 1000000, 50),
+      expToNext: safeInt(state.tamer?.expToNext, 1, 100000000, 420),
+      hp: safeInt(state.tamer?.hp, 0, tamerMaxHp, tamerMaxHp),
+      maxHp: tamerMaxHp,
+      ds: safeInt(state.tamer?.ds, 0, tamerMaxDs, tamerMaxDs),
+      maxDs: tamerMaxDs,
     },
     digimon: digimonPayload,
     bits: safeInt(state.bits, 0, 1000000000, 0),
