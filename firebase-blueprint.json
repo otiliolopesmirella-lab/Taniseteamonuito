@@ -1,0 +1,1526 @@
+{
+  "entities": {
+    "PlayerSave": {
+      "title": "PlayerSave",
+      "description": "Cloud save state for a Digimon RPG player, strictly isolated from PII and owned by a single Firebase Auth UID.",
+      "type": "object",
+      "properties": {
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Immutable Firebase Auth UID of the account owner."
+        },
+        "username": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 24,
+          "pattern": "^[a-zA-Z0-9._\\-]+$",
+          "description": "Display login handle chosen by the player."
+        },
+        "usernameLower": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 24,
+          "pattern": "^[a-z0-9._\\-]+$",
+          "description": "Lowercase normalized username key."
+        },
+        "tamerSelection": {
+          "type": "object",
+          "description": "Selected Tamer avatar and in-game Tamer name."
+        },
+        "starterDigimon": {
+          "type": "object",
+          "description": "Permanent starter Digimon bound to the account."
+        },
+        "adventureProgress": {
+          "type": "object",
+          "description": "Last saved map ID, world coordinates, facing direction, step counter, and discovered zones."
+        },
+        "hudState": {
+          "type": "object",
+          "description": "Tamer & Digimon levels, EXP, HP, DS, active evolution, Bits, D-Coin, inventory, equipped items, optional custom Tamer portrait photo data URL (tamerPhotoUrl), optional custom Rank cover banner data URL (tamerCoverUrl), active XP boost expiration timestamp (xpBoostUntilMs), and battle counters."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the cloud save profile was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest cloud save sync."
+        }
+      },
+      "required": ["ownerUid", "username", "usernameLower", "createdAt", "updatedAt"]
+    },
+    "PlayerPrivateAccount": {
+      "title": "PlayerPrivateAccount",
+      "description": "Isolated PII document storing the player's email address and auth provider, strictly restricted to the account owner.",
+      "type": "object",
+      "properties": {
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Immutable Firebase Auth UID of the account owner."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 254,
+          "description": "Private email address linked to Firebase Authentication."
+        },
+        "authProvider": {
+          "type": "string",
+          "enum": ["password", "google"],
+          "description": "Primary authentication provider used by the player."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the private record was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest private record update."
+        }
+      },
+      "required": ["ownerUid", "email", "authProvider", "createdAt", "updatedAt"]
+    },
+    "UsernameClaim": {
+      "title": "UsernameClaim",
+      "description": "Non-PII uniqueness claim linking a normalized username key to its owning player UID.",
+      "type": "object",
+      "properties": {
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Immutable Firebase Auth UID owning this username."
+        },
+        "username": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 24,
+          "pattern": "^[a-zA-Z0-9._\\-]+$",
+          "description": "Original cased username."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the username was claimed."
+        }
+      },
+      "required": ["ownerUid", "username", "createdAt"]
+    },
+    "AlphaFeedbackReport": {
+      "title": "AlphaFeedbackReport",
+      "description": "Player-submitted Alpha test bug report, suggestion, or balance feedback stored in Firestore.",
+      "type": "object",
+      "properties": {
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Immutable Firebase Auth UID of the reporting player."
+        },
+        "username": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 24,
+          "pattern": "^[a-zA-Z0-9._\\-]+$",
+          "description": "Reporting player's username."
+        },
+        "tamerName": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 24,
+          "description": "Active Tamer name at the time of submission (optional)."
+        },
+        "category": {
+          "type": "string",
+          "enum": ["bug", "suggestion", "balance", "other"],
+          "description": "Type of Alpha test report."
+        },
+        "screenContext": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "description": "Screen or map where the player submitted feedback."
+        },
+        "message": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 600,
+          "description": "Detailed bug report or suggestion written by the player."
+        },
+        "deviceInfo": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "Device form factor and viewport metadata."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["open"],
+          "description": "Initial server-enforced report status."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the report was submitted."
+        }
+      },
+      "required": ["ownerUid", "username", "tamerName", "category", "screenContext", "message", "deviceInfo", "status", "createdAt"]
+    },
+    "GmAdminRecord": {
+      "title": "GmAdminRecord",
+      "description": "Console-managed Game Master (GM) authorization marker granting exclusive admin privileges to a verified UID.",
+      "type": "object",
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": ["gm"],
+          "description": "Exclusive GM role marker."
+        },
+        "grantedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when GM access was granted via Firebase Console."
+        }
+      },
+      "required": ["role"]
+    },
+    "WorldPresence": {
+      "title": "WorldPresence",
+      "description": "Real-time shared-world avatar presence document (zero PII) enabling online players to see, walk beside, inspect, and chat with each other on the same map.",
+      "type": "object",
+      "properties": {
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Immutable Firebase Auth UID of the online player."
+        },
+        "tamerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24,
+          "description": "In-game Tamer display name."
+        },
+        "characterId": {
+          "type": "string",
+          "enum": ["kai", "ren", "hina", "yuna"],
+          "description": "Selected Tamer avatar spritesheet ID."
+        },
+        "tamerLevel": {
+          "type": "number",
+          "description": "Current Tamer level (1..200)."
+        },
+        "digimonFormId": {
+          "type": "string",
+          "enum": [
+            "agumon",
+            "geogreymon",
+            "rizegreymon",
+            "shinegreymon",
+            "agumon_classic",
+            "greymon",
+            "metalgreymon",
+            "wargreymon",
+            "gabumon",
+            "garurumon",
+            "weregarurumon",
+            "metalgarurumon",
+            "impmon",
+            "icedevimon",
+            "skullsatamon",
+            "beelzemon",
+            "gaomon",
+            "gaogamon",
+            "machgaogamon",
+            "miragegaogamon",
+            "lalamon",
+            "sunflowmon",
+            "lilamon",
+            "rosemon",
+            "guilmon",
+            "growlmon",
+            "megalogrowlmon",
+            "dukemon",
+            "veemon",
+            "veedramon",
+            "aeroveedramon",
+            "ulforceveedramon",
+            "keramon",
+            "chrysalimon",
+            "infermon",
+            "diaboromon",
+            "demimeramon",
+            "meramon",
+            "skullmeramon",
+            "boltmon",
+            "hawkmon",
+            "aquilamon",
+            "silphymon",
+            "gryphonmon",
+            "tentomon",
+            "kabuterimon",
+            "megakabuterimon",
+            "herculeskabuterimon",
+            "drimogemon",
+            "digmon",
+            "giromon",
+            "hiandromon",
+            "kiwimon",
+            "deramon",
+            "blossomon",
+            "griffomon",
+            "gotsumon",
+            "icemon",
+            "insekimon",
+            "metaletemon",
+            "elecmon",
+            "leomon",
+            "iceleomon",
+            "saberleomon",
+            "renamon",
+            "kyubimon",
+            "taomon",
+            "sakuyamon",
+            "monodramon",
+            "strikedramon",
+            "cyberdramon",
+            "justimon",
+            "biyomon",
+            "birdramon",
+            "garudamon",
+            "phoenixmon",
+            "kunemon",
+            "flymon",
+            "okuwamon",
+            "grankuwagamon"
+          ],
+          "description": "Active Partner Digimon evolution form ID."
+        },
+        "digimonLevel": {
+          "type": "number",
+          "description": "Current Partner Digimon level (1..200)."
+        },
+        "mapId": {
+          "type": "string",
+          "enum": ["dats-center", "hunting-plains", "data-forest", "digi-mountain", "digital-desert", "data-sea", "digimon-island", "dark-area", "virtual-world"],
+          "description": "Current world map where the player is located."
+        },
+        "worldX": {
+          "type": "number",
+          "description": "Tamer X coordinate in world pixels (0..20000)."
+        },
+        "worldY": {
+          "type": "number",
+          "description": "Tamer Y coordinate in world pixels (0..20000)."
+        },
+        "facingDir": {
+          "type": "string",
+          "enum": ["N", "S", "E", "W"],
+          "description": "Tamer cardinal facing direction."
+        },
+        "moveState": {
+          "type": "string",
+          "enum": ["idle", "walk"],
+          "description": "Tamer movement animation state."
+        },
+        "partnerX": {
+          "type": "number",
+          "description": "Partner Digimon X coordinate in world pixels (0..20000)."
+        },
+        "partnerY": {
+          "type": "number",
+          "description": "Partner Digimon Y coordinate in world pixels (0..20000)."
+        },
+        "partnerDir": {
+          "type": "string",
+          "enum": ["N", "S", "E", "W"],
+          "description": "Partner Digimon cardinal facing direction."
+        },
+        "partnerMoving": {
+          "type": "boolean",
+          "description": "Whether the Partner Digimon is currently walking."
+        },
+        "isGm": {
+          "type": "boolean",
+          "description": "Server-verified GM badge flag (only true if caller satisfies isAdmin())."
+        },
+        "guildName": {
+          "type": "string",
+          "maxLength": 32,
+          "description": "Optional guild display name (or null)."
+        },
+        "chatText": {
+          "type": "string",
+          "maxLength": 140,
+          "description": "Most recent live world/map chat message for speech bubble and chat feed."
+        },
+        "chatSeq": {
+          "type": "number",
+          "description": "Monotonically increasing counter for chat messages (0..1000000)."
+        },
+        "online": {
+          "type": "boolean",
+          "description": "Whether the player is actively present in the world."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest live presence or chat update."
+        }
+      },
+      "required": [
+        "ownerUid",
+        "tamerName",
+        "characterId",
+        "tamerLevel",
+        "digimonFormId",
+        "digimonLevel",
+        "mapId",
+        "worldX",
+        "worldY",
+        "facingDir",
+        "moveState",
+        "partnerX",
+        "partnerY",
+        "partnerDir",
+        "partnerMoving",
+        "isGm",
+        "guildName",
+        "chatText",
+        "chatSeq",
+        "online",
+        "updatedAt"
+      ]
+    },
+    "WorldBossState": {
+      "title": "WorldBossState",
+      "description": "Shared real-time multiplayer Raid World Boss state (zero PII) synchronized across all players on the map.",
+      "type": "object",
+      "properties": {
+        "bossId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Immutable World Boss document ID."
+        },
+        "mapId": {
+          "type": "string",
+          "enum": ["data-forest"],
+          "description": "World map hosting this Raid Boss."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "description": "Display name of the Raid Boss."
+        },
+        "level": {
+          "type": "number",
+          "description": "Boss level (1..200)."
+        },
+        "hp": {
+          "type": "number",
+          "description": "Current shared Raid Boss HP (0..maxHp)."
+        },
+        "maxHp": {
+          "type": "number",
+          "description": "Maximum Raid Boss HP (100..10000000)."
+        },
+        "alive": {
+          "type": "boolean",
+          "description": "Whether the Raid Boss is currently spawned and fightable."
+        },
+        "respawnAtMs": {
+          "type": "number",
+          "description": "Epoch millisecond timestamp when the boss respawns after defeat (0 while alive)."
+        },
+        "lastAttackerName": {
+          "type": "string",
+          "maxLength": 24,
+          "description": "Display name of the most recent Tamer to damage the boss."
+        },
+        "lastHitAtMs": {
+          "type": "number",
+          "description": "Epoch millisecond timestamp of the most recent raid hit."
+        },
+        "contributors": {
+          "type": "object",
+          "description": "Map of participating UIDs to { tamerName, damage } (up to 32 raiders)."
+        },
+        "defeatedCount": {
+          "type": "number",
+          "description": "Monotonically increasing defeat counter used to distribute shared raid rewards."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest raid update."
+        }
+      },
+      "required": [
+        "bossId",
+        "mapId",
+        "name",
+        "level",
+        "hp",
+        "maxHp",
+        "alive",
+        "respawnAtMs",
+        "lastAttackerName",
+        "lastHitAtMs",
+        "contributors",
+        "defeatedCount",
+        "updatedAt"
+      ]
+    },
+    "ServerRatesConfig": {
+      "title": "ServerRatesConfig",
+      "description": "Global server EXP multiplier event state managed exclusively by verified GMs (100%, 150%, 200%, 250%).",
+      "type": "object",
+      "properties": {
+        "expRatePct": {
+          "type": "number",
+          "enum": [100, 150, 200, 250],
+          "description": "Active server EXP percentage (100 = normal, up to 250 = 2.5x)."
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24,
+          "description": "Display name of the GM who set the active EXP rate."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest rate update."
+        }
+      },
+      "required": ["expRatePct", "updatedBy", "updatedAt"]
+    },
+    "GuildRecord": {
+      "title": "GuildRecord",
+      "description": "DMO-style multiplayer Guild record with emblem, tag, notice, level/EXP, passive skills, bounded members list, and recent guild chat.",
+      "type": "object",
+      "properties": {
+        "guildId": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Immutable guild document ID."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 24,
+          "description": "Unique display name of the Guild."
+        },
+        "tag": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 4,
+          "pattern": "^[A-Z0-9]+$",
+          "description": "Short 2-4 character guild crest tag."
+        },
+        "emblemColor": {
+          "type": "string",
+          "enum": ["cyan", "amber", "crimson", "emerald", "violet"],
+          "description": "Selected guild crest color theme."
+        },
+        "emblemPhotoUrl": {
+          "type": "string",
+          "maxLength": 48000,
+          "description": "Optional compressed square data URL (JPEG/PNG/WebP, 128x128) uploaded by Guild leadership as the custom guild emblem photo."
+        },
+        "notice": {
+          "type": "string",
+          "maxLength": 160,
+          "description": "Guild master announcement / message of the day."
+        },
+        "masterUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the current Guild Master."
+        },
+        "masterName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24,
+          "description": "Tamer name of the current Guild Master."
+        },
+        "level": {
+          "type": "number",
+          "description": "Guild level (1..10)."
+        },
+        "exp": {
+          "type": "number",
+          "description": "Current Guild EXP progress."
+        },
+        "skillPoints": {
+          "type": "number",
+          "description": "Unspent guild skill points."
+        },
+        "skills": {
+          "type": "object",
+          "description": "Passive guild skill levels ({ expBoost, attackBoost, bitsBoost })."
+        },
+        "recruiting": {
+          "type": "boolean",
+          "description": "Whether new Tamers can freely join this guild."
+        },
+        "memberUids": {
+          "type": "array",
+          "description": "Bounded list of current member UIDs (max 50)."
+        },
+        "members": {
+          "type": "object",
+          "description": "Map of UID to guild member profile (name, role, level, contribution)."
+        },
+        "chatMessages": {
+          "type": "array",
+          "description": "Bounded ring buffer of the latest 25 guild chat messages."
+        },
+        "dailyHuntDate": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "description": "Server day key (YYYY-MM-DD, America/Sao_Paulo) for the active daily guild mob hunt."
+        },
+        "dailyKills": {
+          "type": "number",
+          "description": "Total mobs defeated by all guild members on dailyHuntDate (resets at 23:59 -> 00:00)."
+        },
+        "prevDayDate": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "description": "Previous server day key (YYYY-MM-DD) whose final kills determine today's active Guild Event XP bonus."
+        },
+        "prevDayKills": {
+          "type": "number",
+          "description": "Final locked mobs defeated by all guild members on prevDayDate."
+        },
+        "totalKills": {
+          "type": "number",
+          "description": "Cumulative all-time mobs defeated by all guild members (never resets)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the guild was founded."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest guild update."
+        }
+      },
+      "required": [
+        "guildId",
+        "name",
+        "tag",
+        "emblemColor",
+        "notice",
+        "masterUid",
+        "masterName",
+        "level",
+        "exp",
+        "skillPoints",
+        "skills",
+        "recruiting",
+        "memberUids",
+        "members",
+        "chatMessages",
+        "createdAt",
+        "updatedAt",
+      ]
+    },
+    "PlayerRankingEntry": {
+      "title": "PlayerRankingEntry",
+      "description": "Zero-PII public leaderboard snapshot for Tamer and Digimon rankings.",
+      "type": "object",
+      "properties": {
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the ranked player."
+        },
+        "tamerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24,
+          "description": "Public Tamer display name."
+        },
+        "characterId": {
+          "type": "string",
+          "enum": ["kai", "ren", "hina", "yuna"],
+          "description": "Selected Tamer avatar ID."
+        },
+        "tamerLevel": {
+          "type": "number",
+          "description": "Current Tamer level (1..200)."
+        },
+        "tamerExp": {
+          "type": "number",
+          "description": "Current Tamer EXP progress."
+        },
+        "digimonFormId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[a-z0-9_]+$",
+          "description": "Active Digimon form ID."
+        },
+        "digimonName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "description": "Active Digimon display name or nickname."
+        },
+        "digimonLevel": {
+          "type": "number",
+          "description": "Active Digimon level (1..200)."
+        },
+        "digimonExp": {
+          "type": "number",
+          "description": "Active Digimon EXP progress."
+        },
+        "digimonCombatPower": {
+          "type": "number",
+          "description": "Calculated Digimon Combat Power (CP)."
+        },
+        "digimonGrade": {
+          "type": "number",
+          "enum": [3, 4, 5],
+          "description": "Hatch quality grade (3/5, 4/5, or 5/5)."
+        },
+        "digimonSizePct": {
+          "type": "number",
+          "description": "Hatch size percentage (80..140)."
+        },
+        "defeatedEnemiesTotal": {
+          "type": "number",
+          "description": "Total wild Digimons defeated."
+        },
+        "guildName": {
+          "type": "string",
+          "maxLength": 32,
+          "description": "Optional guild display name (or null)."
+        },
+        "isGm": {
+          "type": "boolean",
+          "description": "Server-verified GM badge flag."
+        },
+        "tamerPhotoUrl": {
+          "type": "string",
+          "maxLength": 48000,
+          "description": "Optional compressed square data URL (JPEG/PNG/WebP) uploaded as custom Tamer portrait photo (or null)."
+        },
+        "tamerCoverUrl": {
+          "type": "string",
+          "maxLength": 48000,
+          "description": "Optional compressed 3:1 cover banner data URL (JPEG/PNG/WebP) displayed behind player cards in Rankings (or null)."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest ranking sync."
+        }
+      },
+      "required": [
+        "ownerUid",
+        "tamerName",
+        "characterId",
+        "tamerLevel",
+        "tamerExp",
+        "digimonFormId",
+        "digimonName",
+        "digimonLevel",
+        "digimonExp",
+        "digimonCombatPower",
+        "digimonGrade",
+        "digimonSizePct",
+        "defeatedEnemiesTotal",
+        "guildName",
+        "isGm",
+        "updatedAt"
+      ]
+    },
+    "GuildRankingEntry": {
+      "title": "GuildRankingEntry",
+      "description": "Zero-PII public leaderboard snapshot for Guild rankings across all server guilds.",
+      "type": "object",
+      "properties": {
+        "guildId": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Guild document ID."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 24,
+          "description": "Guild display name."
+        },
+        "tag": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 4,
+          "pattern": "^[A-Z0-9]+$",
+          "description": "Short 2-4 char guild tag."
+        },
+        "emblemColor": {
+          "type": "string",
+          "enum": ["cyan", "amber", "crimson", "emerald", "violet"],
+          "description": "Guild emblem color theme."
+        },
+        "emblemPhotoUrl": {
+          "type": "string",
+          "maxLength": 48000,
+          "description": "Optional compressed guild emblem photo data URL."
+        },
+        "masterName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24,
+          "description": "Tamer name of the Guild Master."
+        },
+        "level": {
+          "type": "number",
+          "description": "Guild level (1..10)."
+        },
+        "exp": {
+          "type": "number",
+          "description": "Guild EXP progress."
+        },
+        "memberCount": {
+          "type": "number",
+          "description": "Current number of members (1..50)."
+        },
+        "totalKills": {
+          "type": "number",
+          "description": "All-time total mobs defeated by the guild."
+        },
+        "dailyKills": {
+          "type": "number",
+          "description": "Mobs defeated today by the guild."
+        },
+        "dailyHuntDate": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "description": "Server day key (YYYY-MM-DD) for dailyKills."
+        },
+        "recruiting": {
+          "type": "boolean",
+          "description": "Whether the guild is currently open for recruitment."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest guild ranking sync."
+        }
+      },
+      "required": [
+        "guildId",
+        "name",
+        "tag",
+        "emblemColor",
+        "emblemPhotoUrl",
+        "masterName",
+        "level",
+        "exp",
+        "memberCount",
+        "totalKills",
+        "dailyKills",
+        "dailyHuntDate",
+        "recruiting",
+        "updatedAt"
+      ]
+    },
+    "DwCoinPurchaseOrder": {
+      "title": "DwCoinPurchaseOrder",
+      "description": "Server-validated DWcoin recharge order recording mandatory pre-payment terms acceptance (v1.0) without any sensitive card PII.",
+      "type": "object",
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Unique DWcoin purchase order ID."
+        },
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the purchasing player."
+        },
+        "packId": {
+          "type": "string",
+          "enum": ["pack_10", "pack_30", "pack_60", "pack_100", "pack_200"],
+          "description": "Official DWcoin package ID from the store catalog."
+        },
+        "dwCoinAmount": {
+          "type": "number",
+          "enum": [10, 30, 60, 100, 200],
+          "description": "Exact DWcoin amount bound to packId."
+        },
+        "priceCents": {
+          "type": "number",
+          "enum": [1000, 2850, 5400, 8500, 16000],
+          "description": "Exact package price in BRL cents bound to packId."
+        },
+        "priceBrlLabel": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "description": "Display price string in BRL matching the catalog package."
+        },
+        "paymentMethod": {
+          "type": "string",
+          "enum": ["pix", "card"],
+          "description": "Selected payment method (PIX or Cartão)."
+        },
+        "termsAccepted": {
+          "type": "boolean",
+          "description": "Must be true before checkout can initiate."
+        },
+        "termsVersion": {
+          "type": "string",
+          "enum": ["v1.0"],
+          "description": "Version of the mandatory pre-payment terms accepted by the player."
+        },
+        "termsAcceptedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the player accepted the purchase terms."
+        },
+        "termsAcceptedAtIso": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 40,
+          "description": "Client ISO timestamp recorded alongside the server timestamp."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "cancelled", "approved", "error"],
+          "description": "Order payment status (starts pending; clients can only cancel, never self-approve)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the order was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest order status update."
+        }
+      },
+      "required": [
+        "orderId",
+        "ownerUid",
+        "packId",
+        "dwCoinAmount",
+        "priceCents",
+        "priceBrlLabel",
+        "paymentMethod",
+        "termsAccepted",
+        "termsVersion",
+        "termsAcceptedAt",
+        "termsAcceptedAtIso",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PartyRecord": {
+      "title": "PartyRecord",
+      "description": "Real-time multiplayer 4-player grinding Party (leader + up to 3 teammates, zero PII) supporting live member vitals, shared map EXP events, and Party chat.",
+      "type": "object",
+      "properties": {
+        "partyId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Immutable Party document ID."
+        },
+        "leaderUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the current Party Leader."
+        },
+        "leaderName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24,
+          "description": "Display Tamer name of the current Party Leader."
+        },
+        "memberUids": {
+          "type": "array",
+          "description": "Bounded list of 1..4 Party member UIDs."
+        },
+        "members": {
+          "type": "object",
+          "description": "Map of member UID to zero-PII Party member snapshot (Tamer photo, Digimon form/name, level, HP/maxHp, mapId)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the Party was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest Party update."
+        }
+      },
+      "required": ["partyId", "leaderUid", "leaderName", "memberUids", "members", "createdAt", "updatedAt"]
+    },
+    "PartyInvite": {
+      "title": "PartyInvite",
+      "description": "Targeted Party invitation sent from a Party member to another verified online player (zero PII).",
+      "type": "object",
+      "properties": {
+        "inviteId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Deterministic invite document ID (pinv_{partyId}_{toUid})."
+        },
+        "partyId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Target Party ID."
+        },
+        "fromUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID of the inviting Party member."
+        },
+        "fromName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24,
+          "description": "Display Tamer name of the inviting player."
+        },
+        "fromTamerLevel": {
+          "type": "number",
+          "description": "Tamer level of the inviting player (1..200)."
+        },
+        "fromCharacterId": {
+          "type": "string",
+          "enum": ["kai", "ren", "hina", "yuna"],
+          "description": "Tamer avatar ID of the inviting player."
+        },
+        "fromPhotoUrl": {
+          "type": "string",
+          "maxLength": 44000,
+          "description": "Optional compressed portrait photo of the inviting player (or null)."
+        },
+        "fromDigimonFormId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[a-z0-9_]+$",
+          "description": "Active Digimon form ID of the inviting player."
+        },
+        "toUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID of the invited player."
+        },
+        "toName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24,
+          "description": "Display Tamer name of the invited player."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "accepted", "declined"],
+          "description": "Current invite resolution status."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the invite was sent."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest invite state update."
+        }
+      },
+      "required": [
+        "inviteId",
+        "partyId",
+        "fromUid",
+        "fromName",
+        "fromTamerLevel",
+        "fromCharacterId",
+        "fromPhotoUrl",
+        "fromDigimonFormId",
+        "toUid",
+        "toName",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PartyXpEvent": {
+      "title": "PartyXpEvent",
+      "description": "Ephemeral mob-kill EXP sharing event emitted by a Party member to grant shared XP to teammates on the same map.",
+      "type": "object",
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Unique XP event ID."
+        },
+        "killerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID of the Party member who defeated the wild Digimon."
+        },
+        "killerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24,
+          "description": "Display name of the Party member who defeated the wild Digimon."
+        },
+        "mapId": {
+          "type": "string",
+          "enum": ["dats-center", "hunting-plains", "data-forest", "digi-mountain", "digital-desert", "data-sea", "digimon-island", "dark-area", "virtual-world"],
+          "description": "Map ID where the mob was defeated."
+        },
+        "mobName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "description": "Name of the defeated wild Digimon."
+        },
+        "mobLevel": {
+          "type": "number",
+          "description": "Level of the defeated wild Digimon (1..200)."
+        },
+        "baseExp": {
+          "type": "number",
+          "description": "Base EXP generated by the defeat (1..50000000)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the EXP event."
+        }
+      },
+      "required": ["eventId", "killerUid", "killerName", "mapId", "mobName", "mobLevel", "baseExp", "createdAt"]
+    },
+    "PartyChatMessage": {
+      "title": "PartyChatMessage",
+      "description": "Private Party-only chat message visible exclusively to members of the same Party.",
+      "type": "object",
+      "properties": {
+        "messageId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Unique Party message ID."
+        },
+        "senderUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID of the sending Party member."
+        },
+        "senderName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24,
+          "description": "Display Tamer name of the sender."
+        },
+        "isGmSender": {
+          "type": "boolean",
+          "description": "Server-verified GM flag."
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 140,
+          "description": "Chat message body."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the message was sent."
+        }
+      },
+      "required": ["messageId", "senderUid", "senderName", "isGmSender", "text", "createdAt"]
+    },
+    "DwCoinTransaction": {
+      "title": "DwCoinTransaction",
+      "description": "Immutable ledger entry recording DWcoin shop spending, recharges, and GM currency adjustments across the server.",
+      "type": "object",
+      "properties": {
+        "txId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Unique DWcoin ledger transaction ID."
+        },
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the player account."
+        },
+        "username": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 24,
+          "description": "Player account username."
+        },
+        "tamerName": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 24,
+          "description": "Player Tamer display name at the time of transaction."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["spend", "recharge", "gm_grant", "gm_deduct"],
+          "description": "Ledger movement direction/origin."
+        },
+        "dwCoinAmount": {
+          "type": "number",
+          "description": "Positive DWcoin quantity involved in the transaction."
+        },
+        "itemKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Shop offer ID or recharge pack ID."
+        },
+        "itemName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Human-readable item or package title."
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "description": "Shop category or adjustment reason."
+        },
+        "balanceAfter": {
+          "type": "number",
+          "description": "Player DWcoin balance immediately after this transaction."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the transaction."
+        }
+      },
+      "required": ["txId", "ownerUid", "username", "tamerName", "type", "dwCoinAmount", "itemKey", "itemName", "category", "balanceAfter", "createdAt"]
+    },
+    "BannedAccount": {
+      "title": "BannedAccount",
+      "description": "Server-enforced account suspension/ban record managed exclusively by verified GMs.",
+      "type": "object",
+      "properties": {
+        "targetUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Banned player Firebase Auth UID."
+        },
+        "username": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24,
+          "description": "Banned player account handle."
+        },
+        "tamerName": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 24,
+          "description": "Banned player Tamer name."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 240,
+          "description": "Official GM reason displayed to the suspended account."
+        },
+        "bannedByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Verified GM UID who issued the ban."
+        },
+        "bannedByName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24,
+          "description": "Display name of the GM who issued the ban."
+        },
+        "permanent": {
+          "type": "boolean",
+          "description": "Whether the ban is permanent or temporary."
+        },
+        "expiresAtMs": {
+          "type": "number",
+          "description": "Epoch millisecond expiration for temporary bans (0 when permanent)."
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Whether the ban is currently enforced."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the ban record was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest ban/unban update."
+        }
+      },
+      "required": ["targetUid", "username", "tamerName", "reason", "bannedByUid", "bannedByName", "permanent", "expiresAtMs", "active", "createdAt", "updatedAt"]
+    },
+    "ServerAnnouncement": {
+      "title": "ServerAnnouncement",
+      "description": "Live server-wide GM broadcast banner and maintenance notice stored under serverConfig/announcement.",
+      "type": "object",
+      "properties": {
+        "announcementId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Unique broadcast ID for client deduplication."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 48,
+          "description": "Short broadcast headline."
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240,
+          "description": "Announcement message body shown to all online players."
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["info", "event", "warning", "maintenance"],
+          "description": "Visual severity of the announcement."
+        },
+        "maintenanceMode": {
+          "type": "boolean",
+          "description": "Flags whether scheduled maintenance is active."
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Controls whether the broadcast banner is active."
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24,
+          "description": "Display name of the GM who published the notice."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the announcement was published."
+        }
+      },
+      "required": ["announcementId", "title", "message", "severity", "maintenanceMode", "active", "updatedBy", "updatedAt"]
+    },
+    "GmAuditLog": {
+      "title": "GmAuditLog",
+      "description": "Immutable audit trail of GM administrative actions across the server.",
+      "type": "object",
+      "properties": {
+        "logId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Unique GM audit log ID."
+        },
+        "actorUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Verified GM UID who executed the action."
+        },
+        "actorName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 24,
+          "description": "Display name of the GM."
+        },
+        "action": {
+          "type": "string",
+          "enum": ["ban", "unban", "kick", "currency_adjust", "order_approve", "order_cancel", "exp_rate", "announcement", "boss_respawn", "feedback_delete", "item_grant"],
+          "description": "Categorized GM administrative action."
+        },
+        "targetUid": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 128,
+          "description": "Optional target player UID affected by the action."
+        },
+        "targetName": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 32,
+          "description": "Optional target player or resource display label."
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240,
+          "description": "Human-readable description of the GM action."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the GM action."
+        }
+      },
+      "required": ["logId", "actorUid", "actorName", "action", "targetUid", "targetName", "summary", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/players/{userId}": {
+      "schema": { "$ref": "#/entities/PlayerSave" },
+      "description": "Per-user cloud save document for Tamer, Starter Digimon, world position, and HUD RPG progression."
+    },
+    "/players/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/PlayerPrivateAccount" },
+      "description": "Isolated PII subcollection (docId = 'account') strictly readable and writable only by the owner."
+    },
+    "/usernames/{usernameKey}": {
+      "schema": { "$ref": "#/entities/UsernameClaim" },
+      "description": "Unique non-PII username registry preventing duplicate player handles."
+    },
+    "/alphaFeedback/{reportId}": {
+      "schema": { "$ref": "#/entities/AlphaFeedbackReport" },
+      "description": "Alpha test player bug reports and suggestions readable/deletable by their author or the verified GM account."
+    },
+    "/admins/{userId}": {
+      "schema": { "$ref": "#/entities/GmAdminRecord" },
+      "description": "Read-only GM role registry managed exclusively in Firebase Console; zero client writes allowed."
+    },
+    "/worldPresence/{userId}": {
+      "schema": { "$ref": "#/entities/WorldPresence" },
+      "description": "Live zero-PII multiplayer avatar presence and world chat broadcast per verified player."
+    },
+    "/worldBosses/{bossId}": {
+      "schema": { "$ref": "#/entities/WorldBossState" },
+      "description": "Shared real-time multiplayer Raid Boss state for cooperative bosses such as Kuwagamon in Floresta de Dados."
+    },
+    "/serverConfig/{configId}": {
+      "schema": { "$ref": "#/entities/ServerRatesConfig" },
+      "description": "Server-wide EXP rate event configuration (docId = 'rates') readable by verified players and writable only by GMs."
+    },
+    "/guilds/{guildId}": {
+      "schema": { "$ref": "#/entities/GuildRecord" },
+      "description": "Multiplayer DMO-style Guild documents supporting creation, recruitment, role hierarchy, guild skills, EXP progression, and guild chat."
+    },
+    "/playerRankings/{userId}": {
+      "schema": { "$ref": "#/entities/PlayerRankingEntry" },
+      "description": "Zero-PII public leaderboard snapshots for server Tamer and Digimon rankings."
+    },
+    "/guildRankings/{guildId}": {
+      "schema": { "$ref": "#/entities/GuildRankingEntry" },
+      "description": "Zero-PII public leaderboard snapshots for server Guild rankings."
+    },
+    "/dwCoinOrders/{orderId}": {
+      "schema": { "$ref": "#/entities/DwCoinPurchaseOrder" },
+      "description": "Pending and audited DWcoin purchase orders storing pre-payment terms acceptance (v1.0) without sensitive card PII."
+    },
+    "/parties/{partyId}": {
+      "schema": { "$ref": "#/entities/PartyRecord" },
+      "description": "Real-time multiplayer 4-player grinding Parties (leader + up to 3 teammates) with live member vitals and roster state."
+    },
+    "/parties/{partyId}/xpEvents/{eventId}": {
+      "schema": { "$ref": "#/entities/PartyXpEvent" },
+      "description": "Append-only Party mob-kill XP sharing events scoped to active Party members."
+    },
+    "/parties/{partyId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/PartyChatMessage" },
+      "description": "Append-only Party chat messages readable and writable only by active Party members."
+    },
+    "/partyInvites/{inviteId}": {
+      "schema": { "$ref": "#/entities/PartyInvite" },
+      "description": "Targeted Party invitations readable and resolvable only by the sender and recipient."
+    },
+    "/dwCoinTransactions/{txId}": {
+      "schema": { "$ref": "#/entities/DwCoinTransaction" },
+      "description": "Immutable server DWcoin ledger tracking shop item spending, approved recharges, and GM currency grants."
+    },
+    "/bannedAccounts/{userId}": {
+      "schema": { "$ref": "#/entities/BannedAccount" },
+      "description": "GM-managed account suspension and ban records enforced on login and live play."
+    },
+    "/gmAuditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/GmAuditLog" },
+      "description": "Immutable administrative audit logs visible exclusively to verified GMs."
+    }
+  }
+}

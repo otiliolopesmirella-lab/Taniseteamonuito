@@ -1,0 +1,805 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Russo One", sans-serif;
+  --font-sans: "Exo 2", system-ui, -apple-system, sans-serif;
+  --breakpoint-xs: 23.4375rem;
+}
+
+@layer base {
+  html,
+  body {
+    font-family: var(--font-sans);
+    background-color: #030816;
+    color: #f8fafc;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* Chamfered cyber geometry utilities matching the Digital War UI */
+.clip-cyber-panel {
+  clip-path: polygon(
+    18px 0%,
+    calc(100% - 18px) 0%,
+    100% 18px,
+    100% calc(100% - 18px),
+    calc(100% - 18px) 100%,
+    18px 100%,
+    0% calc(100% - 18px),
+    0% 18px
+  );
+}
+
+.clip-cyber-btn {
+  clip-path: polygon(
+    14px 0%,
+    calc(100% - 14px) 0%,
+    100% 50%,
+    calc(100% - 14px) 100%,
+    14px 100%,
+    0% 50%
+  );
+}
+
+.clip-cyber-input {
+  clip-path: polygon(
+    10px 0%,
+    calc(100% - 10px) 0%,
+    100% 10px,
+    100% calc(100% - 10px),
+    calc(100% - 10px) 100%,
+    10px 100%,
+    0% calc(100% - 10px),
+    0% 10px
+  );
+}
+
+.clip-cyber-hex {
+  clip-path: polygon(
+    12px 0%,
+    calc(100% - 12px) 0%,
+    100% 16px,
+    100% calc(100% - 16px),
+    calc(100% - 12px) 100%,
+    12px 100%,
+    0% calc(100% - 16px),
+    0% 16px
+  );
+}
+
+.clip-banner-left {
+  clip-path: polygon(0 0, 100% 0, calc(100% - 18px) 100%, 0 100%);
+}
+
+.clip-banner-right {
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 18px 100%);
+}
+
+.clip-footer-ribbon {
+  clip-path: polygon(16px 0%, calc(100% - 16px) 0%, 100% 100%, 0% 100%);
+}
+
+/* Subtle digital data particle drift (compositor-only) */
+@keyframes float-particle {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.35;
+  }
+  50% {
+    transform: translate3d(0, -14px, 0) scale(1.15);
+    opacity: 0.85;
+  }
+}
+
+@keyframes pulse-aura {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.03);
+  }
+}
+
+@keyframes dmoWindowIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0) scale(0.95);
+    filter: drop-shadow(0 0 0 rgba(56, 214, 255, 0));
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: drop-shadow(0 0 24px rgba(32, 186, 255, 0.48));
+  }
+}
+
+.animate-float-particle {
+  animation: float-particle 5s ease-in-out infinite;
+}
+
+.animate-pulse-aura {
+  animation: pulse-aura 4s ease-in-out infinite;
+}
+
+.animate-dmo-window {
+  animation: dmoWindowIn 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-float-particle,
+  .animate-pulse-aura,
+  .animate-dmo-window {
+    animation: none !important;
+  }
+}
+
+/* ============================================================
+   DMO-Style Metallic Electric-Blue HUD Geometry & Glossy Bars
+   ============================================================ */
+.dmo-frame {
+  background: linear-gradient(180deg, #0d4bc7 0%, #062573 48%, #03113c 100%);
+  border: 1.5px solid #38d6ff;
+  box-shadow:
+    0 0 12px rgba(0, 168, 255, 0.48),
+    inset 0 1px 0 rgba(190, 240, 255, 0.65),
+    inset 0 -2px 4px rgba(1, 8, 30, 0.85);
+}
+
+.dmo-ring {
+  background: radial-gradient(circle at 35% 28%, #0a2e7a 0%, #031036 68%, #02081f 100%);
+  border: 2.5px solid #4be3ff;
+  box-shadow:
+    0 0 14px rgba(40, 210, 255, 0.72),
+    inset 0 0 8px rgba(0, 110, 255, 0.85),
+    inset 0 2px 3px rgba(255, 255, 255, 0.35);
+}
+
+.dmo-well {
+  background: linear-gradient(180deg, #020922 0%, #061847 100%);
+  border: 1px solid rgba(56, 214, 255, 0.55);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.85);
+}
+
+.dmo-hp-fill {
+  background: linear-gradient(
+    180deg,
+    #ff7a7a 0%,
+    #ef1c1c 38%,
+    #b80000 72%,
+    #780000 100%
+  );
+  box-shadow: inset 0 1px 0 rgba(255, 215, 215, 0.7);
+}
+
+.dmo-ds-fill {
+  background: linear-gradient(
+    180deg,
+    #5ee7ff 0%,
+    #0d8eff 40%,
+    #004fd1 78%,
+    #002c80 100%
+  );
+  box-shadow: inset 0 1px 0 rgba(210, 248, 255, 0.75);
+}
+
+.dmo-chat-bg {
+  background-color: rgba(8, 24, 68, 0.86);
+  background-image:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.03) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255, 255, 255, 0.03) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.03) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.03) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+.dmo-gold-circle {
+  background: radial-gradient(circle at 35% 25%, #fff59d 0%, #fbbf24 45%, #d97706 85%, #92400e 100%);
+  border: 2px solid #fef08a;
+  box-shadow:
+    0 0 16px rgba(251, 191, 36, 0.82),
+    inset 0 2px 3px rgba(255, 255, 255, 0.75);
+}
+
+.dmo-dock-cell {
+  background: linear-gradient(180deg, #1670f0 0%, #0b44b3 52%, #052063 100%);
+  border: 1.5px solid #5ee3ff;
+  box-shadow:
+    inset 0 1px 0 rgba(215, 245, 255, 0.65),
+    0 2px 6px rgba(0, 12, 48, 0.75);
+}
+
+.dmo-dock-cell-active {
+  background: linear-gradient(180deg, #35a7ff 0%, #1063de 52%, #08338f 100%);
+  border: 1.5px solid #fde047;
+  box-shadow:
+    0 0 12px rgba(253, 224, 71, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+/* ============================================================
+   Futuristic Metallic MMORPG Main Menu Dock (11 Icons)
+   ============================================================ */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.mmorpg-dock-rail {
+  background: linear-gradient(
+    180deg,
+    rgba(9, 28, 76, 0.96) 0%,
+    rgba(4, 14, 42, 0.98) 55%,
+    rgba(2, 8, 26, 0.99) 100%
+  );
+  border: 1.5px solid rgba(56, 214, 255, 0.62);
+  box-shadow:
+    0 -4px 24px rgba(0, 140, 255, 0.28),
+    0 6px 20px rgba(0, 0, 0, 0.72),
+    inset 0 1px 0 rgba(165, 243, 252, 0.52),
+    inset 0 -2px 6px rgba(0, 4, 18, 0.9);
+}
+
+.mmorpg-menu-btn {
+  position: relative;
+  background: linear-gradient(
+    180deg,
+    rgba(16, 48, 118, 0.78) 0%,
+    rgba(7, 22, 64, 0.92) 56%,
+    rgba(3, 11, 36, 0.96) 100%
+  );
+  border: 1px solid rgba(72, 208, 255, 0.42);
+  box-shadow:
+    inset 0 1px 0 rgba(186, 242, 255, 0.35),
+    inset 0 -3px 8px rgba(1, 6, 24, 0.85),
+    0 3px 10px rgba(0, 6, 24, 0.72);
+  transition:
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    background 180ms ease;
+}
+
+.mmorpg-menu-btn:hover,
+.mmorpg-menu-btn:focus-visible {
+  transform: translate3d(0, -3px, 0);
+  background: linear-gradient(
+    180deg,
+    rgba(24, 78, 178, 0.9) 0%,
+    rgba(10, 36, 98, 0.95) 56%,
+    rgba(4, 16, 52, 0.98) 100%
+  );
+  border-color: var(--btn-accent, #38e8ff);
+  box-shadow:
+    0 0 16px var(--btn-glow, rgba(56, 214, 255, 0.55)),
+    0 6px 14px rgba(0, 6, 26, 0.78),
+    inset 0 1px 0 rgba(224, 249, 255, 0.65),
+    inset 0 -2px 6px rgba(2, 10, 34, 0.75);
+  outline: none;
+}
+
+.mmorpg-menu-btn[data-selected="true"] {
+  transform: translate3d(0, -2px, 0);
+  background: linear-gradient(
+    180deg,
+    rgba(32, 102, 214, 0.95) 0%,
+    rgba(13, 48, 128, 0.98) 54%,
+    rgba(6, 22, 68, 1) 100%
+  );
+  border-color: #fde047;
+  box-shadow:
+    0 0 18px var(--btn-glow, rgba(253, 224, 71, 0.62)),
+    0 0 6px rgba(253, 224, 71, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    inset 0 -3px 8px rgba(3, 14, 48, 0.75);
+}
+
+.mmorpg-menu-btn:active {
+  transform: translate3d(0, 1px, 0) scale(0.95) !important;
+  box-shadow:
+    0 0 10px var(--btn-glow, rgba(56, 214, 255, 0.45)),
+    inset 0 3px 8px rgba(0, 4, 18, 0.92),
+    inset 0 -1px 0 rgba(147, 233, 255, 0.3) !important;
+}
+
+.mmorpg-nameplate {
+  clip-path: polygon(
+    6px 0%,
+    calc(100% - 6px) 0%,
+    100% 50%,
+    calc(100% - 6px) 100%,
+    6px 100%,
+    0% 50%
+  );
+  background: linear-gradient(180deg, #092154 0%, #030e2b 100%);
+  box-shadow: inset 0 1px 0 rgba(125, 232, 255, 0.45);
+}
+
+.mmorpg-nameplate-shell {
+  clip-path: polygon(
+    7px 0%,
+    calc(100% - 7px) 0%,
+    100% 50%,
+    calc(100% - 7px) 100%,
+    7px 100%,
+    0% 50%
+  );
+}
+
+.mmorpg-icon-btn {
+  position: relative;
+  transition:
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 180ms ease;
+  filter: drop-shadow(0 3px 5px rgba(0, 6, 22, 0.85));
+}
+
+.mmorpg-icon-btn:hover,
+.mmorpg-icon-btn:focus-visible {
+  transform: translate3d(0, -4px, 0) scale(1.06);
+  filter:
+    drop-shadow(0 0 10px var(--btn-glow, rgba(56, 214, 255, 0.85)))
+    drop-shadow(0 5px 8px rgba(0, 6, 24, 0.8))
+    brightness(1.1);
+  outline: none;
+}
+
+.mmorpg-icon-btn[data-selected="true"] {
+  transform: translate3d(0, -2px, 0) scale(1.04);
+  filter:
+    drop-shadow(0 0 10px rgba(253, 224, 71, 0.92))
+    drop-shadow(0 0 16px var(--btn-glow, rgba(56, 214, 255, 0.72)))
+    brightness(1.12);
+}
+
+.mmorpg-icon-btn:active {
+  transform: translate3d(0, 1px, 0) scale(0.94) !important;
+  filter:
+    drop-shadow(0 0 8px var(--btn-glow, rgba(56, 214, 255, 0.7)))
+    brightness(0.96) !important;
+}
+
+/* ============================================================
+   MMORPG World Map Modal Scrollbar & Bevelled Chrome Utilities
+   ============================================================ */
+.world-map-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #38bdf8 #051642;
+}
+
+.world-map-scroll::-webkit-scrollbar {
+  width: 9px;
+  height: 7px;
+}
+
+.world-map-scroll::-webkit-scrollbar-track {
+  background: linear-gradient(180deg, #041238 0%, #072262 50%, #041238 100%);
+  border-radius: 999px;
+  border: 1px solid rgba(56, 214, 255, 0.45);
+}
+
+.world-map-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #6be8ff 0%, #1d7ff2 50%, #0a46b0 100%);
+  border-radius: 999px;
+  border: 1px solid rgba(190, 244, 255, 0.75);
+  box-shadow: 0 0 8px rgba(56, 214, 255, 0.6);
+}
+
+.world-map-scroll::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #99f3ff 0%, #3898ff 50%, #155ed1 100%);
+}
+
+.world-map-btn-bevel {
+  background: linear-gradient(
+    180deg,
+    #1c7bf0 0%,
+    #0e4ec2 46%,
+    #072e85 78%,
+    #0a3da3 100%
+  );
+  border: 1.5px solid #6ae6ff;
+  box-shadow:
+    0 0 16px rgba(32, 184, 255, 0.55),
+    inset 0 1px 1px rgba(215, 248, 255, 0.78),
+    inset 0 -2px 5px rgba(2, 12, 46, 0.85);
+}
+
+.world-map-btn-bevel:hover:not(:disabled) {
+  filter: brightness(1.13);
+  box-shadow:
+    0 0 22px rgba(56, 224, 255, 0.78),
+    inset 0 1px 1px rgba(240, 252, 255, 0.9),
+    inset 0 -2px 5px rgba(2, 12, 46, 0.8);
+}
+
+.world-map-tab-active {
+  background: linear-gradient(
+    180deg,
+    #fff078 0%,
+    #ffd426 48%,
+    #eab308 82%,
+    #ca8a04 100%
+  );
+  border-color: #fff7b2;
+  box-shadow:
+    0 -2px 16px rgba(250, 204, 21, 0.6),
+    inset 0 1px 1px rgba(255, 255, 255, 0.9);
+}
+
+.world-map-selected-card {
+  background: linear-gradient(
+    180deg,
+    rgba(19, 68, 168, 0.96) 0%,
+    rgba(9, 34, 98, 0.98) 100%
+  );
+  border: 2px solid #ffe047;
+  box-shadow:
+    0 0 18px rgba(255, 218, 48, 0.78),
+    0 0 6px rgba(255, 244, 150, 0.85),
+    inset 0 0 14px rgba(255, 215, 64, 0.22);
+}
+
+/* ============================================================
+   Personagem Window — Cyber Octagon Slots, Tabs & Matrix Backdrop
+   ============================================================ */
+.clip-cyber-slot {
+  clip-path: polygon(
+    9px 0%,
+    calc(100% - 9px) 0%,
+    100% 9px,
+    100% calc(100% - 9px),
+    calc(100% - 9px) 100%,
+    9px 100%,
+    0% calc(100% - 9px),
+    0% 9px
+  );
+}
+
+.clip-cyber-tab {
+  clip-path: polygon(
+    9px 0%,
+    calc(100% - 9px) 0%,
+    100% 9px,
+    100% calc(100% - 6px),
+    calc(100% - 6px) 100%,
+    6px 100%,
+    0% calc(100% - 6px),
+    0% 9px
+  );
+}
+
+.dmo-cyber-matrix-bg {
+  background-color: #03123d;
+  background-image:
+    radial-gradient(circle at 26% 52%, rgba(16, 92, 224, 0.42) 0%, rgba(5, 25, 84, 0.82) 55%, rgba(2, 11, 40, 0.96) 100%),
+    linear-gradient(rgba(56, 214, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56, 214, 255, 0.045) 1px, transparent 1px);
+  background-size: 100% 100%, 14px 14px, 14px 14px;
+}
+
+@keyframes dmoTabFadeIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.animate-dmo-tab {
+  animation: dmoTabFadeIn 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-dmo-tab {
+    animation: none !important;
+  }
+}
+
+/* ============================================================
+   Character Select Screen — Futuristic Anime MMORPG Geometry
+   ============================================================ */
+.clip-tamer-card {
+  clip-path: polygon(
+    14px 0%,
+    calc(100% - 14px) 0%,
+    100% 14px,
+    100% calc(100% - 14px),
+    calc(100% - 14px) 100%,
+    14px 100%,
+    0% calc(100% - 14px),
+    0% 14px
+  );
+}
+
+.clip-tamer-ribbon {
+  clip-path: polygon(
+    18px 0%,
+    calc(100% - 18px) 0%,
+    100% 50%,
+    calc(100% - 18px) 100%,
+    18px 100%,
+    0% 50%
+  );
+}
+
+.clip-tamer-input-frame {
+  clip-path: polygon(
+    16px 0%,
+    calc(100% - 16px) 0%,
+    100% 16px,
+    100% calc(100% - 16px),
+    calc(100% - 16px) 100%,
+    16px 100%,
+    0% calc(100% - 16px),
+    0% 16px
+  );
+}
+
+@keyframes tamerCardEnter {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 22px, 0) scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes tamerGlowSweep {
+  0% {
+    transform: translate3d(-130%, 0, 0) skewX(-20deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.65;
+  }
+  80% {
+    opacity: 0.65;
+  }
+  100% {
+    transform: translate3d(230%, 0, 0) skewX(-20deg);
+    opacity: 0;
+  }
+}
+
+@keyframes tamerConfirmRing {
+  0% {
+    opacity: 0.95;
+    transform: scale(0.35);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.4);
+  }
+}
+
+@keyframes tamerFloatIsland {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -8px, 0);
+  }
+}
+
+@keyframes tamerTechRingSlow {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes tamerTechRingReverse {
+  0% {
+    transform: rotate(360deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes tamerLogoSheen {
+  0% {
+    transform: translate3d(-150%, 0, 0) skewX(-24deg);
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.72;
+  }
+  42% {
+    transform: translate3d(240%, 0, 0) skewX(-24deg);
+    opacity: 0;
+  }
+  100% {
+    transform: translate3d(240%, 0, 0) skewX(-24deg);
+    opacity: 0;
+  }
+}
+
+@keyframes tamerNeonBorderOrbit {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes tamerNeonPulse {
+  0%,
+  100% {
+    opacity: 0.72;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.animate-tamer-card-enter {
+  animation: tamerCardEnter 460ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-tamer-glow-sweep {
+  animation: tamerGlowSweep 2.6s ease-in-out infinite;
+}
+
+.animate-tamer-confirm-ring {
+  animation: tamerConfirmRing 680ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-tamer-float {
+  animation: tamerFloatIsland 5.5s ease-in-out infinite;
+}
+
+.animate-tamer-ring-slow {
+  animation: tamerTechRingSlow 28s linear infinite;
+}
+
+.animate-tamer-ring-reverse {
+  animation: tamerTechRingReverse 20s linear infinite;
+}
+
+.animate-tamer-logo-sheen {
+  animation: tamerLogoSheen 4.8s ease-in-out infinite;
+}
+
+.animate-tamer-neon-orbit {
+  animation: tamerNeonBorderOrbit 6.5s linear infinite;
+}
+
+.animate-tamer-neon-pulse {
+  animation: tamerNeonPulse 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-tamer-card-enter,
+  .animate-tamer-glow-sweep,
+  .animate-tamer-confirm-ring,
+  .animate-tamer-float,
+  .animate-tamer-ring-slow,
+  .animate-tamer-ring-reverse,
+  .animate-tamer-logo-sheen,
+  .animate-tamer-neon-orbit,
+  .animate-tamer-neon-pulse {
+    animation: none !important;
+  }
+}
+
+/* ============================================================
+   DigiLegends Idle — Animated Digimon Select Screen Keyframes
+   ============================================================ */
+@keyframes digiselectGoldPulse {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 14px rgba(255, 196, 0, 0.72)) drop-shadow(0 0 28px rgba(0, 180, 255, 0.4));
+    transform: scale(1);
+  }
+  50% {
+    filter: drop-shadow(0 0 22px rgba(255, 224, 72, 0.96)) drop-shadow(0 0 38px rgba(0, 212, 255, 0.65));
+    transform: scale(1.018);
+  }
+}
+
+@keyframes digiselectSheenSweep {
+  0% {
+    transform: translate3d(-145%, 0, 0) skewX(-22deg);
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.72;
+  }
+  52% {
+    transform: translate3d(240%, 0, 0) skewX(-22deg);
+    opacity: 0;
+  }
+  100% {
+    transform: translate3d(240%, 0, 0) skewX(-22deg);
+    opacity: 0;
+  }
+}
+
+@keyframes digiselectChevronLeft {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+    opacity: 0.75;
+  }
+  50% {
+    transform: translate3d(4px, 0, 0);
+    opacity: 1;
+  }
+}
+
+@keyframes digiselectChevronRight {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+    opacity: 0.75;
+  }
+  50% {
+    transform: translate3d(-4px, 0, 0);
+    opacity: 1;
+  }
+}
+
+@keyframes digiselectConfirmBurst {
+  0% {
+    opacity: 0.95;
+    transform: scale(0.4);
+  }
+  70% {
+    opacity: 0.85;
+    transform: scale(1.45);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.1);
+  }
+}
+
+.animate-digiselect-gold-pulse {
+  animation: digiselectGoldPulse 2.4s ease-in-out infinite;
+}
+
+.animate-digiselect-sheen {
+  animation: digiselectSheenSweep 2.8s ease-in-out infinite;
+}
+
+.animate-digiselect-chevron-l {
+  animation: digiselectChevronLeft 1.4s ease-in-out infinite;
+}
+
+.animate-digiselect-chevron-r {
+  animation: digiselectChevronRight 1.4s ease-in-out infinite;
+}
+
+.animate-digiselect-confirm-burst {
+  animation: digiselectConfirmBurst 950ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-digiselect-gold-pulse,
+  .animate-digiselect-sheen,
+  .animate-digiselect-chevron-l,
+  .animate-digiselect-chevron-r,
+  .animate-digiselect-confirm-burst {
+    animation: none !important;
+  }
+}
+
+
+

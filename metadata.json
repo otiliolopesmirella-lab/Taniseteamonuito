@@ -1,0 +1,8 @@
+{
+  "name": "Remix Tanise2.0",
+  "description": "Tanise2.0",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

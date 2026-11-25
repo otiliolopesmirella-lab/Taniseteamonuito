@@ -1,0 +1,1369 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 0: Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // Global Hardened Primitives & Exclusive GM RBAC
+    // =========================================================================
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isBootstrappedGm() {
+      return isVerified() &&
+        'email' in request.auth.token &&
+        request.auth.token.email is string &&
+        request.auth.token.email.lower() in [
+          'opiadoalvorada@gmail.com',
+          'otiliolopesmirella@gmail.com'
+        ];
+    }
+
+    function isAdmin() {
+      return isBootstrappedGm();
+    }
+
+    function isBanRecordInactiveOrExpired(ban) {
+      return !(ban is map) ||
+        !('active' in ban) ||
+        ban.active != true ||
+        (('permanent' in ban && ban.permanent == false) &&
+          ('expiresAtMs' in ban && ban.expiresAtMs is number && ban.expiresAtMs <= request.time.toMillis()));
+    }
+
+    function isNotBanned() {
+      return isAdmin() ||
+        !exists(/databases/$(database)/documents/bannedAccounts/$(request.auth.uid)) ||
+        isBanRecordInactiveOrExpired(
+          get(/databases/$(database)/documents/bannedAccounts/$(request.auth.uid)).data
+        );
+    }
+
+    function canCreatePlayerDCoin(data) {
+      return isAdmin() ||
+        data.hudState == null ||
+        (data.hudState is map && 'dCoin' in data.hudState && data.hudState.dCoin == 0);
+    }
+
+    function canUpdatePlayerDCoin(newData, oldData) {
+      return isAdmin() ||
+        newData.hudState == null ||
+        (newData.hudState is map && 'dCoin' in newData.hudState && newData.hudState.dCoin == 0) ||
+        ('hudState' in oldData &&
+          oldData.hudState != null &&
+          oldData.hudState is map &&
+          'dCoin' in oldData.hudState &&
+          oldData.hudState.dCoin is number &&
+          newData.hudState is map &&
+          'dCoin' in newData.hudState &&
+          newData.hudState.dCoin is number &&
+          newData.hudState.dCoin <= oldData.hudState.dCoin);
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidUsernameKey(key) {
+      return key is string && key.size() >= 3 && key.size() <= 24 && key.matches('^[a-z0-9._\\-]+$');
+    }
+
+    function isVerifiedOwner(userId) {
+      return isVerified() && request.auth.uid == userId;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidImageDataUrl(val, maxLen) {
+      return val is string &&
+        val.size() >= 33 &&
+        val.size() <= maxLen;
+    }
+
+    // =========================================================================
+    // Entity Validation Blueprints (Anti-Update-Gap)
+    // =========================================================================
+    function isValidTamerSelection(sel) {
+      return sel == null || (
+        sel is map &&
+        sel.keys().hasAll(['characterId', 'tamerName', 'updatedAt']) &&
+        sel.keys().hasOnly(['characterId', 'tamerName', 'updatedAt']) &&
+        sel.characterId in ['kai', 'ren', 'hina', 'yuna'] &&
+        sel.tamerName is string && sel.tamerName.size() >= 1 && sel.tamerName.size() <= 24 &&
+        sel.updatedAt is string && sel.updatedAt.size() >= 10 && sel.updatedAt.size() <= 40
+      );
+    }
+
+    function isValidStarterDigimon(starter) {
+      return starter == null || (
+        starter is map &&
+        starter.keys().hasAll(['digimonId', 'digimonName', 'element', 'chosenAt']) &&
+        starter.keys().hasOnly(['digimonId', 'digimonName', 'element', 'chosenAt']) &&
+        starter.digimonId in ['agumon', 'agumon_classic', 'gabumon', 'impmon', 'veemon', 'keramon', 'gaomon', 'lalamon', 'guilmon', 'demimeramon', 'hawkmon', 'tentomon', 'drimogemon', 'kiwimon', 'gotsumon', 'elecmon', 'renamon', 'monodramon', 'biyomon', 'kunemon'] &&
+        starter.digimonName is string && starter.digimonName.size() >= 1 && starter.digimonName.size() <= 32 &&
+        starter.element in ['Fogo', 'Velocidade', 'Natureza', 'Gelo', 'Trevas'] &&
+        starter.chosenAt is string && starter.chosenAt.size() >= 10 && starter.chosenAt.size() <= 40
+      );
+    }
+
+    function isValidAdventureProgress(prog) {
+      return prog == null || (
+        prog is map &&
+        prog.keys().hasAll(['mapId', 'worldX', 'worldY', 'facingDir', 'stepsCount', 'discoveredZones', 'updatedAt']) &&
+        prog.keys().hasOnly(['mapId', 'worldX', 'worldY', 'facingDir', 'stepsCount', 'discoveredZones', 'updatedAt']) &&
+        prog.mapId in ['dats-center', 'hunting-plains', 'data-forest', 'digi-mountain', 'digital-desert', 'data-sea', 'digimon-island', 'dark-area', 'virtual-world'] &&
+        prog.worldX is number && prog.worldX >= 0 && prog.worldX <= 20000 &&
+        prog.worldY is number && prog.worldY >= 0 && prog.worldY <= 20000 &&
+        prog.facingDir in ['N', 'S', 'E', 'W'] &&
+        prog.stepsCount is number && prog.stepsCount >= 0 && prog.stepsCount <= 100000000 &&
+        prog.discoveredZones is list && prog.discoveredZones.size() <= 40 &&
+        (prog.discoveredZones.size() == 0 || prog.discoveredZones[0] is string) &&
+        prog.updatedAt is string && prog.updatedAt.size() >= 10 && prog.updatedAt.size() <= 40
+      );
+    }
+
+    function isValidRuntimeStats(stats) {
+      return stats is map &&
+        stats.keys().hasAll(['level', 'exp', 'expToNext', 'hp', 'maxHp', 'ds', 'maxDs']) &&
+        stats.keys().hasOnly(['level', 'exp', 'expToNext', 'hp', 'maxHp', 'ds', 'maxDs', 'activeFormId', 'unlockedFormIds']) &&
+        stats.level is number && stats.level >= 1 && stats.level <= 200 &&
+        stats.exp is number && stats.exp >= 0 && stats.exp <= 100000000 &&
+        stats.expToNext is number && stats.expToNext >= 1 && stats.expToNext <= 100000000 &&
+        stats.hp is number && stats.hp >= 0 && stats.hp <= 1000000 &&
+        stats.maxHp is number && stats.maxHp >= 1 && stats.maxHp <= 1000000 &&
+        stats.ds is number && stats.ds >= 0 && stats.ds <= 1000000 &&
+        stats.maxDs is number && stats.maxDs >= 1 && stats.maxDs <= 1000000 &&
+        (!('activeFormId' in stats) || stats.activeFormId == null || (stats.activeFormId is string && stats.activeFormId.size() >= 1 && stats.activeFormId.size() <= 32)) &&
+        (!('unlockedFormIds' in stats) || stats.unlockedFormIds == null || (
+          stats.unlockedFormIds is list &&
+          stats.unlockedFormIds.size() <= 24 &&
+          (stats.unlockedFormIds.size() == 0 || stats.unlockedFormIds[0] is string)
+        ));
+    }
+
+    function isValidHudState(hud) {
+      return hud == null || (
+        hud is map &&
+        hud.keys().hasAll(['tamer', 'digimon', 'bits', 'dCoin', 'inventory', 'equippedItems', 'guildName', 'defeatedEnemiesTotal', 'updatedAt']) &&
+        hud.keys().hasOnly(['tamer', 'digimon', 'bits', 'dCoin', 'inventory', 'equippedItems', 'guildName', 'tamerPhotoUrl', 'tamerCoverUrl', 'xpBoostUntilMs', 'defeatedEnemiesTotal', 'updatedAt']) &&
+        isValidRuntimeStats(hud.tamer) &&
+        isValidRuntimeStats(hud.digimon) &&
+        hud.bits is number && hud.bits >= 0 && hud.bits <= 1000000000 &&
+        hud.dCoin is number && hud.dCoin >= 0 && hud.dCoin <= 1000000000 &&
+        hud.inventory is list && hud.inventory.size() <= 48 &&
+        (hud.inventory.size() == 0 || hud.inventory[0] is map) &&
+        hud.equippedItems is map && hud.equippedItems.size() <= 16 &&
+        (hud.guildName == null || (hud.guildName is string && hud.guildName.size() <= 32)) &&
+        (!('tamerPhotoUrl' in hud) || hud.tamerPhotoUrl == null || isValidImageDataUrl(hud.tamerPhotoUrl, 44000)) &&
+        (!('tamerCoverUrl' in hud) || hud.tamerCoverUrl == null || isValidImageDataUrl(hud.tamerCoverUrl, 48000)) &&
+        (!('xpBoostUntilMs' in hud) || hud.xpBoostUntilMs == null || (hud.xpBoostUntilMs is number && hud.xpBoostUntilMs >= 0 && hud.xpBoostUntilMs <= 4000000000000)) &&
+        hud.defeatedEnemiesTotal is number && hud.defeatedEnemiesTotal >= 0 && hud.defeatedEnemiesTotal <= 100000000 &&
+        hud.updatedAt is string && hud.updatedAt.size() >= 10 && hud.updatedAt.size() <= 40
+      );
+    }
+
+    function isValidPlayerSave(data, userId) {
+      return data.keys().hasAll(['ownerUid', 'username', 'usernameLower', 'tamerSelection', 'starterDigimon', 'adventureProgress', 'hudState', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['ownerUid', 'username', 'usernameLower', 'tamerSelection', 'starterDigimon', 'adventureProgress', 'hudState', 'createdAt', 'updatedAt']) &&
+        data.ownerUid is string && isValidId(data.ownerUid) && data.ownerUid == userId &&
+        data.username is string && data.username.size() >= 3 && data.username.size() <= 24 && data.username.matches('^[a-zA-Z0-9._\\-]+$') &&
+        data.usernameLower is string && isValidUsernameKey(data.usernameLower) && data.username.lower() == data.usernameLower &&
+        isValidTamerSelection(data.tamerSelection) &&
+        isValidStarterDigimon(data.starterDigimon) &&
+        isValidAdventureProgress(data.adventureProgress) &&
+        isValidHudState(data.hudState) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidPrivateAccount(data, userId) {
+      return data.keys().hasAll(['ownerUid', 'email', 'authProvider', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['ownerUid', 'email', 'authProvider', 'createdAt', 'updatedAt']) &&
+        data.ownerUid is string && isValidId(data.ownerUid) && data.ownerUid == request.auth.uid && data.ownerUid == userId &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+        data.authProvider in ['password', 'google'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidUsernameClaim(data, usernameKey) {
+      return data.keys().hasAll(['ownerUid', 'username', 'createdAt']) &&
+        data.keys().hasOnly(['ownerUid', 'username', 'createdAt']) &&
+        data.ownerUid is string && isValidId(data.ownerUid) && data.ownerUid == request.auth.uid &&
+        data.username is string && data.username.size() >= 3 && data.username.size() <= 24 && data.username.matches('^[a-zA-Z0-9._\\-]+$') &&
+        data.username.lower() == usernameKey &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidAlphaFeedback(data) {
+      return data.keys().hasAll(['ownerUid', 'username', 'tamerName', 'category', 'screenContext', 'message', 'deviceInfo', 'status', 'createdAt']) &&
+        data.keys().hasOnly(['ownerUid', 'username', 'tamerName', 'category', 'screenContext', 'message', 'deviceInfo', 'status', 'createdAt']) &&
+        data.ownerUid is string && isValidId(data.ownerUid) && data.ownerUid == request.auth.uid &&
+        data.username is string && data.username.size() >= 3 && data.username.size() <= 24 && data.username.matches('^[a-zA-Z0-9._\\-]+$') &&
+        data.tamerName is string && data.tamerName.size() <= 24 &&
+        data.category in ['bug', 'suggestion', 'balance', 'other'] &&
+        data.screenContext is string && data.screenContext.size() >= 1 && data.screenContext.size() <= 40 &&
+        data.message is string && data.message.size() >= 5 && data.message.size() <= 600 &&
+        data.deviceInfo is string && data.deviceInfo.size() >= 1 && data.deviceInfo.size() <= 120 &&
+        data.status == 'open' &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidWorldPresence(data, userId) {
+      return data.keys().hasAll([
+          'ownerUid', 'tamerName', 'characterId', 'tamerLevel', 'digimonFormId', 'digimonLevel',
+          'mapId', 'worldX', 'worldY', 'facingDir', 'moveState',
+          'partnerX', 'partnerY', 'partnerDir', 'partnerMoving',
+          'isGm', 'guildName', 'chatText', 'chatSeq', 'online', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'ownerUid', 'tamerName', 'characterId', 'tamerLevel', 'digimonFormId', 'digimonLevel',
+          'mapId', 'worldX', 'worldY', 'facingDir', 'moveState',
+          'partnerX', 'partnerY', 'partnerDir', 'partnerMoving',
+          'isGm', 'guildName', 'chatText', 'chatSeq', 'online', 'updatedAt'
+        ]) &&
+        data.ownerUid is string && isValidId(data.ownerUid) && (data.ownerUid == request.auth.uid || isAdmin()) && data.ownerUid == userId &&
+        data.tamerName is string && data.tamerName.size() >= 1 && data.tamerName.size() <= 24 &&
+        data.characterId in ['kai', 'ren', 'hina', 'yuna'] &&
+        data.tamerLevel is number && data.tamerLevel >= 1 && data.tamerLevel <= 200 &&
+        data.digimonFormId in [
+          'agumon', 'geogreymon', 'rizegreymon', 'shinegreymon',
+          'agumon_classic', 'greymon', 'metalgreymon', 'wargreymon',
+          'gabumon', 'garurumon', 'weregarurumon', 'metalgarurumon',
+          'impmon', 'icedevimon', 'skullsatamon', 'beelzemon',
+          'veemon', 'veedramon', 'aeroveedramon', 'ulforceveedramon',
+          'keramon', 'chrysalimon', 'infermon', 'diaboromon',
+          'gaomon', 'gaogamon', 'machgaogamon', 'miragegaogamon',
+          'lalamon', 'sunflowmon', 'lilamon', 'rosemon',
+          'guilmon', 'growlmon', 'megalogrowlmon', 'dukemon',
+          'demimeramon', 'meramon', 'skullmeramon', 'boltmon',
+          'hawkmon', 'aquilamon', 'silphymon', 'gryphonmon',
+          'tentomon', 'kabuterimon', 'megakabuterimon', 'herculeskabuterimon',
+          'drimogemon', 'digmon', 'giromon', 'hiandromon',
+          'kiwimon', 'deramon', 'blossomon', 'griffomon',
+          'gotsumon', 'icemon', 'insekimon', 'metaletemon',
+          'elecmon', 'leomon', 'iceleomon', 'saberleomon',
+          'renamon', 'kyubimon', 'taomon', 'sakuyamon',
+          'monodramon', 'strikedramon', 'cyberdramon', 'justimon',
+          'biyomon', 'birdramon', 'garudamon', 'phoenixmon',
+          'kunemon', 'flymon', 'okuwamon', 'grankuwagamon'
+        ] &&
+        data.digimonLevel is number && data.digimonLevel >= 1 && data.digimonLevel <= 200 &&
+        data.mapId in ['dats-center', 'hunting-plains', 'data-forest', 'digi-mountain', 'digital-desert', 'data-sea', 'digimon-island', 'dark-area', 'virtual-world'] &&
+        data.worldX is number && data.worldX >= 0 && data.worldX <= 20000 &&
+        data.worldY is number && data.worldY >= 0 && data.worldY <= 20000 &&
+        data.facingDir in ['N', 'S', 'E', 'W'] &&
+        data.moveState in ['idle', 'walk'] &&
+        data.partnerX is number && data.partnerX >= 0 && data.partnerX <= 20000 &&
+        data.partnerY is number && data.partnerY >= 0 && data.partnerY <= 20000 &&
+        data.partnerDir in ['N', 'S', 'E', 'W'] &&
+        data.partnerMoving is bool &&
+        data.isGm is bool &&
+        (data.guildName == null || (data.guildName is string && data.guildName.size() <= 32)) &&
+        data.chatText is string && data.chatText.size() <= 140 &&
+        data.chatSeq is number && data.chatSeq >= 0 && data.chatSeq <= 1000000 &&
+        data.online is bool &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidWorldBoss(data, bossId) {
+      return data.keys().hasAll([
+          'bossId', 'mapId', 'name', 'level', 'hp', 'maxHp', 'alive',
+          'respawnAtMs', 'lastAttackerName', 'lastHitAtMs', 'contributors',
+          'defeatedCount', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'bossId', 'mapId', 'name', 'level', 'hp', 'maxHp', 'alive',
+          'respawnAtMs', 'lastAttackerName', 'lastHitAtMs', 'contributors',
+          'defeatedCount', 'updatedAt'
+        ]) &&
+        data.bossId is string && isValidId(data.bossId) && data.bossId == bossId &&
+        data.mapId in ['data-forest'] &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 32 &&
+        data.level is number && data.level >= 1 && data.level <= 200 &&
+        data.maxHp is number && data.maxHp >= 100 && data.maxHp <= 10000000 &&
+        data.hp is number && data.hp >= 0 && data.hp <= data.maxHp &&
+        data.alive is bool &&
+        data.respawnAtMs is number && data.respawnAtMs >= 0 && data.respawnAtMs <= 4000000000000 &&
+        data.lastAttackerName is string && data.lastAttackerName.size() <= 24 &&
+        data.lastHitAtMs is number && data.lastHitAtMs >= 0 && data.lastHitAtMs <= 4000000000000 &&
+        data.contributors is map && data.contributors.size() <= 32 &&
+        data.defeatedCount is number && data.defeatedCount >= 0 && data.defeatedCount <= 10000000 &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidServerRates(data) {
+      return data.keys().hasAll(['expRatePct', 'updatedBy', 'updatedAt']) &&
+        data.keys().hasOnly(['expRatePct', 'updatedBy', 'updatedAt']) &&
+        data.expRatePct in [100, 150, 200, 250] &&
+        data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 24 &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidServerAnnouncement(data) {
+      return data.keys().hasAll(['announcementId', 'title', 'message', 'severity', 'maintenanceMode', 'active', 'updatedBy', 'updatedAt']) &&
+        data.keys().hasOnly(['announcementId', 'title', 'message', 'severity', 'maintenanceMode', 'active', 'updatedBy', 'updatedAt']) &&
+        data.announcementId is string && data.announcementId.size() >= 1 && data.announcementId.size() <= 64 &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 48 &&
+        data.message is string && data.message.size() >= 1 && data.message.size() <= 240 &&
+        data.severity in ['info', 'event', 'warning', 'maintenance'] &&
+        data.maintenanceMode is bool &&
+        data.active is bool &&
+        data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 24 &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidGuildSkills(skills) {
+      return skills is map &&
+        skills.keys().hasAll(['expBoost', 'attackBoost', 'bitsBoost']) &&
+        skills.keys().hasOnly(['expBoost', 'attackBoost', 'bitsBoost']) &&
+        skills.expBoost is number && skills.expBoost >= 0 && skills.expBoost <= 3 &&
+        skills.attackBoost is number && skills.attackBoost >= 0 && skills.attackBoost <= 3 &&
+        skills.bitsBoost is number && skills.bitsBoost >= 0 && skills.bitsBoost <= 3;
+    }
+
+    function isValidGuildRecord(data, guildId) {
+      return data.keys().hasAll([
+          'guildId', 'name', 'tag', 'emblemColor', 'notice', 'masterUid', 'masterName',
+          'level', 'exp', 'skillPoints', 'skills', 'recruiting', 'memberUids',
+          'members', 'chatMessages', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'guildId', 'name', 'tag', 'emblemColor', 'emblemPhotoUrl', 'notice', 'masterUid', 'masterName',
+          'level', 'exp', 'skillPoints', 'skills', 'recruiting', 'memberUids',
+          'members', 'chatMessages', 'dailyHuntDate', 'dailyKills', 'prevDayDate', 'prevDayKills',
+          'totalKills', 'createdAt', 'updatedAt'
+        ]) &&
+        data.guildId is string && isValidId(data.guildId) && data.guildId == guildId &&
+        data.name is string && data.name.size() >= 3 && data.name.size() <= 24 &&
+        data.tag is string && data.tag.size() >= 2 && data.tag.size() <= 4 && data.tag.matches('^[A-Z0-9]+$') &&
+        data.emblemColor in ['cyan', 'amber', 'crimson', 'emerald', 'violet'] &&
+        (!('emblemPhotoUrl' in data) || data.emblemPhotoUrl == null || data.emblemPhotoUrl == '' || isValidImageDataUrl(data.emblemPhotoUrl, 48000)) &&
+        (!('dailyHuntDate' in data) || (data.dailyHuntDate is string && data.dailyHuntDate.size() == 10 && data.dailyHuntDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'))) &&
+        (!('dailyKills' in data) || (data.dailyKills is number && data.dailyKills >= 0 && data.dailyKills <= 10000000)) &&
+        (!('prevDayDate' in data) || data.prevDayDate == null || data.prevDayDate == '' || (data.prevDayDate is string && data.prevDayDate.size() == 10 && data.prevDayDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'))) &&
+        (!('prevDayKills' in data) || (data.prevDayKills is number && data.prevDayKills >= 0 && data.prevDayKills <= 10000000)) &&
+        (!('totalKills' in data) || (data.totalKills is number && data.totalKills >= 0 && data.totalKills <= 100000000)) &&
+        data.notice is string && data.notice.size() <= 160 &&
+        data.masterUid is string && isValidId(data.masterUid) &&
+        data.masterName is string && data.masterName.size() >= 1 && data.masterName.size() <= 24 &&
+        data.level is number && data.level >= 1 && data.level <= 10 &&
+        data.exp is number && data.exp >= 0 && data.exp <= 100000000 &&
+        data.skillPoints is number && data.skillPoints >= 0 && data.skillPoints <= 20 &&
+        isValidGuildSkills(data.skills) &&
+        data.recruiting is bool &&
+        data.memberUids is list && data.memberUids.size() >= 1 && data.memberUids.size() <= 50 &&
+        data.memberUids[0] is string &&
+        data.members is map && data.members.size() >= 1 && data.members.size() <= 50 &&
+        data.chatMessages is list && data.chatMessages.size() <= 25 &&
+        (data.chatMessages.size() == 0 || data.chatMessages[0] is map) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidPlayerRanking(data, userId) {
+      return data.keys().hasAll([
+          'ownerUid', 'tamerName', 'characterId', 'tamerLevel', 'tamerExp',
+          'digimonFormId', 'digimonName', 'digimonLevel', 'digimonExp',
+          'digimonCombatPower', 'digimonGrade', 'digimonSizePct',
+          'defeatedEnemiesTotal', 'guildName', 'isGm', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'ownerUid', 'tamerName', 'characterId', 'tamerLevel', 'tamerExp',
+          'digimonFormId', 'digimonName', 'digimonLevel', 'digimonExp',
+          'digimonCombatPower', 'digimonGrade', 'digimonSizePct',
+          'defeatedEnemiesTotal', 'guildName', 'isGm', 'tamerPhotoUrl', 'tamerCoverUrl', 'updatedAt'
+        ]) &&
+        data.ownerUid is string && isValidId(data.ownerUid) && data.ownerUid == request.auth.uid && data.ownerUid == userId &&
+        data.tamerName is string && data.tamerName.size() >= 1 && data.tamerName.size() <= 24 &&
+        data.characterId in ['kai', 'ren', 'hina', 'yuna'] &&
+        data.tamerLevel is number && data.tamerLevel >= 1 && data.tamerLevel <= 200 &&
+        data.tamerExp is number && data.tamerExp >= 0 && data.tamerExp <= 100000000 &&
+        data.digimonFormId is string && data.digimonFormId.size() >= 1 && data.digimonFormId.size() <= 32 && data.digimonFormId.matches('^[a-z0-9_]+$') &&
+        data.digimonName is string && data.digimonName.size() >= 1 && data.digimonName.size() <= 32 &&
+        data.digimonLevel is number && data.digimonLevel >= 1 && data.digimonLevel <= 200 &&
+        data.digimonExp is number && data.digimonExp >= 0 && data.digimonExp <= 100000000 &&
+        data.digimonCombatPower is number && data.digimonCombatPower >= 0 && data.digimonCombatPower <= 10000000 &&
+        data.digimonGrade in [3, 4, 5] &&
+        data.digimonSizePct is number && data.digimonSizePct >= 80 && data.digimonSizePct <= 140 &&
+        data.defeatedEnemiesTotal is number && data.defeatedEnemiesTotal >= 0 && data.defeatedEnemiesTotal <= 100000000 &&
+        (data.guildName == null || (data.guildName is string && data.guildName.size() <= 32)) &&
+        data.isGm is bool &&
+        (!('tamerPhotoUrl' in data) || data.tamerPhotoUrl == null || isValidImageDataUrl(data.tamerPhotoUrl, 48000)) &&
+        (!('tamerCoverUrl' in data) || data.tamerCoverUrl == null || isValidImageDataUrl(data.tamerCoverUrl, 48000)) &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidGuildRanking(data, guildId) {
+      return data.keys().hasAll([
+          'guildId', 'name', 'tag', 'emblemColor', 'emblemPhotoUrl', 'masterName',
+          'level', 'exp', 'memberCount', 'totalKills', 'dailyKills', 'dailyHuntDate',
+          'recruiting', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'guildId', 'name', 'tag', 'emblemColor', 'emblemPhotoUrl', 'masterName',
+          'level', 'exp', 'memberCount', 'totalKills', 'dailyKills', 'dailyHuntDate',
+          'recruiting', 'updatedAt'
+        ]) &&
+        data.guildId is string && isValidId(data.guildId) && data.guildId == guildId &&
+        data.name is string && data.name.size() >= 3 && data.name.size() <= 24 &&
+        data.tag is string && data.tag.size() >= 2 && data.tag.size() <= 4 && data.tag.matches('^[A-Z0-9]+$') &&
+        data.emblemColor in ['cyan', 'amber', 'crimson', 'emerald', 'violet'] &&
+        (data.emblemPhotoUrl == null || data.emblemPhotoUrl == '' || isValidImageDataUrl(data.emblemPhotoUrl, 48000)) &&
+        data.masterName is string && data.masterName.size() >= 1 && data.masterName.size() <= 24 &&
+        data.level is number && data.level >= 1 && data.level <= 10 &&
+        data.exp is number && data.exp >= 0 && data.exp <= 100000000 &&
+        data.memberCount is number && data.memberCount >= 1 && data.memberCount <= 50 &&
+        data.totalKills is number && data.totalKills >= 0 && data.totalKills <= 100000000 &&
+        data.dailyKills is number && data.dailyKills >= 0 && data.dailyKills <= 10000000 &&
+        (data.dailyHuntDate == null || (data.dailyHuntDate is string && data.dailyHuntDate.size() == 10 && data.dailyHuntDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'))) &&
+        data.recruiting is bool &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidDwCoinPackAndPrice(data) {
+      return (data.packId == 'pack_10' && data.dwCoinAmount == 10 && data.priceCents == 1000 && data.priceBrlLabel == 'R$ 10,00') ||
+        (data.packId == 'pack_30' && data.dwCoinAmount == 30 && data.priceCents == 2850 && data.priceBrlLabel == 'R$ 28,50') ||
+        (data.packId == 'pack_60' && data.dwCoinAmount == 60 && data.priceCents == 5400 && data.priceBrlLabel == 'R$ 54,00') ||
+        (data.packId == 'pack_100' && data.dwCoinAmount == 100 && data.priceCents == 8500 && data.priceBrlLabel == 'R$ 85,00') ||
+        (data.packId == 'pack_200' && data.dwCoinAmount == 200 && data.priceCents == 16000 && data.priceBrlLabel == 'R$ 160,00');
+    }
+
+    function isValidDwCoinOrder(data, orderId) {
+      return data.keys().hasAll([
+          'orderId', 'ownerUid', 'packId', 'dwCoinAmount', 'priceCents', 'priceBrlLabel',
+          'paymentMethod', 'termsAccepted', 'termsVersion', 'termsAcceptedAt',
+          'termsAcceptedAtIso', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'orderId', 'ownerUid', 'packId', 'dwCoinAmount', 'priceCents', 'priceBrlLabel',
+          'paymentMethod', 'termsAccepted', 'termsVersion', 'termsAcceptedAt',
+          'termsAcceptedAtIso', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.orderId is string && isValidId(data.orderId) && data.orderId == orderId &&
+        data.ownerUid is string && isValidId(data.ownerUid) &&
+        isValidDwCoinPackAndPrice(data) &&
+        data.paymentMethod in ['pix', 'card'] &&
+        data.termsAccepted == true &&
+        data.termsVersion == 'v1.0' &&
+        data.termsAcceptedAt is timestamp &&
+        data.termsAcceptedAtIso is string && data.termsAcceptedAtIso.size() >= 10 && data.termsAcceptedAtIso.size() <= 40 &&
+        data.status in ['pending', 'cancelled', 'approved', 'error'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidPartyMember(m) {
+      return m is map &&
+        m.keys().hasAll(['uid', 'tamerName', 'characterId', 'tamerLevel', 'tamerPhotoUrl', 'digimonFormId', 'digimonName', 'digimonLevel', 'hp', 'maxHp', 'mapId']) &&
+        m.keys().hasOnly(['uid', 'tamerName', 'characterId', 'tamerLevel', 'tamerPhotoUrl', 'digimonFormId', 'digimonName', 'digimonLevel', 'hp', 'maxHp', 'mapId']) &&
+        m.uid is string && isValidId(m.uid) &&
+        m.tamerName is string && m.tamerName.size() >= 1 && m.tamerName.size() <= 24 &&
+        m.characterId in ['kai', 'ren', 'hina', 'yuna'] &&
+        m.tamerLevel is number && m.tamerLevel >= 1 && m.tamerLevel <= 200 &&
+        (m.tamerPhotoUrl == null || isValidImageDataUrl(m.tamerPhotoUrl, 44000)) &&
+        m.digimonFormId is string && m.digimonFormId.size() >= 1 && m.digimonFormId.size() <= 32 && m.digimonFormId.matches('^[a-z0-9_]+$') &&
+        m.digimonName is string && m.digimonName.size() >= 1 && m.digimonName.size() <= 32 &&
+        m.digimonLevel is number && m.digimonLevel >= 1 && m.digimonLevel <= 200 &&
+        m.maxHp is number && m.maxHp >= 1 && m.maxHp <= 1000000 &&
+        m.hp is number && m.hp >= 0 && m.hp <= m.maxHp &&
+        m.mapId in ['dats-center', 'hunting-plains', 'data-forest', 'digi-mountain', 'digital-desert', 'data-sea', 'digimon-island', 'dark-area', 'virtual-world'];
+    }
+
+    function isValidPartyRecord(data, partyId) {
+      return data.keys().hasAll(['partyId', 'leaderUid', 'leaderName', 'memberUids', 'members', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['partyId', 'leaderUid', 'leaderName', 'memberUids', 'members', 'createdAt', 'updatedAt']) &&
+        data.partyId is string && isValidId(data.partyId) && data.partyId == partyId &&
+        data.leaderUid is string && isValidId(data.leaderUid) &&
+        data.leaderName is string && data.leaderName.size() >= 1 && data.leaderName.size() <= 24 &&
+        data.memberUids is list && data.memberUids.size() >= 1 && data.memberUids.size() <= 4 &&
+        data.leaderUid in data.memberUids &&
+        data.members is map && data.members.size() == data.memberUids.size() &&
+        data.members.keys().hasAll(data.memberUids) &&
+        data.memberUids.hasAll(data.members.keys()) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidPartyInvite(data, inviteId) {
+      return data.keys().hasAll([
+          'inviteId', 'partyId', 'fromUid', 'fromName', 'fromTamerLevel',
+          'fromCharacterId', 'fromPhotoUrl', 'fromDigimonFormId',
+          'toUid', 'toName', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'inviteId', 'partyId', 'fromUid', 'fromName', 'fromTamerLevel',
+          'fromCharacterId', 'fromPhotoUrl', 'fromDigimonFormId',
+          'toUid', 'toName', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.inviteId is string && isValidId(data.inviteId) && data.inviteId == inviteId &&
+        data.partyId is string && isValidId(data.partyId) &&
+        data.fromUid is string && isValidId(data.fromUid) &&
+        data.fromName is string && data.fromName.size() >= 1 && data.fromName.size() <= 24 &&
+        data.fromTamerLevel is number && data.fromTamerLevel >= 1 && data.fromTamerLevel <= 200 &&
+        data.fromCharacterId in ['kai', 'ren', 'hina', 'yuna'] &&
+        (data.fromPhotoUrl == null || isValidImageDataUrl(data.fromPhotoUrl, 44000)) &&
+        data.fromDigimonFormId is string && data.fromDigimonFormId.size() >= 1 && data.fromDigimonFormId.size() <= 32 && data.fromDigimonFormId.matches('^[a-z0-9_]+$') &&
+        data.toUid is string && isValidId(data.toUid) &&
+        data.toName is string && data.toName.size() >= 1 && data.toName.size() <= 24 &&
+        data.status in ['pending', 'accepted', 'declined'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidPartyXpEvent(data, eventId) {
+      return data.keys().hasAll(['eventId', 'killerUid', 'killerName', 'mapId', 'mobName', 'mobLevel', 'baseExp', 'createdAt']) &&
+        data.keys().hasOnly(['eventId', 'killerUid', 'killerName', 'mapId', 'mobName', 'mobLevel', 'baseExp', 'createdAt']) &&
+        data.eventId is string && isValidId(data.eventId) && data.eventId == eventId &&
+        data.killerUid is string && isValidId(data.killerUid) &&
+        data.killerName is string && data.killerName.size() >= 1 && data.killerName.size() <= 24 &&
+        data.mapId in ['dats-center', 'hunting-plains', 'data-forest', 'digi-mountain', 'digital-desert', 'data-sea', 'digimon-island', 'dark-area', 'virtual-world'] &&
+        data.mobName is string && data.mobName.size() >= 1 && data.mobName.size() <= 32 &&
+        data.mobLevel is number && data.mobLevel >= 1 && data.mobLevel <= 200 &&
+        data.baseExp is number && data.baseExp >= 1 && data.baseExp <= 50000000 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidPartyMessage(data, messageId) {
+      return data.keys().hasAll(['messageId', 'senderUid', 'senderName', 'isGmSender', 'text', 'createdAt']) &&
+        data.keys().hasOnly(['messageId', 'senderUid', 'senderName', 'isGmSender', 'text', 'createdAt']) &&
+        data.messageId is string && isValidId(data.messageId) && data.messageId == messageId &&
+        data.senderUid is string && isValidId(data.senderUid) &&
+        data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 24 &&
+        data.isGmSender is bool &&
+        data.text is string && data.text.size() >= 1 && data.text.size() <= 140 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidDwCoinTransaction(data, txId) {
+      return data.keys().hasAll([
+          'txId', 'ownerUid', 'username', 'tamerName', 'type', 'dwCoinAmount',
+          'itemKey', 'itemName', 'category', 'balanceAfter', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'txId', 'ownerUid', 'username', 'tamerName', 'type', 'dwCoinAmount',
+          'itemKey', 'itemName', 'category', 'balanceAfter', 'createdAt'
+        ]) &&
+        data.txId is string && isValidId(data.txId) && data.txId == txId &&
+        data.ownerUid is string && isValidId(data.ownerUid) &&
+        data.username is string && data.username.size() >= 3 && data.username.size() <= 24 &&
+        data.tamerName is string && data.tamerName.size() <= 24 &&
+        data.type in ['spend', 'recharge', 'gm_grant', 'gm_deduct'] &&
+        data.dwCoinAmount is number && data.dwCoinAmount >= 1 && data.dwCoinAmount <= 100000000 &&
+        data.itemKey is string && data.itemKey.size() >= 1 && data.itemKey.size() <= 64 &&
+        data.itemName is string && data.itemName.size() >= 1 && data.itemName.size() <= 64 &&
+        data.category is string && data.category.size() >= 1 && data.category.size() <= 32 &&
+        data.balanceAfter is number && data.balanceAfter >= 0 && data.balanceAfter <= 1000000000 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidBanRecord(data, userId) {
+      return data.keys().hasAll([
+          'targetUid', 'username', 'tamerName', 'reason', 'bannedByUid',
+          'bannedByName', 'permanent', 'expiresAtMs', 'active', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'targetUid', 'username', 'tamerName', 'reason', 'bannedByUid',
+          'bannedByName', 'permanent', 'expiresAtMs', 'active', 'createdAt', 'updatedAt'
+        ]) &&
+        data.targetUid is string && isValidId(data.targetUid) && data.targetUid == userId &&
+        data.username is string && data.username.size() >= 1 && data.username.size() <= 24 &&
+        data.tamerName is string && data.tamerName.size() <= 24 &&
+        data.reason is string && data.reason.size() >= 3 && data.reason.size() <= 240 &&
+        data.bannedByUid is string && isValidId(data.bannedByUid) &&
+        data.bannedByName is string && data.bannedByName.size() >= 1 && data.bannedByName.size() <= 24 &&
+        data.permanent is bool &&
+        data.expiresAtMs is number && data.expiresAtMs >= 0 && data.expiresAtMs <= 4000000000000 &&
+        data.active is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidGmAuditLog(data, logId) {
+      return data.keys().hasAll([
+          'logId', 'actorUid', 'actorName', 'action', 'targetUid', 'targetName', 'summary', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'logId', 'actorUid', 'actorName', 'action', 'targetUid', 'targetName', 'summary', 'createdAt'
+        ]) &&
+        data.logId is string && isValidId(data.logId) && data.logId == logId &&
+        data.actorUid is string && isValidId(data.actorUid) &&
+        data.actorName is string && data.actorName.size() >= 1 && data.actorName.size() <= 24 &&
+        data.action in ['ban', 'unban', 'kick', 'currency_adjust', 'order_approve', 'order_cancel', 'exp_rate', 'announcement', 'boss_respawn', 'feedback_delete', 'item_grant'] &&
+        data.targetUid is string && data.targetUid.size() <= 128 &&
+        data.targetName is string && data.targetName.size() <= 32 &&
+        data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 240 &&
+        data.createdAt is timestamp;
+    }
+
+    // =========================================================================
+    // Collection: /admins/{userId} — Exclusive Console-Managed GM Registry
+    // =========================================================================
+    match /admins/{userId} {
+      allow get: if isVerifiedOwner(userId) && isValidId(userId);
+      allow list: if false;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // =========================================================================
+    // Collection: /players/{userId} — Cloud Save State (Zero PII)
+    // =========================================================================
+    match /players/{userId} {
+      allow get: if isValidId(userId) && (isVerifiedOwner(userId) || isAdmin());
+      allow list: if isBootstrappedGm();
+
+      allow create: if isVerifiedOwner(userId) &&
+        isValidId(userId) &&
+        isValidPlayerSave(incoming(), userId) &&
+        canCreatePlayerDCoin(incoming()) &&
+        incoming().ownerUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isNotBanned();
+
+      allow update: if isValidId(userId) &&
+        (isVerifiedOwner(userId) || isAdmin()) &&
+        isValidPlayerSave(incoming(), userId) &&
+        canUpdatePlayerDCoin(incoming(), existing()) &&
+        (!('ownerUid' in existing()) || existing().ownerUid != userId || incoming().ownerUid == existing().ownerUid) &&
+        ((('createdAt' in existing() && existing().createdAt is timestamp) && incoming().createdAt == existing().createdAt) ||
+          (!('createdAt' in existing() && existing().createdAt is timestamp) && incoming().createdAt == request.time)) &&
+        incoming().updatedAt == request.time &&
+        isNotBanned() && (
+          isAdmin() ||
+          // Action 1: Permanently bind Tamer selection (only allowed when previously null)
+          ((!('tamerSelection' in existing()) || existing().tamerSelection == null) &&
+            incoming().tamerSelection != null &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['tamerSelection', 'updatedAt'])) ||
+          // Action 2: Permanently bind Starter Digimon (only allowed when previously null)
+          ((!('starterDigimon' in existing()) || existing().starterDigimon == null) &&
+            incoming().starterDigimon != null &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['starterDigimon', 'updatedAt'])) ||
+          // Action 3: Sync world exploration position & discovered zones
+          (incoming().diff(existing()).affectedKeys().hasOnly(['adventureProgress', 'updatedAt'])) ||
+          // Action 4: Sync HUD RPG state (levels, EXP, Bits, inventory, gear)
+          (incoming().diff(existing()).affectedKeys().hasOnly(['hudState', 'updatedAt'])) ||
+          // Action 5: Sync both adventure position and HUD state together
+          (incoming().diff(existing()).affectedKeys().hasOnly(['adventureProgress', 'hudState', 'updatedAt'])) ||
+          // Action 6: Update username display handle
+          (incoming().diff(existing()).affectedKeys().hasOnly(['username', 'usernameLower', 'updatedAt'])) ||
+          // Action 7: Normalized full cloud save sync / legacy field cleanup (preserving immutable ownerUid, createdAt, and valid permanent Tamer & Starter Digimon identities once set)
+          ((!('tamerSelection' in existing()) ||
+            existing().tamerSelection == null ||
+            !isValidTamerSelection(existing().tamerSelection) ||
+            (incoming().tamerSelection != null &&
+              existing().tamerSelection is map &&
+              incoming().tamerSelection.characterId == existing().tamerSelection.characterId &&
+              incoming().tamerSelection.tamerName == existing().tamerSelection.tamerName)) &&
+            (!('starterDigimon' in existing()) ||
+              existing().starterDigimon == null ||
+              !isValidStarterDigimon(existing().starterDigimon) ||
+              (incoming().starterDigimon != null &&
+                existing().starterDigimon is map &&
+                incoming().starterDigimon.digimonId == existing().starterDigimon.digimonId)) &&
+            incoming().diff(existing()).addedKeys().hasOnly([
+              'ownerUid', 'username', 'usernameLower', 'tamerSelection', 'starterDigimon', 'adventureProgress', 'hudState', 'createdAt', 'updatedAt'
+            ]) &&
+            incoming().diff(existing()).changedKeys().hasOnly([
+              'ownerUid', 'username', 'usernameLower', 'tamerSelection', 'starterDigimon', 'adventureProgress', 'hudState', 'createdAt', 'updatedAt'
+            ]))
+        );
+
+      allow delete: if isAdmin() && isValidId(userId);
+
+      // Subcollection: /players/{userId}/private/{docId} — Strictly Isolated PII
+      match /private/{docId} {
+        allow get: if isVerifiedOwner(userId) &&
+          isValidId(userId) &&
+          docId == 'account' &&
+          exists(/databases/$(database)/documents/players/$(userId));
+        allow list: if false;
+
+        allow create: if isVerifiedOwner(userId) &&
+          isValidId(userId) &&
+          docId == 'account' &&
+          isValidPrivateAccount(incoming(), userId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          existsAfter(/databases/$(database)/documents/players/$(userId));
+
+        allow update: if isVerifiedOwner(userId) &&
+          isValidId(userId) &&
+          docId == 'account' &&
+          isValidPrivateAccount(incoming(), userId) &&
+          (!('ownerUid' in existing()) || existing().ownerUid != userId || incoming().ownerUid == existing().ownerUid) &&
+          ((('createdAt' in existing() && existing().createdAt is timestamp) && incoming().createdAt == existing().createdAt) ||
+            (!('createdAt' in existing() && existing().createdAt is timestamp) && incoming().createdAt == request.time)) &&
+          incoming().updatedAt == request.time &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['email', 'authProvider', 'updatedAt']) &&
+          exists(/databases/$(database)/documents/players/$(userId));
+
+        allow delete: if isVerifiedOwner(userId) && isValidId(userId) && docId == 'account';
+      }
+    }
+
+    // =========================================================================
+    // Collection: /usernames/{usernameKey} — Unique Handle Registry (Zero PII)
+    // =========================================================================
+    match /usernames/{usernameKey} {
+      allow get: if isVerified() && isValidUsernameKey(usernameKey);
+      allow list: if false;
+
+      allow create: if isVerified() &&
+        isValidUsernameKey(usernameKey) &&
+        isValidUsernameClaim(incoming(), usernameKey) &&
+        incoming().createdAt == request.time &&
+        existsAfter(/databases/$(database)/documents/players/$(request.auth.uid));
+
+      allow update: if false;
+
+      allow delete: if isVerified() &&
+        isValidUsernameKey(usernameKey) &&
+        existing().ownerUid == request.auth.uid;
+    }
+
+    // =========================================================================
+    // Collection: /alphaFeedback/{reportId} — Alpha Bug & Feedback Reports
+    // =========================================================================
+    match /alphaFeedback/{reportId} {
+      allow get: if isVerified() && isValidId(reportId) && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow list: if (isVerified() && existing().ownerUid == request.auth.uid) || isBootstrappedGm();
+
+      allow create: if isVerified() &&
+        isValidId(reportId) &&
+        isValidAlphaFeedback(incoming()) &&
+        incoming().createdAt == request.time &&
+        exists(/databases/$(database)/documents/players/$(request.auth.uid));
+
+      allow update: if false;
+
+      allow delete: if isVerified() && isValidId(reportId) && (existing().ownerUid == request.auth.uid || isAdmin());
+    }
+
+    // =========================================================================
+    // Collection: /worldPresence/{userId} — Shared-World Multiplayer Presence
+    // =========================================================================
+    match /worldPresence/{userId} {
+      allow get: if isVerified() && isValidId(userId) && (existing().online == true || request.auth.uid == userId || isAdmin());
+      allow list: if (isVerified() && existing().online == true) || isBootstrappedGm();
+
+      allow create: if isVerifiedOwner(userId) &&
+        isValidId(userId) &&
+        isValidWorldPresence(incoming(), userId) &&
+        incoming().updatedAt == request.time &&
+        (!incoming().isGm || isAdmin()) &&
+        exists(/databases/$(database)/documents/players/$(userId)) &&
+        isNotBanned();
+
+      allow update: if (isVerifiedOwner(userId) || isAdmin()) &&
+        isValidId(userId) &&
+        isValidWorldPresence(incoming(), userId) &&
+        (!('ownerUid' in existing()) || existing().ownerUid != userId || incoming().ownerUid == existing().ownerUid) &&
+        incoming().updatedAt == request.time &&
+        (!incoming().isGm || isAdmin()) &&
+        (isNotBanned() || (incoming().online == false && incoming().diff(existing()).affectedKeys().hasOnly(['online', 'updatedAt']))) && (
+          // Action 1: Live avatar position, animation, map, level, evolution & heartbeat sync
+          (incoming().diff(existing()).affectedKeys().hasOnly([
+            'tamerName', 'characterId', 'tamerLevel', 'digimonFormId', 'digimonLevel',
+            'mapId', 'worldX', 'worldY', 'facingDir', 'moveState',
+            'partnerX', 'partnerY', 'partnerDir', 'partnerMoving',
+            'isGm', 'guildName', 'online', 'updatedAt'
+          ])) ||
+          // Action 2: Broadcast live chat message & speech bubble
+          (incoming().diff(existing()).affectedKeys().hasOnly(['chatText', 'chatSeq', 'online', 'updatedAt'])) ||
+          // Action 3: Clean disconnect / mark offline
+          (incoming().diff(existing()).affectedKeys().hasOnly(['online', 'updatedAt'])) ||
+          // Action 4: Combined live movement + chat broadcast / legacy schema self-heal
+          (incoming().diff(existing()).addedKeys().hasOnly([
+            'ownerUid', 'tamerName', 'characterId', 'tamerLevel', 'digimonFormId', 'digimonLevel',
+            'mapId', 'worldX', 'worldY', 'facingDir', 'moveState',
+            'partnerX', 'partnerY', 'partnerDir', 'partnerMoving',
+            'isGm', 'guildName', 'chatText', 'chatSeq', 'online', 'updatedAt'
+          ]) &&
+          incoming().diff(existing()).changedKeys().hasOnly([
+            'ownerUid', 'tamerName', 'characterId', 'tamerLevel', 'digimonFormId', 'digimonLevel',
+            'mapId', 'worldX', 'worldY', 'facingDir', 'moveState',
+            'partnerX', 'partnerY', 'partnerDir', 'partnerMoving',
+            'isGm', 'guildName', 'chatText', 'chatSeq', 'online', 'updatedAt'
+          ])) ||
+          isAdmin()
+        );
+
+      allow delete: if isVerifiedOwner(userId) && isValidId(userId);
+    }
+
+    // =========================================================================
+    // Collection: /worldBosses/{bossId} — Shared Cooperative Raid Bosses
+    // =========================================================================
+    match /worldBosses/{bossId} {
+      allow get: if isVerified() && isValidId(bossId);
+      allow list: if false;
+
+      allow create: if isVerified() &&
+        isValidId(bossId) &&
+        isValidWorldBoss(incoming(), bossId) &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/players/$(request.auth.uid));
+
+      allow update: if isVerified() &&
+        isValidId(bossId) &&
+        isValidWorldBoss(incoming(), bossId) &&
+        incoming().bossId == existing().bossId &&
+        incoming().mapId == existing().mapId &&
+        incoming().name == existing().name &&
+        incoming().level == existing().level &&
+        (incoming().maxHp == existing().maxHp ||
+          (bossId == 'data-forest-kuwagamon' &&
+            existing().maxHp != 500000 &&
+            incoming().maxHp == 500000)) &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/players/$(request.auth.uid)) && (
+          // Action 1: Cooperative Raid Damage / Boss Defeat (HP strictly non-increasing unless migrating Kuwagamon maxHp to 500,000)
+          (existing().alive == true &&
+            (incoming().hp <= existing().hp ||
+              (bossId == 'data-forest-kuwagamon' &&
+                existing().maxHp != 500000 &&
+                incoming().maxHp == 500000)) &&
+            incoming().defeatedCount >= existing().defeatedCount &&
+            incoming().defeatedCount <= existing().defeatedCount + 1 &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'hp', 'maxHp', 'alive', 'respawnAtMs', 'lastAttackerName', 'lastHitAtMs',
+              'contributors', 'defeatedCount', 'updatedAt'
+            ])) ||
+          // Action 2: Synchronized Raid Boss Respawn at full HP once defeated
+          (existing().alive == false &&
+            incoming().alive == true &&
+            incoming().hp == incoming().maxHp &&
+            incoming().respawnAtMs == 0 &&
+            incoming().defeatedCount == existing().defeatedCount &&
+            incoming().contributors.size() == 0 &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'hp', 'maxHp', 'alive', 'respawnAtMs', 'lastAttackerName', 'lastHitAtMs',
+              'contributors', 'updatedAt'
+            ])) ||
+          // Action 3: One-time Kuwagamon rebalance sync to 500,000 maxHp
+          (bossId == 'data-forest-kuwagamon' &&
+            existing().maxHp != 500000 &&
+            incoming().maxHp == 500000 &&
+            incoming().alive == existing().alive &&
+            incoming().defeatedCount == existing().defeatedCount &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['hp', 'maxHp', 'updatedAt'])) ||
+          isAdmin()
+        );
+
+      allow delete: if false;
+    }
+
+    // =========================================================================
+    // Collection: /serverConfig/{configId} — Global Server Rates & Announcements (GM Only Write)
+    // =========================================================================
+    match /serverConfig/{configId} {
+      allow get: if isVerified() && configId in ['rates', 'announcement'];
+      allow list: if false;
+
+      allow create: if isAdmin() &&
+        configId in ['rates', 'announcement'] && (
+          (configId == 'rates' && isValidServerRates(incoming())) ||
+          (configId == 'announcement' && isValidServerAnnouncement(incoming()))
+        ) &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isAdmin() &&
+        configId in ['rates', 'announcement'] && (
+          (configId == 'rates' && isValidServerRates(incoming())) ||
+          (configId == 'announcement' && isValidServerAnnouncement(incoming()))
+        ) &&
+        incoming().updatedAt == request.time;
+
+      allow delete: if false;
+    }
+
+    // =========================================================================
+    // Collection: /guilds/{guildId} — Multiplayer DMO Guild System
+    // =========================================================================
+    match /guilds/{guildId} {
+      allow get: if isVerified() && isValidId(guildId) && (
+        existing().recruiting == true ||
+        request.auth.uid in existing().memberUids ||
+        isAdmin()
+      );
+      allow list: if isVerified() && (
+        existing().recruiting == true ||
+        request.auth.uid in existing().memberUids
+      );
+
+      allow create: if isVerified() &&
+        isValidId(guildId) &&
+        isValidGuildRecord(incoming(), guildId) &&
+        incoming().masterUid == request.auth.uid &&
+        incoming().memberUids.size() == 1 &&
+        request.auth.uid in incoming().memberUids &&
+        incoming().level == 1 &&
+        incoming().exp == 0 &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/players/$(request.auth.uid)) &&
+        isNotBanned();
+
+      allow update: if isVerified() &&
+        isValidId(guildId) &&
+        isValidGuildRecord(incoming(), guildId) &&
+        incoming().guildId == existing().guildId &&
+        incoming().name == existing().name &&
+        incoming().tag == existing().tag &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/players/$(request.auth.uid)) &&
+        isNotBanned() && (
+          // Tier 1: Guild Master full management (emblem, photo, notice, recruiting, members, roles, skills, daily hunt, leadership transfer)
+          (existing().masterUid == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'emblemColor', 'emblemPhotoUrl', 'notice', 'masterUid', 'masterName', 'level', 'exp',
+              'skillPoints', 'skills', 'recruiting', 'memberUids', 'members',
+              'chatMessages', 'dailyHuntDate', 'dailyKills', 'prevDayDate', 'prevDayKills',
+              'totalKills', 'updatedAt'
+            ])) ||
+          // Tier 2: Current Member actions (guild chat, guild EXP/mob contribution, leave guild, submaster notice/photo/skills)
+          (request.auth.uid in existing().memberUids &&
+            incoming().masterUid == existing().masterUid &&
+            incoming().masterName == existing().masterName &&
+            (
+              // Member chat, EXP, or daily/general mob kill contribution (cannot self-promote or drop members)
+              (request.auth.uid in existing().members &&
+                request.auth.uid in incoming().members &&
+                incoming().members[request.auth.uid].role == existing().members[request.auth.uid].role &&
+                incoming().members.keys().hasAll(existing().memberUids) &&
+                incoming().diff(existing()).affectedKeys().hasOnly([
+                  'level', 'exp', 'skillPoints', 'members', 'chatMessages',
+                  'dailyHuntDate', 'dailyKills', 'prevDayDate', 'prevDayKills',
+                  'totalKills', 'updatedAt'
+                ])) ||
+              // Member leaving guild cleanly
+              (!(request.auth.uid in incoming().memberUids) &&
+                incoming().memberUids.size() == existing().memberUids.size() - 1 &&
+                existing().memberUids.hasAll(incoming().memberUids) &&
+                incoming().diff(existing()).affectedKeys().hasOnly([
+                  'memberUids', 'members', 'chatMessages', 'updatedAt'
+                ])) ||
+              // Sub-master managing notice, photo, recruiting, or guild skills (cannot promote self to master)
+              (request.auth.uid in existing().members &&
+                existing().members[request.auth.uid].role == 'submaster' &&
+                request.auth.uid in incoming().members &&
+                incoming().members[request.auth.uid].role == 'submaster' &&
+                incoming().diff(existing()).affectedKeys().hasOnly([
+                  'emblemColor', 'emblemPhotoUrl', 'notice', 'recruiting', 'skillPoints', 'skills', 'members', 'memberUids', 'chatMessages', 'updatedAt'
+                ]))
+            )) ||
+          // Tier 3: Authenticated player joining an open recruiting guild (strictly as 'member')
+          (existing().recruiting == true &&
+            !(request.auth.uid in existing().memberUids) &&
+            request.auth.uid in incoming().memberUids &&
+            incoming().memberUids.size() == existing().memberUids.size() + 1 &&
+            incoming().memberUids.hasAll(existing().memberUids) &&
+            request.auth.uid in incoming().members &&
+            incoming().members[request.auth.uid].role == 'member' &&
+            incoming().members.keys().hasAll(existing().memberUids) &&
+            incoming().masterUid == existing().masterUid &&
+            incoming().masterName == existing().masterName &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'memberUids', 'members', 'chatMessages', 'updatedAt'
+            ])) ||
+          isAdmin()
+        );
+
+      allow delete: if isVerified() &&
+        isValidId(guildId) &&
+        (existing().masterUid == request.auth.uid || isAdmin());
+    }
+
+    // =========================================================================
+    // Collection: /playerRankings/{userId} — Public Zero-PII Tamer & Digimon Ranks
+    // =========================================================================
+    match /playerRankings/{userId} {
+      allow get: if isVerified() && isValidId(userId);
+      allow list: if isVerified() && existing().tamerLevel >= 1;
+
+      allow create: if isVerifiedOwner(userId) &&
+        isValidId(userId) &&
+        isValidPlayerRanking(incoming(), userId) &&
+        incoming().updatedAt == request.time &&
+        (!incoming().isGm || isAdmin()) &&
+        exists(/databases/$(database)/documents/players/$(userId)) &&
+        isNotBanned();
+
+      allow update: if isVerifiedOwner(userId) &&
+        isValidId(userId) &&
+        isValidPlayerRanking(incoming(), userId) &&
+        (!('ownerUid' in existing()) || existing().ownerUid != userId || incoming().ownerUid == existing().ownerUid) &&
+        incoming().updatedAt == request.time &&
+        (!incoming().isGm || isAdmin()) &&
+        isNotBanned() &&
+        incoming().diff(existing()).addedKeys().hasOnly([
+          'ownerUid', 'tamerName', 'characterId', 'tamerLevel', 'tamerExp',
+          'digimonFormId', 'digimonName', 'digimonLevel', 'digimonExp',
+          'digimonCombatPower', 'digimonGrade', 'digimonSizePct',
+          'defeatedEnemiesTotal', 'guildName', 'isGm', 'tamerPhotoUrl', 'tamerCoverUrl', 'updatedAt'
+        ]) &&
+        incoming().diff(existing()).changedKeys().hasOnly([
+          'ownerUid', 'tamerName', 'characterId', 'tamerLevel', 'tamerExp',
+          'digimonFormId', 'digimonName', 'digimonLevel', 'digimonExp',
+          'digimonCombatPower', 'digimonGrade', 'digimonSizePct',
+          'defeatedEnemiesTotal', 'guildName', 'isGm', 'tamerPhotoUrl', 'tamerCoverUrl', 'updatedAt'
+        ]);
+
+      allow delete: if isVerifiedOwner(userId) && isValidId(userId);
+    }
+
+    // =========================================================================
+    // Collection: /guildRankings/{guildId} — Public Zero-PII Guild Ranks
+    // =========================================================================
+      match /guildRankings/{guildId} {
+      allow get: if isVerified() && isValidId(guildId);
+      allow list: if isVerified() && existing().level >= 1;
+
+      allow create: if isVerified() &&
+        isValidId(guildId) &&
+        isValidGuildRanking(incoming(), guildId) &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/guilds/$(guildId)) &&
+        request.auth.uid in get(/databases/$(database)/documents/guilds/$(guildId)).data.memberUids;
+
+      allow update: if isVerified() &&
+        isValidId(guildId) &&
+        isValidGuildRanking(incoming(), guildId) &&
+        (!('guildId' in existing()) || incoming().guildId == existing().guildId) &&
+        (!('name' in existing()) || incoming().name == existing().name) &&
+        (!('tag' in existing()) || incoming().tag == existing().tag) &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/guilds/$(guildId)) &&
+        request.auth.uid in get(/databases/$(database)/documents/guilds/$(guildId)).data.memberUids &&
+        incoming().diff(existing()).addedKeys().hasOnly([
+          'guildId', 'name', 'tag', 'emblemColor', 'emblemPhotoUrl', 'masterName', 'level', 'exp',
+          'memberCount', 'totalKills', 'dailyKills', 'dailyHuntDate',
+          'recruiting', 'updatedAt'
+        ]) &&
+        incoming().diff(existing()).changedKeys().hasOnly([
+          'guildId', 'name', 'tag', 'emblemColor', 'emblemPhotoUrl', 'masterName', 'level', 'exp',
+          'memberCount', 'totalKills', 'dailyKills', 'dailyHuntDate',
+          'recruiting', 'updatedAt'
+        ]);
+
+      allow delete: if isVerified() &&
+        isValidId(guildId) &&
+        (isAdmin() || (
+          exists(/databases/$(database)/documents/guilds/$(guildId)) &&
+          get(/databases/$(database)/documents/guilds/$(guildId)).data.masterUid == request.auth.uid
+        ));
+    }
+
+    // =========================================================================
+    // Collection: /dwCoinOrders/{orderId} — Audited DWcoin Orders (Zero Card PII)
+    // =========================================================================
+    match /dwCoinOrders/{orderId} {
+      allow get: if isVerified() &&
+        isValidId(orderId) &&
+        (existing().ownerUid == request.auth.uid || isAdmin());
+      allow list: if isBootstrappedGm() ||
+        (isVerified() && existing().ownerUid == request.auth.uid);
+
+      allow create: if isVerified() &&
+        isValidId(orderId) &&
+        isValidDwCoinOrder(incoming(), orderId) &&
+        incoming().ownerUid == request.auth.uid &&
+        incoming().status == 'pending' &&
+        incoming().termsAcceptedAt == request.time &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/players/$(request.auth.uid));
+
+      allow update: if isVerified() &&
+        isValidId(orderId) &&
+        isValidDwCoinOrder(incoming(), orderId) &&
+        incoming().orderId == existing().orderId &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().packId == existing().packId &&
+        incoming().dwCoinAmount == existing().dwCoinAmount &&
+        incoming().priceCents == existing().priceCents &&
+        incoming().priceBrlLabel == existing().priceBrlLabel &&
+        incoming().paymentMethod == existing().paymentMethod &&
+        incoming().termsAccepted == existing().termsAccepted &&
+        incoming().termsVersion == existing().termsVersion &&
+        incoming().termsAcceptedAt == existing().termsAcceptedAt &&
+        incoming().termsAcceptedAtIso == existing().termsAcceptedAtIso &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          (existing().ownerUid == request.auth.uid &&
+            existing().status == 'pending' &&
+            incoming().status == 'cancelled' &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])) ||
+          isAdmin()
+        );
+
+      allow delete: if false;
+    }
+
+    // =========================================================================
+    // Collection: /parties/{partyId} — Real-Time 4-Player Grinding Parties
+    // =========================================================================
+    match /parties/{partyId} {
+      allow get: if isVerified() && isValidId(partyId) && (
+        request.auth.uid in existing().memberUids || isAdmin()
+      );
+      allow list: if isVerified() && request.auth.uid in existing().memberUids;
+
+      allow create: if isVerified() &&
+        isValidId(partyId) &&
+        isValidPartyRecord(incoming(), partyId) &&
+        incoming().leaderUid == request.auth.uid &&
+        incoming().memberUids.size() == 1 &&
+        request.auth.uid in incoming().memberUids &&
+        request.auth.uid in incoming().members &&
+        isValidPartyMember(incoming().members[request.auth.uid]) &&
+        incoming().members[request.auth.uid].uid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/players/$(request.auth.uid));
+
+      allow update: if isVerified() &&
+        isValidId(partyId) &&
+        isValidPartyRecord(incoming(), partyId) &&
+        incoming().partyId == existing().partyId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/players/$(request.auth.uid)) && (
+          // Branch 1: Party Leader kicking a member, transferring leadership, or leaving with handoff
+          (existing().leaderUid == request.auth.uid &&
+            incoming().leaderUid in incoming().memberUids &&
+            (incoming().leaderUid == existing().leaderUid || incoming().leaderUid in existing().memberUids) &&
+            existing().memberUids.hasAll(incoming().memberUids) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'leaderUid', 'leaderName', 'memberUids', 'members', 'updatedAt'
+            ])) ||
+          // Branch 2: Current Member syncing own live vitals/map OR leaving the Party cleanly
+          (request.auth.uid in existing().memberUids &&
+            incoming().leaderUid == existing().leaderUid &&
+            incoming().leaderName == existing().leaderName &&
+            (
+              // Member live vitals/map update for self
+              (request.auth.uid in incoming().memberUids &&
+                incoming().memberUids == existing().memberUids &&
+                incoming().diff(existing()).affectedKeys().hasOnly(['members', 'updatedAt']) &&
+                request.auth.uid in incoming().members &&
+                isValidPartyMember(incoming().members[request.auth.uid]) &&
+                incoming().members[request.auth.uid].uid == request.auth.uid) ||
+              // Non-leader member leaving the Party
+              (!(request.auth.uid in incoming().memberUids) &&
+                incoming().memberUids.size() == existing().memberUids.size() - 1 &&
+                existing().memberUids.hasAll(incoming().memberUids) &&
+                incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'members', 'updatedAt']))
+            )) ||
+          // Branch 3: Invited player joining the Party using a valid pending invite
+          (!(request.auth.uid in existing().memberUids) &&
+            request.auth.uid in incoming().memberUids &&
+            incoming().memberUids.size() == existing().memberUids.size() + 1 &&
+            incoming().memberUids.size() <= 4 &&
+            incoming().memberUids.hasAll(existing().memberUids) &&
+            incoming().leaderUid == existing().leaderUid &&
+            incoming().leaderName == existing().leaderName &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['memberUids', 'members', 'updatedAt']) &&
+            request.auth.uid in incoming().members &&
+            isValidPartyMember(incoming().members[request.auth.uid]) &&
+            incoming().members[request.auth.uid].uid == request.auth.uid &&
+            exists(/databases/$(database)/documents/partyInvites/$('pinv_' + partyId + '_' + request.auth.uid)) &&
+            get(/databases/$(database)/documents/partyInvites/$('pinv_' + partyId + '_' + request.auth.uid)).data.status == 'pending' &&
+            get(/databases/$(database)/documents/partyInvites/$('pinv_' + partyId + '_' + request.auth.uid)).data.partyId == partyId &&
+            get(/databases/$(database)/documents/partyInvites/$('pinv_' + partyId + '_' + request.auth.uid)).data.toUid == request.auth.uid) ||
+          isAdmin()
+        );
+
+      allow delete: if isVerified() &&
+        isValidId(partyId) && (
+          existing().leaderUid == request.auth.uid ||
+          (existing().memberUids.size() == 1 && request.auth.uid in existing().memberUids) ||
+          isAdmin()
+        );
+
+      // Subcollection: /parties/{partyId}/xpEvents/{eventId}
+      match /xpEvents/{eventId} {
+        allow get: if isVerified() &&
+          isValidId(partyId) &&
+          isValidId(eventId) &&
+          exists(/databases/$(database)/documents/parties/$(partyId)) &&
+          request.auth.uid in get(/databases/$(database)/documents/parties/$(partyId)).data.memberUids;
+        allow list: if isVerified() &&
+          isValidId(partyId) &&
+          exists(/databases/$(database)/documents/parties/$(partyId)) &&
+          request.auth.uid in get(/databases/$(database)/documents/parties/$(partyId)).data.memberUids;
+
+        allow create: if isVerified() &&
+          isValidId(partyId) &&
+          isValidId(eventId) &&
+          exists(/databases/$(database)/documents/parties/$(partyId)) &&
+          request.auth.uid in get(/databases/$(database)/documents/parties/$(partyId)).data.memberUids &&
+          isValidPartyXpEvent(incoming(), eventId) &&
+          incoming().killerUid == request.auth.uid &&
+          incoming().createdAt == request.time;
+
+        allow update: if false;
+        allow delete: if false;
+      }
+
+      // Subcollection: /parties/{partyId}/messages/{messageId}
+      match /messages/{messageId} {
+        allow get: if isVerified() &&
+          isValidId(partyId) &&
+          isValidId(messageId) &&
+          exists(/databases/$(database)/documents/parties/$(partyId)) &&
+          request.auth.uid in get(/databases/$(database)/documents/parties/$(partyId)).data.memberUids;
+        allow list: if isVerified() &&
+          isValidId(partyId) &&
+          exists(/databases/$(database)/documents/parties/$(partyId)) &&
+          request.auth.uid in get(/databases/$(database)/documents/parties/$(partyId)).data.memberUids;
+
+        allow create: if isVerified() &&
+          isValidId(partyId) &&
+          isValidId(messageId) &&
+          exists(/databases/$(database)/documents/parties/$(partyId)) &&
+          request.auth.uid in get(/databases/$(database)/documents/parties/$(partyId)).data.memberUids &&
+          isValidPartyMessage(incoming(), messageId) &&
+          incoming().senderUid == request.auth.uid &&
+          (!incoming().isGmSender || isAdmin()) &&
+          incoming().createdAt == request.time;
+
+        allow update: if false;
+        allow delete: if false;
+      }
+    }
+
+    // =========================================================================
+    // Collection: /partyInvites/{inviteId} — Targeted Party Invitations
+    // =========================================================================
+    match /partyInvites/{inviteId} {
+      allow get: if isVerified() && isValidId(inviteId) && (
+        existing().toUid == request.auth.uid ||
+        existing().fromUid == request.auth.uid ||
+        isAdmin()
+      );
+      allow list: if isVerified() && (
+        existing().toUid == request.auth.uid ||
+        existing().fromUid == request.auth.uid
+      );
+
+      allow create: if isVerified() &&
+        isValidId(inviteId) &&
+        isValidPartyInvite(incoming(), inviteId) &&
+        inviteId == ('pinv_' + incoming().partyId + '_' + incoming().toUid) &&
+        incoming().fromUid == request.auth.uid &&
+        incoming().toUid != request.auth.uid &&
+        incoming().status == 'pending' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/parties/$(incoming().partyId)) &&
+        request.auth.uid in get(/databases/$(database)/documents/parties/$(incoming().partyId)).data.memberUids;
+
+      allow update: if isVerified() &&
+        isValidId(inviteId) &&
+        isValidPartyInvite(incoming(), inviteId) &&
+        existing().toUid == request.auth.uid &&
+        existing().status == 'pending' &&
+        incoming().status in ['accepted', 'declined'] &&
+        incoming().inviteId == existing().inviteId &&
+        incoming().partyId == existing().partyId &&
+        incoming().fromUid == existing().fromUid &&
+        incoming().toUid == existing().toUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+
+      allow delete: if isVerified() && isValidId(inviteId) && (
+        existing().toUid == request.auth.uid ||
+        existing().fromUid == request.auth.uid ||
+        (exists(/databases/$(database)/documents/parties/$(existing().partyId)) &&
+          request.auth.uid in get(/databases/$(database)/documents/parties/$(existing().partyId)).data.memberUids) ||
+        isAdmin()
+      );
+    }
+
+    // =========================================================================
+    // Collection: /dwCoinTransactions/{txId} — Immutable DWcoin Spend & Grant Ledger
+    // =========================================================================
+    match /dwCoinTransactions/{txId} {
+      allow get: if isVerified() &&
+        isValidId(txId) &&
+        (existing().ownerUid == request.auth.uid || isAdmin());
+      allow list: if isBootstrappedGm() ||
+        (isVerified() && existing().ownerUid == request.auth.uid);
+
+      allow create: if isVerified() &&
+        isValidId(txId) &&
+        isValidDwCoinTransaction(incoming(), txId) &&
+        incoming().createdAt == request.time && (
+          (incoming().ownerUid == request.auth.uid &&
+            incoming().type == 'spend' &&
+            exists(/databases/$(database)/documents/players/$(request.auth.uid))) ||
+          isAdmin()
+        );
+
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // =========================================================================
+    // Collection: /bannedAccounts/{userId} — GM-Managed Account Suspensions
+    // =========================================================================
+    match /bannedAccounts/{userId} {
+      allow get: if isValidId(userId) &&
+        ((isSignedIn() && request.auth.uid == userId) || isAdmin());
+      allow list: if isBootstrappedGm();
+
+      allow create: if isAdmin() &&
+        isValidId(userId) &&
+        isValidBanRecord(incoming(), userId) &&
+        incoming().bannedByUid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isAdmin() &&
+        isValidId(userId) &&
+        isValidBanRecord(incoming(), userId) &&
+        incoming().targetUid == existing().targetUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+
+      allow delete: if isAdmin() && isValidId(userId);
+    }
+
+    // =========================================================================
+    // Collection: /gmAuditLogs/{logId} — Exclusive GM Administrative Audit Trail
+    // =========================================================================
+    match /gmAuditLogs/{logId} {
+      allow get: if isAdmin() && isValidId(logId);
+      allow list: if isBootstrappedGm();
+
+      allow create: if isAdmin() &&
+        isValidId(logId) &&
+        isValidGmAuditLog(incoming(), logId) &&
+        incoming().actorUid == request.auth.uid &&
+        incoming().createdAt == request.time;
+
+      allow update: if false;
+      allow delete: if false;
+    }
+  }
+}
