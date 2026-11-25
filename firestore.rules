@@ -797,20 +797,14 @@ service cloud.firestore {
         data.inviteCode is string && isValidReferralCodeKey(data.inviteCode) &&
         data.tamerName is string && data.tamerName.size() >= 1 && data.tamerName.size() <= 24 &&
         data.characterId in ['kai', 'ren', 'hina', 'yuna'] &&
-        (data.tamerPhotoUrl == null ||
-          (data.tamerPhotoUrl is string &&
-            data.tamerPhotoUrl.size() <= 48000 &&
-            data.tamerPhotoUrl.matches('^data:image/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$'))) &&
-        (data.tamerCoverUrl == null ||
-          (data.tamerCoverUrl is string &&
-            data.tamerCoverUrl.size() <= 48000 &&
-            data.tamerCoverUrl.matches('^data:image/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$'))) &&
+        (data.tamerPhotoUrl == null || isValidImageDataUrl(data.tamerPhotoUrl, 48000)) &&
+        (data.tamerCoverUrl == null || isValidImageDataUrl(data.tamerCoverUrl, 48000)) &&
         data.isGm is bool &&
-        data.totalInvites is int && data.totalInvites >= 0 && data.totalInvites <= 1000000 &&
+        data.totalInvites is number && data.totalInvites >= 0 && data.totalInvites <= 1000000 &&
         isValidReferralMonthKey(data.monthKey) &&
-        data.monthlyInvites is int && data.monthlyInvites >= 0 && data.monthlyInvites <= 1000000 &&
-        data.totalCommissionEarned is int && data.totalCommissionEarned >= 0 && data.totalCommissionEarned <= 1000000000 &&
-        data.monthlyCommissionEarned is int && data.monthlyCommissionEarned >= 0 && data.monthlyCommissionEarned <= 1000000000 &&
+        data.monthlyInvites is number && data.monthlyInvites >= 0 && data.monthlyInvites <= 1000000 &&
+        data.totalCommissionEarned is number && data.totalCommissionEarned >= 0 && data.totalCommissionEarned <= 1000000000 &&
+        data.monthlyCommissionEarned is number && data.monthlyCommissionEarned >= 0 && data.monthlyCommissionEarned <= 1000000000 &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;
     }
@@ -1768,7 +1762,6 @@ service cloud.firestore {
         incoming().createdAt == request.time &&
         exists(/databases/$(database)/documents/players/$(request.auth.uid)) &&
         existsAfter(/databases/$(database)/documents/referralProfiles/$(request.auth.uid)) &&
-        getAfter(/databases/$(database)/documents/referralProfiles/$(request.auth.uid)).data.inviteCode == code &&
         isNotBanned();
 
       allow update: if false;

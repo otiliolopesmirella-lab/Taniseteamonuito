@@ -20,5 +20,5 @@
   <rect x="20" y="20" width="472" height="472" rx="92" fill="none" stroke="url(#ring)" stroke-width="14"/>
   <circle cx="256" cy="256" r="158" fill="none" stroke="#38bdf8" stroke-opacity="0.38" stroke-width="8" stroke-dasharray="28 16"/>
   <polygon points="256,82 396,162 396,322 256,402 116,322 116,162" fill="#041232" fill-opacity="0.72" stroke="#38bdf8" stroke-width="10"/>
-  <text x="256" y="294" text-anchor="middle" font-family="Arial Black, sans-serif" font-weight="900" font-size="168" fill="url(#bolt)">DW</text>
+  <text x="256" y="294" text-anchor="middle" font-family="Arial Black, sans-serif" font-weight="900" font-size="178" fill="url(#bolt)">DL</text>
 </svg>

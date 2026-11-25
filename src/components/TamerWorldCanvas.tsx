@@ -1300,7 +1300,9 @@ export function TamerWorldCanvas({
     return 1;
   });
   const currentChannelRef = useRef<WorldChannelId>(activeChannelId);
-  currentChannelRef.current = activeChannelId;
+  useEffect(() => {
+    currentChannelRef.current = activeChannelId;
+  }, [activeChannelId]);
   const [channelSwitching, setChannelSwitching] = useState(false);
   const lastChannelSwitchMsRef = useRef<number>(0);
 
@@ -2690,12 +2692,23 @@ export function TamerWorldCanvas({
       }
       setSelectedRemotePlayer(null);
 
-      // Snap remote positions for players waiting in the destination channel so they don't slide across the map
+      // Snap positions AND immediately preload sprites for players waiting in the destination channel
+      const preloaded = preloadedRemoteAssetsRef.current;
       for (const smooth of remoteSmoothRef.current.values()) {
         if (
           smooth.player.mapId === sim.mapId &&
           smooth.player.channelId === targetCh
         ) {
+          const tamerKey = `t:${smooth.player.characterId}`;
+          if (!preloaded.has(tamerKey)) {
+            preloaded.add(tamerKey);
+            void preloadTamerSheets(smooth.player.characterId);
+          }
+          const digiKey = `d:${smooth.player.digimonFormId}`;
+          if (!preloaded.has(digiKey)) {
+            preloaded.add(digiKey);
+            void preloadDigimonPartnerAssets(smooth.player.digimonFormId);
+          }
           smooth.renderX = smooth.player.worldX;
           smooth.renderY = smooth.player.worldY;
           smooth.targetX = smooth.player.worldX;
@@ -2724,12 +2737,28 @@ export function TamerWorldCanvas({
       lastPresenceSyncRef.current.sentAtMs = nowMs;
       lastPresenceSyncRef.current.inFlight = true;
 
-      void publishLocalWorldPresence(snap, { forceFullWrite: true }).finally(
-        () => {
+      void publishLocalWorldPresence(snap)
+        .then((res) => {
+          if (!res.ok) {
+            // Reset synced channelId so the loop retries immediately on transient failure
+            lastPresenceSyncRef.current.channelId = 0 as unknown as WorldChannelId;
+            if (
+              !opts?.silent &&
+              res.errorMessage &&
+              /permission|denied/i.test(res.errorMessage)
+            ) {
+              pushChatMessage(
+                'system',
+                'Aviso: o banco recusou a atualização do Canal (CH). Atualize as regras do Firestore do servidor para liberar channelId.',
+                { tone: 'warning' }
+              );
+            }
+          }
+        })
+        .finally(() => {
           lastPresenceSyncRef.current.inFlight = false;
           setChannelSwitching(false);
-        }
-      );
+        });
 
       if (party) {
         const acc = hudAccountRef.current;
@@ -3979,6 +4008,32 @@ export function TamerWorldCanvas({
       );
     }
 
+    // Preload sprites & snap positions for players already waiting in the destination map + channel
+    const preloaded = preloadedRemoteAssetsRef.current;
+    const myCh = currentChannelRef.current;
+    for (const smooth of remoteSmoothRef.current.values()) {
+      if (smooth.player.mapId === sim.mapId && smooth.player.channelId === myCh) {
+        const tamerKey = `t:${smooth.player.characterId}`;
+        if (!preloaded.has(tamerKey)) {
+          preloaded.add(tamerKey);
+          void preloadTamerSheets(smooth.player.characterId);
+        }
+        const digiKey = `d:${smooth.player.digimonFormId}`;
+        if (!preloaded.has(digiKey)) {
+          preloaded.add(digiKey);
+          void preloadDigimonPartnerAssets(smooth.player.digimonFormId);
+        }
+        smooth.renderX = smooth.player.worldX;
+        smooth.renderY = smooth.player.worldY;
+        smooth.targetX = smooth.player.worldX;
+        smooth.targetY = smooth.player.worldY;
+        smooth.partnerRenderX = smooth.player.partnerX;
+        smooth.partnerRenderY = smooth.player.partnerY;
+        smooth.partnerTargetX = smooth.player.partnerX;
+        smooth.partnerTargetY = smooth.player.partnerY;
+      }
+    }
+
     setLiveSnapshot((prev) => ({
       ...prev,
       mapId: sim.mapId,
@@ -4045,15 +4100,41 @@ export function TamerWorldCanvas({
     sim.dir = 'W';
     sim.partner = createInitialPartnerRuntime(desiredX, desiredY, 'W');
 
+    // Preload sprites for players in the target map & channel so they render immediately
+    const preloaded = preloadedRemoteAssetsRef.current;
+    for (const smooth of remoteSmoothRef.current.values()) {
+      if (
+        smooth.player.mapId === target.mapId &&
+        smooth.player.channelId === target.channelId
+      ) {
+        const tamerKey = `t:${smooth.player.characterId}`;
+        if (!preloaded.has(tamerKey)) {
+          preloaded.add(tamerKey);
+          void preloadTamerSheets(smooth.player.characterId);
+        }
+        const digiKey = `d:${smooth.player.digimonFormId}`;
+        if (!preloaded.has(digiKey)) {
+          preloaded.add(digiKey);
+          void preloadDigimonPartnerAssets(smooth.player.digimonFormId);
+        }
+        smooth.renderX = smooth.player.worldX;
+        smooth.renderY = smooth.player.worldY;
+        smooth.targetX = smooth.player.worldX;
+        smooth.targetY = smooth.player.worldY;
+        smooth.partnerRenderX = smooth.player.partnerX;
+        smooth.partnerRenderY = smooth.player.partnerY;
+        smooth.partnerTargetX = smooth.player.partnerX;
+        smooth.partnerTargetY = smooth.player.partnerY;
+      }
+    }
+
     pushChatMessage(
       'system',
       `Você se encontrou com ${target.isGm ? '[GM] ' : ''}${target.tamerName} (CH ${target.channelId})!`,
       { tone: 'info' }
     );
     persistProgress();
-    void publishLocalWorldPresence(buildLocalPresenceSnapshot(), {
-      forceFullWrite: true,
-    });
+    void publishLocalWorldPresence(buildLocalPresenceSnapshot());
     playDigitalTone('confirm', soundEnabled);
   }
 
@@ -10614,9 +10695,9 @@ export function TamerWorldCanvas({
         />
       )}
 
-      {/* LOWER HUD LAYER: Bottom-Left GM Button + Chat + Mobile Joystick */}
+      {/* LOWER HUD LAYER: Bottom-Left Chat (above GM on mobile so it clears CH without touching Party) + GM Button + Mobile Joystick */}
       <div className="pointer-events-none absolute inset-x-0 bottom-2 z-25 flex items-end justify-between gap-2 px-1.5 sm:bottom-3 sm:px-3">
-        {/* Bottom-Left Corner: GM Button + Chat stacked cleanly ABOVE Mobile Virtual Joystick */}
+        {/* Bottom-Left Corner: On mobile -> [Chat] slightly above [GM] above [Joystick]; on desktop -> [GM] above [Chat] */}
         <div className="flex flex-col items-start gap-1.5 sm:gap-2">
           {isGM && (
             <button
@@ -10627,7 +10708,7 @@ export function TamerWorldCanvas({
               aria-label="Abrir Painel GM"
               aria-pressed={activeHudWindow === 'admin'}
               title="Painel GM (F9)"
-              className={`pointer-events-auto flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[11px] font-black tracking-wide transition active:scale-95 ${
+              className={`pointer-events-auto order-2 flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[11px] font-black tracking-wide transition active:scale-95 md:order-1 ${
                 activeHudWindow === 'admin'
                   ? 'border-amber-200 bg-gradient-to-b from-[#7c3f08] via-[#4a2304] to-[#291102] text-amber-100 shadow-[0_0_20px_rgba(251,191,36,0.72)]'
                   : 'border-amber-300/85 bg-gradient-to-b from-[#4a2605]/95 via-[#2a1503]/95 to-[#160a02]/95 text-amber-200 shadow-[0_0_16px_rgba(251,191,36,0.45)] hover:border-amber-200 hover:brightness-110'
@@ -10637,6 +10718,11 @@ export function TamerWorldCanvas({
               <span>GM</span>
             </button>
           )}
+          <div
+            className={`order-1 md:order-2 ${
+              isGM ? 'mb-1 md:mb-0' : 'mb-8 md:mb-0'
+            }`}
+          >
           <ChatHudPanel
             messages={chatMessages}
             activeChannel={chatChannel}
@@ -10813,11 +10899,12 @@ export function TamerWorldCanvas({
               isChatFocusedRef.current = focused;
             }}
           />
+          </div>
 
-          {/* Mobile Touch Virtual Joystick (bottom-left corner directly under Chat) */}
+          {/* Mobile Touch Virtual Joystick (bottom-left corner directly under GM & Chat) */}
           <div
             onPointerDown={(e) => e.stopPropagation()}
-            className="pointer-events-auto md:hidden"
+            className="pointer-events-auto order-3 md:hidden"
           >
             <div
               ref={joystickBaseRef}

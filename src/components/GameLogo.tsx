@@ -51,7 +51,7 @@ export function GameLogo({ variant = 'overlap' }: GameLogoProps) {
         </svg>
       </div>
 
-      {/* Main Title: DIGIMON WORLD */}
+      {/* Main Title: DIGILEGENDS */}
       <h1 className="relative flex flex-col items-center leading-none">
         <span className="relative inline-block -skew-x-6 font-[family-name:var(--font-display)] text-[28px] tracking-tight sm:text-[34px]">
           {/* Outer dark outline layer */}
@@ -59,15 +59,15 @@ export function GameLogo({ variant = 'overlap' }: GameLogoProps) {
             aria-hidden="true"
             className="absolute inset-0 text-[#041434] [-webkit-text-stroke:6px_#041434] drop-shadow-[0_4px_10px_rgba(0,0,0,0.9)]"
           >
-            DIGIMON WORLD
+            DIGILEGENDS
           </span>
           {/* Metallic gold gradient layer */}
           <span className="relative bg-gradient-to-b from-[#fff8c9] via-[#ffd028] to-[#e66a00] bg-clip-text text-transparent drop-shadow-[0_2px_0_rgba(120,45,0,0.9)]">
-            DIGIMON WORLD
+            DIGILEGENDS
           </span>
         </span>
 
-        {/* Subtitle: DIGITAL WAR */}
+        {/* Subtitle: IDLE */}
         <span className="relative -mt-1 inline-flex items-center gap-2 -skew-x-6 font-[family-name:var(--font-display)] text-[21px] tracking-[0.06em] sm:text-[25px]">
           <span
             aria-hidden="true"
@@ -78,10 +78,10 @@ export function GameLogo({ variant = 'overlap' }: GameLogoProps) {
               aria-hidden="true"
               className="absolute inset-0 text-[#04163a] [-webkit-text-stroke:5px_#04163a] drop-shadow-[0_3px_8px_rgba(0,180,255,0.65)]"
             >
-              DIGITAL WAR
+              IDLE
             </span>
             <span className="relative bg-gradient-to-b from-[#ffffff] via-[#d7efff] to-[#6eb8ff] bg-clip-text text-transparent">
-              DIGITAL WAR
+              IDLE
             </span>
           </span>
           <span

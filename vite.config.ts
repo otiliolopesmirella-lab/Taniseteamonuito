@@ -9,10 +9,10 @@ export default defineConfig(() => {
   const isHmrDisabled = process.env.DISABLE_HMR === 'true';
   const pwaManifest = {
     id: '/',
-    name: 'Digimon World – Digital War',
-    short_name: 'Digital War',
+    name: 'DigiLegends Idle',
+    short_name: 'DigiLegends',
     description:
-      'MMORPG Digimon World – Digital War. Explore a Planície Digital, evolua seu Digimon e salve seu progresso na nuvem.',
+      'DigiLegends Idle — MMORPG no Mundo Digital. Escolha seu Domador, evolua seu Digimon e salve seu progresso na nuvem.',
     theme_color: '#040d21',
     background_color: '#030816',
     display: 'standalone' as const,
@@ -63,13 +63,13 @@ export default defineConfig(() => {
           clientsClaim: true,
           cleanupOutdatedCaches: true,
           globPatterns: ['**/*.{js,css,html,ico,svg,woff,woff2}'],
-          maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+          maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
           runtimeCaching: [
             {
               urlPattern: /\/assets\/.*\.(?:png|jpg|jpeg|webp|svg|gif)$/i,
               handler: 'CacheFirst',
               options: {
-                cacheName: 'digital-war-media-cache',
+                cacheName: 'digilegends-media-cache',
                 expiration: {
                   maxEntries: 80,
                   maxAgeSeconds: 60 * 60 * 24 * 30,

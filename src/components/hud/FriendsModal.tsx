@@ -991,30 +991,60 @@ export const FriendsModal = memo(function FriendsModal({
                       </p>
                       <div className="mt-1 flex items-center gap-2">
                         <div className="flex h-10 flex-1 items-center justify-center rounded-lg border border-amber-300/65 bg-[#020c28] px-3 font-mono text-base font-black tracking-[0.2em] text-amber-200 select-all">
-                          {myInviteCodeDisplay || 'GERANDO...'}
+                          {myInviteCodeDisplay
+                            ? myInviteCodeDisplay
+                            : referralLoading
+                              ? 'GERANDO...'
+                              : 'INDISPONÍVEL'}
                         </div>
-                        <button
-                          type="button"
-                          disabled={!myInviteCodeRaw}
-                          onClick={() =>
-                            void handleCopyText('code', myInviteCodeDisplay)
-                          }
-                          className="clip-cyber-input shrink-0 bg-gradient-to-b from-[#fff59d] via-[#fbbf24] to-[#b45309] p-[2px] transition hover:brightness-110 active:scale-95 disabled:opacity-50"
-                        >
-                          <span className="clip-cyber-input flex h-9 items-center gap-1.5 bg-gradient-to-b from-[#ffe44d] via-[#f5b400] to-[#d97706] px-3 text-[11px] font-black text-[#170b00]">
-                            {copiedTarget === 'code' ? (
-                              <Check className="h-3.5 w-3.5" />
-                            ) : (
-                              <Copy className="h-3.5 w-3.5" />
-                            )}
-                            <span>
-                              {copiedTarget === 'code'
-                                ? 'Copiado!'
-                                : 'Copiar Código'}
+                        {myInviteCodeRaw ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handleCopyText('code', myInviteCodeDisplay)
+                            }
+                            className="clip-cyber-input shrink-0 bg-gradient-to-b from-[#fff59d] via-[#fbbf24] to-[#b45309] p-[2px] transition hover:brightness-110 active:scale-95"
+                          >
+                            <span className="clip-cyber-input flex h-9 items-center gap-1.5 bg-gradient-to-b from-[#ffe44d] via-[#f5b400] to-[#d97706] px-3 text-[11px] font-black text-[#170b00]">
+                              {copiedTarget === 'code' ? (
+                                <Check className="h-3.5 w-3.5" />
+                              ) : (
+                                <Copy className="h-3.5 w-3.5" />
+                              )}
+                              <span>
+                                {copiedTarget === 'code'
+                                  ? 'Copiado!'
+                                  : 'Copiar Código'}
+                              </span>
                             </span>
-                          </span>
-                        </button>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={referralLoading}
+                            onClick={() => void loadReferralDashboard()}
+                            className="clip-cyber-input shrink-0 bg-gradient-to-b from-[#fff59d] via-[#fbbf24] to-[#b45309] p-[2px] transition hover:brightness-110 active:scale-95 disabled:opacity-55"
+                          >
+                            <span className="clip-cyber-input flex h-9 items-center gap-1.5 bg-gradient-to-b from-[#ffe44d] via-[#f5b400] to-[#d97706] px-3 text-[11px] font-black text-[#170b00]">
+                              {referralLoading ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Sparkles className="h-3.5 w-3.5" />
+                              )}
+                              <span>
+                                {referralLoading ? 'Gerando...' : 'Gerar Código'}
+                              </span>
+                            </span>
+                          </button>
+                        )}
                       </div>
+                      {!myInviteCodeRaw &&
+                        !referralLoading &&
+                        referralData?.errorMessage && (
+                          <p className="mt-1.5 rounded-lg border border-rose-400/40 bg-rose-950/50 px-2.5 py-1.5 text-[10.5px] font-semibold leading-snug text-rose-200">
+                            {referralData.errorMessage}
+                          </p>
+                        )}
                     </div>
 
                     <div>
@@ -1025,7 +1055,11 @@ export const FriendsModal = memo(function FriendsModal({
                       <div className="mt-1 flex items-center gap-2">
                         <div className="flex h-9 min-w-0 flex-1 items-center rounded-lg border border-cyan-400/45 bg-[#020c28] px-2.5 text-[11px] font-semibold text-sky-100 select-all">
                           <span className="truncate">
-                            {myInviteLink || 'Gerando link...'}
+                            {myInviteLink
+                              ? myInviteLink
+                              : referralLoading
+                                ? 'Gerando link...'
+                                : 'Clique em "Gerar Código" acima para ativar seu link.'}
                           </span>
                         </div>
                         <button

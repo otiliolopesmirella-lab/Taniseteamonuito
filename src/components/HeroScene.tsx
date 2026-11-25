@@ -13,7 +13,7 @@ export function HeroScene({ animationsEnabled }: HeroSceneProps) {
 
   return (
     <section
-      aria-label="Cenário e personagens de Digimon World Digital War"
+      aria-label="Cenário e personagens de DigiLegends Idle"
       className="relative w-full overflow-hidden bg-[#04102b]"
     >
       <TopBanners />

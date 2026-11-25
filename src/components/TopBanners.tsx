@@ -20,10 +20,10 @@ export function TopBanners() {
               Bem-vindo ao
             </p>
             <p className="text-[10.5px] font-extrabold leading-tight tracking-wide text-sky-100 sm:text-[12.5px]">
-              Digimon World
+              DigiLegends
             </p>
             <p className="text-[11px] font-extrabold italic leading-tight tracking-wide text-[#ffd43b] drop-shadow-[0_1px_4px_rgba(255,190,0,0.45)] sm:text-[13.5px]">
-              Digital War!
+              Idle!
             </p>
           </div>
         </div>

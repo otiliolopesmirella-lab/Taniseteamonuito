@@ -327,11 +327,24 @@ export function bumpPresenceSessionEpoch(): number {
   return presenceEpoch;
 }
 
+let presenceWriteChain: Promise<unknown> = Promise.resolve();
+
 /**
  * Publishes or updates the verified player's live avatar presence in `/worldPresence/{uid}`.
- * Guarantees `/players/{uid}` exists before first write and prevents offline cleanup races.
+ * Serializes writes in arrival order so an older movement packet can NEVER overwrite
+ * a newer channel switch or map transition in Firestore.
  */
-export async function publishLocalWorldPresence(
+export function publishLocalWorldPresence(
+  state: LocalPresenceState,
+  opts?: { forceFullWrite?: boolean; chatMessage?: string }
+): Promise<{ ok: boolean; chatSeq: number | null; errorMessage?: string }> {
+  const run = () => executePublishLocalWorldPresence(state, opts);
+  const next = presenceWriteChain.then(run, run);
+  presenceWriteChain = next.catch(() => undefined);
+  return next;
+}
+
+async function executePublishLocalWorldPresence(
   state: LocalPresenceState,
   opts?: { forceFullWrite?: boolean; chatMessage?: string }
 ): Promise<{ ok: boolean; chatSeq: number | null; errorMessage?: string }> {

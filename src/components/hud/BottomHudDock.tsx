@@ -151,7 +151,13 @@ function MmorpgMenuTile({
   );
 }
 
-function ServerExpCrystalIcon({ ratePct }: { ratePct: ServerExpRatePct }) {
+function ServerExpCrystalIcon({
+  ratePct,
+  compact = false,
+}: {
+  ratePct: ServerExpRatePct;
+  compact?: boolean;
+}) {
   const palette =
     ratePct === 250
       ? { outer: '#fbbf24', inner: '#fef08a', core: '#f97316', glow: '#fde047' }
@@ -164,7 +170,11 @@ function ServerExpCrystalIcon({ ratePct }: { ratePct: ServerExpRatePct }) {
   return (
     <svg
       viewBox="0 0 36 36"
-      className="h-6 w-6 shrink-0 drop-shadow-[0_2px_6px_rgba(0,0,0,0.75)] sm:h-7 sm:w-7"
+      className={
+        compact
+          ? 'h-[18px] w-[18px] shrink-0 drop-shadow-[0_2px_4px_rgba(0,0,0,0.75)] sm:h-5 sm:w-5'
+          : 'h-6 w-6 shrink-0 drop-shadow-[0_2px_6px_rgba(0,0,0,0.75)] sm:h-7 sm:w-7'
+      }
       aria-hidden="true"
     >
       <defs>
@@ -678,28 +688,28 @@ export const BottomHudDock = memo(function BottomHudDock({
               aria-expanded={channelPopoverOpen}
               aria-label={`Canal atual: CH ${currentChannelId} (${activeChannelCount} jogadores)`}
               title={`Canal atual: CH ${currentChannelId} — Clique para trocar de canal`}
-              className={`group relative flex min-h-[32px] items-center gap-1.5 rounded-xl border-2 px-2 py-1 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 sm:min-h-[36px] sm:gap-2 sm:rounded-2xl sm:px-2.5 ${
+              className={`group relative flex min-h-[32px] w-[80px] items-center justify-center gap-1 rounded-xl border-2 px-1.5 py-1 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 sm:min-h-[36px] sm:w-[98px] sm:gap-1.5 sm:rounded-2xl sm:px-2 ${
                 channelPopoverOpen
                   ? 'border-amber-300 bg-gradient-to-b from-[#134ec2]/95 via-[#082a75]/95 to-[#031238]/95 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.45)]'
                   : `${activeChannelStatusStyle.border} bg-gradient-to-b from-[#0b388f]/95 via-[#061d52]/95 to-[#030e2c]/95 text-cyan-100 shadow-[0_4px_14px_rgba(0,12,48,0.8),0_0_10px_rgba(56,214,255,0.28)] hover:border-cyan-200`
               }`}
             >
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-cyan-300/45 bg-[#04143a]/85 text-cyan-200 sm:h-6 sm:w-6">
-                <Layers className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-md border border-cyan-300/45 bg-[#04143a]/85 text-cyan-200 sm:h-5 sm:w-5">
+                <Layers className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
               </span>
-              <div className="flex flex-col items-start leading-none">
-                <span className="flex items-center gap-1 font-[family-name:var(--font-display)] text-[10.5px] font-black tracking-wide text-white drop-shadow sm:text-[12px]">
+              <div className="flex min-w-0 flex-col items-start leading-none">
+                <span className="flex items-center gap-1 font-[family-name:var(--font-display)] text-[9.5px] font-black tracking-wide text-white drop-shadow sm:text-[11px]">
                   <span>CH {currentChannelId}</span>
                   <span
-                    className={`inline-block h-1.5 w-1.5 rounded-full ${activeChannelStatusStyle.dot}`}
+                    className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${activeChannelStatusStyle.dot}`}
                   />
                 </span>
                 <span
-                  className={`mt-0.5 text-[8px] font-extrabold uppercase tracking-wider tabular-nums ${activeChannelStatusStyle.text}`}
+                  className={`mt-0.5 max-w-full truncate text-[7.5px] font-extrabold uppercase tracking-wider tabular-nums sm:text-[8px] ${activeChannelStatusStyle.text}`}
                 >
                   {channelSwitching
-                    ? 'Trocando...'
-                    : `${activeChannelStatusStyle.label} · ${activeChannelCount}/${CHANNEL_HARD_CAPACITY}`}
+                    ? 'Indo...'
+                    : `${activeChannelCount}/${CHANNEL_HARD_CAPACITY}`}
                 </span>
               </div>
             </button>
@@ -819,7 +829,7 @@ export const BottomHudDock = memo(function BottomHudDock({
                   ? `EXP do Servidor: ${serverExpRatePct}% (Clique para alterar como GM)`
                   : `EXP do Servidor: ${serverExpRatePct}%`
             }
-            className={`group relative flex min-h-[36px] items-center gap-1.5 rounded-xl border-2 px-2 py-1 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 sm:min-h-[40px] sm:gap-2 sm:rounded-2xl sm:px-2.5 ${
+            className={`group relative flex min-h-[34px] w-[80px] items-center justify-center gap-1 rounded-xl border-2 px-1.5 py-1 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 sm:min-h-[40px] sm:w-[98px] sm:gap-1.5 sm:rounded-2xl sm:px-2 ${
               xpBoostActivePct > 0 || serverExpRatePct === 250
                 ? 'border-amber-300 bg-gradient-to-b from-[#92400e]/95 via-[#451a03]/95 to-[#1c0a00]/95 text-amber-100 shadow-[0_0_20px_rgba(251,191,36,0.6)]'
                 : serverExpRatePct === 200
@@ -829,19 +839,17 @@ export const BottomHudDock = memo(function BottomHudDock({
                     : 'border-cyan-300/80 bg-gradient-to-b from-[#0c3f9e]/95 via-[#06205a]/95 to-[#031033]/95 text-cyan-100 shadow-[0_4px_16px_rgba(0,12,48,0.8),0_0_12px_rgba(56,214,255,0.3)] hover:border-cyan-200'
             }`}
           >
-            <ServerExpCrystalIcon ratePct={serverExpRatePct} />
-            <div className="flex flex-col items-start leading-none">
-              <span className="font-[family-name:var(--font-display)] text-[11px] font-black tabular-nums tracking-wide text-white drop-shadow sm:text-[12.5px]">
-                {totalBattleExpPct}% EXP
+            <ServerExpCrystalIcon ratePct={serverExpRatePct} compact />
+            <div className="flex min-w-0 flex-col items-start leading-none">
+              <span className="truncate font-[family-name:var(--font-display)] text-[9.5px] font-black tabular-nums tracking-tight text-white drop-shadow sm:text-[11px]">
+                {totalBattleExpPct}%
               </span>
-              <span className="mt-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-cyan-200/90">
+              <span className="mt-0.5 max-w-full truncate text-[7.5px] font-extrabold uppercase tracking-wider text-cyan-200/90 sm:text-[8px]">
                 {xpBoostRemainingLabel
-                  ? `⚡ Boost ${xpBoostRemainingLabel}`
+                  ? `⚡${xpBoostRemainingLabel}`
                   : guildExpBonusPct > 0
-                    ? `+${guildExpBonusPct}% Guild`
-                    : serverExpRatePct > 100
-                      ? 'Evento'
-                      : 'Servidor'}
+                    ? `+${guildExpBonusPct}%G`
+                    : 'EXP'}
               </span>
             </div>
           </button>
@@ -857,7 +865,7 @@ export const BottomHudDock = memo(function BottomHudDock({
           }}
           aria-expanded={menuOpen}
           aria-label={menuOpen ? 'Fechar Menu do Jogo' : 'Abrir Menu do Jogo'}
-          className={`pointer-events-auto relative flex min-h-[40px] items-center gap-1.5 rounded-xl border-2 px-2.5 py-1.5 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 sm:min-h-[48px] sm:gap-2 sm:rounded-2xl sm:px-3.5 sm:py-2 ${
+          className={`pointer-events-auto relative flex min-h-[40px] w-[80px] items-center justify-center gap-1.5 rounded-xl border-2 px-2 py-1.5 transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 sm:min-h-[48px] sm:w-[98px] sm:gap-2 sm:rounded-2xl sm:px-3 sm:py-2 ${
             eggCollectedPulse
               ? 'scale-110 border-amber-300 bg-gradient-to-b from-[#d97706] via-[#0e48b8] to-[#051b54] text-amber-100 shadow-[0_0_28px_rgba(253,224,71,0.92),0_0_14px_rgba(56,232,255,0.75)]'
               : menuOpen
@@ -874,20 +882,20 @@ export const BottomHudDock = memo(function BottomHudDock({
           />
 
           <span
-            className={`flex h-6 w-6 items-center justify-center rounded-md border transition-colors sm:h-7 sm:w-7 sm:rounded-lg ${
+            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors sm:h-6 sm:w-6 sm:rounded-lg ${
               menuOpen
                 ? 'border-amber-200/80 bg-amber-400/20 text-amber-200'
                 : 'border-cyan-300/50 bg-[#04143a]/70 text-cyan-200'
             }`}
           >
             {menuOpen ? (
-              <X className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              <X className="h-3 w-3 sm:h-4 sm:w-4" />
             ) : (
-              <LayoutGrid className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              <LayoutGrid className="h-3 w-3 sm:h-4 sm:w-4" />
             )}
           </span>
 
-          <span className="font-[family-name:var(--font-display)] text-[11px] tracking-wider text-white drop-shadow sm:text-[13px]">
+          <span className="font-[family-name:var(--font-display)] text-[10px] tracking-wider text-white drop-shadow sm:text-[12.5px]">
             MENU
           </span>
 

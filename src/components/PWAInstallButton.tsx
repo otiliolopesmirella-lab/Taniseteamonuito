@@ -89,7 +89,7 @@ export function PWAInstallButton({
               </div>
               <div className="min-w-0">
                 <p className="truncate text-xs font-extrabold tracking-wide text-white">
-                  Instalar Digital War no Celular
+                  Instalar DigiLegends no Celular
                 </p>
                 <p className="text-[11px] leading-snug text-sky-100/80">
                   Jogue em tela cheia com acesso rápido pela tela inicial.
@@ -166,7 +166,7 @@ export function PWAInstallButton({
                 </span>
                 <span>
                   Toque em <strong>Adicionar</strong> no canto superior direito
-                  para abrir o Digital War em tela cheia.
+                  para abrir o DigiLegends em tela cheia.
                 </span>
               </li>
             </ol>

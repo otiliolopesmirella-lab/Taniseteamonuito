@@ -17,6 +17,8 @@ import {
   isValidAvatarPhotoDataUrl,
   isValidCoverPhotoDataUrl,
 } from '../utils/avatarPhoto';
+import { ensurePlayerDocBootstrapped } from './cloudSaveService';
+import { isCurrentAuthUserBootstrappedGm } from './gmRoleService';
 
 export const REFERRAL_COMMISSION_RATE = 0.1;
 const PENDING_REFERRAL_STORAGE_KEY = 'digilegends_pending_ref_code_v1';
@@ -74,6 +76,7 @@ export interface ReferralDashboardData {
   invitedPlayers: ReferralClaimRecord[];
   currentMonthKey: string;
   currentMonthLabel: string;
+  errorMessage?: string;
 }
 
 export interface ReferralRankingResult {
@@ -384,6 +387,11 @@ async function runEnsureOwnReferralProfile(
   uid: string,
   input: EnsureReferralProfileInput
 ): Promise<ReferralProfileRecord | null> {
+  const user = auth.currentUser;
+  if (!user || user.uid !== uid || !user.emailVerified) return null;
+
+  await ensurePlayerDocBootstrapped(user);
+
   const currentMonthKey = getCurrentReferralMonthKey();
   const profileRef = doc(db, 'referralProfiles', uid);
   const safeName = sanitizeTamerDisplayName(input.tamerName, 'Tamer');
@@ -394,7 +402,7 @@ async function runEnsureOwnReferralProfile(
   const safeCoverUrl = isValidCoverPhotoDataUrl(input.tamerCoverUrl)
     ? input.tamerCoverUrl
     : null;
-  const safeIsGm = input.isGm === true;
+  const safeIsGm = Boolean(input.isGm === true && isCurrentAuthUserBootstrappedGm());
 
   try {
     const snap = await getDoc(profileRef);
@@ -778,6 +786,18 @@ export async function fetchMyReferralDashboard(
   }
 
   const profile = await ensureOwnReferralProfile(profileInput);
+
+  if (!profile) {
+    return {
+      profile: null,
+      myClaim: null,
+      invitedPlayers: [],
+      currentMonthKey,
+      currentMonthLabel,
+      errorMessage:
+        'Não foi possível gerar seu código de convite no servidor agora. Toque em "Tentar Novamente" ou verifique se as regras do banco estão atualizadas.',
+    };
+  }
 
   let myClaim: ReferralClaimRecord | null = null;
   let invitedPlayers: ReferralClaimRecord[] = [];
