@@ -10231,13 +10231,11 @@ export function TamerWorldCanvas({
             currentMapId={liveSnapshot.mapId}
             currentChannelId={activeChannelId}
             onSwitchChannel={(ch) => handleSwitchChannel(ch)}
-            onAcceptInvite={(invite) => void handleAcceptPartyInvite(invite)}
-            onDeclineInvite={(inviteId) => void handleDeclinePartyInvite(inviteId)}
-            onAcceptGuildInvite={(invite) =>
-              void handleAcceptGuildInvite(invite)
-            }
+            onAcceptInvite={(invite) => handleAcceptPartyInvite(invite)}
+            onDeclineInvite={(inviteId) => handleDeclinePartyInvite(inviteId)}
+            onAcceptGuildInvite={(invite) => handleAcceptGuildInvite(invite)}
             onDeclineGuildInvite={(inviteId) =>
-              void handleDeclineGuildInvite(inviteId)
+              handleDeclineGuildInvite(inviteId)
             }
             onLeaveParty={() => void handleLeaveParty()}
             onKickMember={(targetUid) => void handleKickPartyMember(targetUid)}
@@ -10634,7 +10632,7 @@ export function TamerWorldCanvas({
       )}
 
       {/* LOWER HUD LAYER: Bottom-Left Chat (above GM on mobile so it clears CH without touching Party) + GM Button + Mobile Joystick */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-2 z-[35] flex items-end justify-between gap-2 px-1.5 sm:bottom-3 sm:px-3">
+      <div className="pointer-events-none absolute inset-x-0 bottom-2 z-25 flex items-end justify-between gap-2 px-1.5 sm:bottom-3 sm:px-3">
         {/* Bottom-Left Corner: On mobile -> [Chat] slightly above [GM] above [Joystick]; on desktop -> [GM] above [Chat] */}
         <div className="flex flex-col items-start gap-1.5 sm:gap-2">
           {isGM && (
@@ -10771,6 +10769,15 @@ export function TamerWorldCanvas({
                   senderName: selection.tamerName,
                   isGmSender: isServerGm,
                   text: trimmed,
+                }).then((sentOk) => {
+                  if (!sentOk) {
+                    playDigitalTone('error', soundEnabled);
+                    pushChatMessage(
+                      'party',
+                      'Não foi possível enviar no chat da Party agora. Tente novamente.',
+                      { tone: 'warning' }
+                    );
+                  }
                 });
                 return;
               }
@@ -10908,7 +10915,7 @@ export function TamerWorldCanvas({
       </div>
 
       {/* COMPACT PROFESSIONAL "MENU" BASE BUTTON + SERVER EXP BADGE + DMO 5-CHANNEL SELECTOR */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[38]">
         <BottomHudDock
           activeWindow={activeHudWindow}
           inventoryOpen={inventoryOpen}

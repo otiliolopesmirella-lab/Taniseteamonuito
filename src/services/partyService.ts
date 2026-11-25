@@ -3,6 +3,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   limit,
   onSnapshot,
   orderBy,
@@ -605,23 +606,72 @@ export async function sendPartyInvite(params: {
   }
 
   const user = auth.currentUser;
-  if (!user || !user.emailVerified || user.uid !== senderProfile.uid) {
+  if (!user || !user.emailVerified) {
     return { ok: false, message: 'Conta não verificada para Party online.' };
   }
   await ensurePlayerDocBootstrapped(user);
+  const authSender: PartyMemberRecord = { ...sanitizedSender, uid: user.uid };
+
+  if (targetUid === user.uid) {
+    return {
+      ok: false,
+      message: 'Você não pode convidar a si mesmo para a Party.',
+    };
+  }
 
   let partyId = currentParty?.partyId;
+  if (!partyId) {
+    // Check if the sender already has an active party in Firestore (prevents duplicate/orphan parties on rapid clicks)
+    try {
+      const existingSnap = await getDocs(
+        query(
+          collection(db, 'parties'),
+          where('memberUids', 'array-contains', user.uid),
+          limit(1)
+        )
+      );
+      if (!existingSnap.empty) {
+        const existingDoc = existingSnap.docs[0];
+        const existingParty = parsePartyDoc(
+          existingDoc.id,
+          existingDoc.data() as Record<string, unknown>
+        );
+        if (existingParty.leaderUid !== user.uid) {
+          return {
+            ok: false,
+            message: 'Apenas o líder da Party pode convidar novos jogadores.',
+          };
+        }
+        if (existingParty.memberUids.includes(targetUid)) {
+          return {
+            ok: false,
+            message: `${targetName} já está na sua Party.`,
+          };
+        }
+        if (existingParty.memberUids.length >= MAX_PARTY_MEMBERS) {
+          return {
+            ok: false,
+            message: `Party cheia (${MAX_PARTY_MEMBERS}/${MAX_PARTY_MEMBERS} jogadores).`,
+          };
+        }
+        partyId = existingParty.partyId;
+      }
+    } catch {
+      // Proceed to create a new party if lookup fails
+    }
+  }
+
   if (!partyId) {
     partyId = `party_${user.uid.slice(0, 12)}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
     const partyRef = doc(db, 'parties', partyId);
     try {
       await setDoc(partyRef, {
         partyId,
-        leaderUid: sanitizedSender.uid,
-        leaderName: sanitizedSender.tamerName,
-        memberUids: [sanitizedSender.uid],
+        leaderUid: authSender.uid,
+        leaderName: authSender.tamerName,
+        memberUids: [authSender.uid],
         members: {
-          [sanitizedSender.uid]: sanitizedSender,
+          [authSender.uid]: authSender,
         },
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -644,12 +694,12 @@ export async function sendPartyInvite(params: {
   const invitePayload = {
     inviteId,
     partyId,
-    fromUid: sanitizedSender.uid,
-    fromName: sanitizedSender.tamerName,
-    fromTamerLevel: sanitizedSender.tamerLevel,
-    fromCharacterId: sanitizedSender.characterId,
-    fromPhotoUrl: sanitizedSender.tamerPhotoUrl,
-    fromDigimonFormId: sanitizedSender.digimonFormId,
+    fromUid: authSender.uid,
+    fromName: authSender.tamerName,
+    fromTamerLevel: authSender.tamerLevel,
+    fromCharacterId: authSender.characterId,
+    fromPhotoUrl: authSender.tamerPhotoUrl,
+    fromDigimonFormId: authSender.digimonFormId,
     toUid: targetUid,
     toName: targetName.trim().slice(0, 24) || 'Tamer',
     status: 'pending' as const,
@@ -735,10 +785,42 @@ export async function acceptPartyInvite(params: {
   }
 
   const user = auth.currentUser;
-  if (!user || !user.emailVerified || user.uid !== joinerProfile.uid) {
+  if (!user || !user.emailVerified) {
     return { ok: false, message: 'Sessão não verificada.' };
   }
   await ensurePlayerDocBootstrapped(user);
+  const authJoiner: PartyMemberRecord = { ...sanitizedJoiner, uid: user.uid };
+
+  // Also ensure any stale solo party on Firestore is cleaned up before joining the new party
+  if (!currentParty) {
+    try {
+      const existingSnap = await getDocs(
+        query(
+          collection(db, 'parties'),
+          where('memberUids', 'array-contains', user.uid),
+          limit(1)
+        )
+      );
+      if (!existingSnap.empty) {
+        const existingDoc = existingSnap.docs[0];
+        if (existingDoc.id !== invite.partyId) {
+          const existingParty = parsePartyDoc(
+            existingDoc.id,
+            existingDoc.data() as Record<string, unknown>
+          );
+          if (existingParty.memberUids.length > 1) {
+            return {
+              ok: false,
+              message: 'Saia da sua Party atual antes de aceitar outro convite.',
+            };
+          }
+          await deleteDoc(doc(db, 'parties', existingDoc.id)).catch(() => undefined);
+        }
+      }
+    } catch {
+      // Non-fatal pre-check
+    }
+  }
 
   const partyRef = doc(db, 'parties', invite.partyId);
   const inviteRef = doc(db, 'partyInvites', invite.inviteId);
@@ -751,9 +833,15 @@ export async function acceptPartyInvite(params: {
       }
       const data = partySnap.data() as Record<string, unknown>;
       const existingUids = Array.isArray(data.memberUids)
-        ? (data.memberUids as string[])
+        ? Array.from(
+            new Set(
+              (data.memberUids as unknown[]).filter(
+                (id): id is string => typeof id === 'string' && id.length > 0
+              )
+            )
+          )
         : [];
-      if (existingUids.includes(sanitizedJoiner.uid)) {
+      if (existingUids.includes(authJoiner.uid)) {
         return { ok: true, reason: 'Já na Party.' };
       }
       if (existingUids.length >= MAX_PARTY_MEMBERS) {
@@ -767,10 +855,10 @@ export async function acceptPartyInvite(params: {
           ? (data.members as Record<string, unknown>)
           : {};
       tx.update(partyRef, {
-        memberUids: [...existingUids, sanitizedJoiner.uid],
+        memberUids: [...existingUids, authJoiner.uid],
         members: {
           ...prevMembers,
-          [sanitizedJoiner.uid]: sanitizedJoiner,
+          [authJoiner.uid]: authJoiner,
         },
         updatedAt: serverTimestamp(),
       });
@@ -794,10 +882,18 @@ export async function acceptPartyInvite(params: {
       message: `Você entrou na Party de ${invite.fromName}!`,
     };
   } catch (error) {
+    const rawMsg = error instanceof Error ? error.message : String(error);
     try {
       handleFirestoreError(error, OperationType.WRITE, `parties/${invite.partyId}`);
     } catch {
       // Logged
+    }
+    if (/permission|denied/i.test(rawMsg)) {
+      return {
+        ok: false,
+        message:
+          'O banco recusou a entrada na Party. Publique o novo firestore.rules no Firebase Console.',
+      };
     }
     return {
       ok: false,
@@ -955,14 +1051,14 @@ export async function publishPartyXpEvent(params: {
 }): Promise<void> {
   if (!params.partyId || !isFirestoreVerified()) return;
   const user = auth.currentUser;
-  if (!user || !user.emailVerified || user.uid !== params.killerUid) return;
+  if (!user || !user.emailVerified) return;
 
   const eventId = `pxp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
   const path = `parties/${params.partyId}/xpEvents/${eventId}`;
   try {
     await setDoc(doc(db, 'parties', params.partyId, 'xpEvents', eventId), {
       eventId,
-      killerUid: params.killerUid,
+      killerUid: user.uid,
       killerName: params.killerName.trim().slice(0, 24) || 'Aliado',
       mapId: safeMapId(params.mapId),
       mobName: params.mobName.trim().slice(0, 32) || 'Digimon',
@@ -991,14 +1087,14 @@ export async function sendPartyChatMessage(params: {
   if (!isFirestoreVerified()) return true;
 
   const user = auth.currentUser;
-  if (!user || !user.emailVerified || user.uid !== params.senderUid) return false;
+  if (!user || !user.emailVerified) return false;
 
   const messageId = `pmsg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
   const path = `parties/${params.partyId}/messages/${messageId}`;
   try {
     await setDoc(doc(db, 'parties', params.partyId, 'messages', messageId), {
       messageId,
-      senderUid: params.senderUid,
+      senderUid: user.uid,
       senderName: params.senderName.trim().slice(0, 24) || 'Tamer',
       isGmSender: Boolean(params.isGmSender),
       text: clean,

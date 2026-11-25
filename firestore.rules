@@ -1118,10 +1118,12 @@ service cloud.firestore {
     // =========================================================================
     match /guilds/{guildId} {
       allow get: if isVerified() && isValidId(guildId) && (
-        existing().recruiting == true ||
-        request.auth.uid in existing().memberUids ||
+        isAdmin() ||
         exists(/databases/$(database)/documents/guildInvites/$('ginv_' + guildId + '_' + request.auth.uid)) ||
-        isAdmin()
+        (resource != null && (
+          existing().recruiting == true ||
+          request.auth.uid in existing().memberUids
+        ))
       );
       allow list: if isVerified() && (
         existing().recruiting == true ||
@@ -1347,7 +1349,9 @@ service cloud.firestore {
     // =========================================================================
     match /parties/{partyId} {
       allow get: if isVerified() && isValidId(partyId) && (
-        request.auth.uid in existing().memberUids || isAdmin()
+        isAdmin() ||
+        exists(/databases/$(database)/documents/partyInvites/$('pinv_' + partyId + '_' + request.auth.uid)) ||
+        (resource != null && request.auth.uid in existing().memberUids)
       );
       allow list: if isVerified() && request.auth.uid in existing().memberUids;
 

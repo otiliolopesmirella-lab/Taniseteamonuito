@@ -305,7 +305,7 @@ export const ChatHudPanel = memo(function ChatHudPanel({
           {/* Message Feed */}
           <div
             ref={activeListRef}
-            className="dmo-chat-bg h-[84px] space-y-1 overflow-y-auto px-2.5 py-1.5 text-[11px] leading-snug md:h-[136px] md:py-2"
+            className="dmo-chat-bg h-[144px] space-y-1 overflow-y-auto px-2.5 py-2 text-[11px] leading-snug md:h-[148px]"
           >
             {visibleMessages.length === 0 ? (
               <p className="py-2 text-[10.5px] leading-relaxed text-cyan-200/75">
@@ -470,7 +470,7 @@ export const ChatHudPanel = memo(function ChatHudPanel({
           <div
             onPointerDown={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
-            className="pointer-events-auto fixed inset-x-2 bottom-2 z-[95] md:hidden"
+            className="pointer-events-auto fixed inset-x-2 bottom-4 z-[95] md:hidden"
           >
             {renderChatBox(true)}
           </div>,
