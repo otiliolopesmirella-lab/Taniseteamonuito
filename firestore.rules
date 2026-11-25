@@ -68,6 +68,55 @@ service cloud.firestore {
           newData.hudState.dCoin <= oldData.hudState.dCoin);
     }
 
+    function canPreservePlayerProgress(newData, oldData) {
+      return isAdmin() ||
+        !('hudState' in oldData) ||
+        oldData.hudState == null ||
+        !(oldData.hudState is map) ||
+        (
+          newData.hudState != null &&
+          newData.hudState is map &&
+          (
+            !('tamer' in oldData.hudState) ||
+            !(oldData.hudState.tamer is map) ||
+            !('level' in oldData.hudState.tamer) ||
+            !(oldData.hudState.tamer.level is number) ||
+            (
+              'tamer' in newData.hudState &&
+              newData.hudState.tamer is map &&
+              'level' in newData.hudState.tamer &&
+              newData.hudState.tamer.level is number &&
+              newData.hudState.tamer.level >= oldData.hudState.tamer.level
+            )
+          ) &&
+          (
+            !('defeatedEnemiesTotal' in oldData.hudState) ||
+            !(oldData.hudState.defeatedEnemiesTotal is number) ||
+            (
+              'defeatedEnemiesTotal' in newData.hudState &&
+              newData.hudState.defeatedEnemiesTotal is number &&
+              newData.hudState.defeatedEnemiesTotal >= oldData.hudState.defeatedEnemiesTotal
+            )
+          )
+        );
+    }
+
+    function canPreserveRankingProgress(newData, oldData) {
+      return isAdmin() ||
+        (
+          (
+            !('tamerLevel' in oldData) ||
+            !(oldData.tamerLevel is number) ||
+            (newData.tamerLevel is number && newData.tamerLevel >= oldData.tamerLevel)
+          ) &&
+          (
+            !('defeatedEnemiesTotal' in oldData) ||
+            !(oldData.defeatedEnemiesTotal is number) ||
+            (newData.defeatedEnemiesTotal is number && newData.defeatedEnemiesTotal >= oldData.defeatedEnemiesTotal)
+          )
+        );
+    }
+
     function canCreatePlayerAutoFarmVip(data) {
       return isAdmin() ||
         data.hudState == null ||
@@ -872,6 +921,7 @@ service cloud.firestore {
         isValidPlayerSave(incoming(), userId) &&
         canUpdatePlayerDCoin(incoming(), existing()) &&
         canUpdatePlayerAutoFarmVip(incoming(), existing()) &&
+        canPreservePlayerProgress(incoming(), existing()) &&
         (!('ownerUid' in existing()) || existing().ownerUid != userId || incoming().ownerUid == existing().ownerUid) &&
         ((('createdAt' in existing() && existing().createdAt is timestamp) && incoming().createdAt == existing().createdAt) ||
           (!('createdAt' in existing() && existing().createdAt is timestamp) && incoming().createdAt == request.time)) &&
@@ -1262,6 +1312,7 @@ service cloud.firestore {
       allow update: if isVerifiedOwner(userId) &&
         isValidId(userId) &&
         isValidPlayerRanking(incoming(), userId) &&
+        canPreserveRankingProgress(incoming(), existing()) &&
         (!('ownerUid' in existing()) || existing().ownerUid != userId || incoming().ownerUid == existing().ownerUid) &&
         incoming().updatedAt == request.time &&
         (!incoming().isGm || isAdmin()) &&

@@ -1149,7 +1149,7 @@ async function updatePlayerDocWithSelfHeal(
     const playerRef = doc(db, 'players', user.uid);
 
     // STRICT ANTI-REGRESSION GUARD:
-    // Never allow a blank Lv.1 local fallback to overwrite an existing progressed player in Firestore!
+    // Never allow a blank Lv.1 fallback OR any stale client state to lower Tamer level or kill count in Firestore!
     let effectiveHudPatch: CloudHudState | undefined = patch.hudState;
     if (effectiveHudPatch !== undefined) {
       let highWater = cloudProgressHighWaterByUid.get(user.uid) ?? null;
@@ -1177,13 +1177,11 @@ async function updatePlayerDocWithSelfHeal(
         }
       } else if (
         highWater &&
-        effectiveHudPatch.tamer.level <= 1 &&
-        highWater.tamerLevel > 1 &&
-        effectiveHudPatch.digimon.level <= 1 &&
-        highWater.digimonLevel > 1
+        (effectiveHudPatch.tamer.level < highWater.tamerLevel ||
+          effectiveHudPatch.defeatedEnemiesTotal < highWater.defeatedEnemiesTotal)
       ) {
         console.warn(
-          `[cloudSave] Blocked accidental level-1 downgrade for ${user.uid} (server high-water Tamer Lv.${highWater.tamerLevel} / Digimon Lv.${highWater.digimonLevel}).`
+          `[cloudSave] Blocked monotonic progress downgrade for ${user.uid} (incoming Tamer Lv.${effectiveHudPatch.tamer.level}, kills ${effectiveHudPatch.defeatedEnemiesTotal} vs high-water Tamer Lv.${highWater.tamerLevel}, kills ${highWater.defeatedEnemiesTotal}).`
         );
         effectiveHudPatch = undefined;
       }
@@ -1285,7 +1283,7 @@ async function updatePlayerDocWithSelfHeal(
             tamerSelection: patch.tamerSelection ?? null,
             starterDigimon: patch.starterDigimon ?? null,
             adventureProgress: patch.adventureProgress ?? null,
-            hudState: patch.hudState ?? null,
+            hudState: effectiveHudPatch ?? null,
             createdAt: ts,
             updatedAt: ts,
           });
@@ -1337,8 +1335,12 @@ async function updatePlayerDocWithSelfHeal(
         const wouldRegressInSelfHeal = Boolean(
           effectiveHudPatch &&
             existingHud &&
-            hasMeaningfulProgress(existingProgress) &&
-            isBlankLevelOneState(effectiveHudPatch)
+            existingProgress &&
+            ((hasMeaningfulProgress(existingProgress) &&
+              isBlankLevelOneState(effectiveHudPatch)) ||
+              effectiveHudPatch.tamer.level < existingProgress.tamerLevel ||
+              effectiveHudPatch.defeatedEnemiesTotal <
+                existingProgress.defeatedEnemiesTotal)
         );
         const mergedHudState: CloudHudState | null =
           effectiveHudPatch && !wouldRegressInSelfHeal
