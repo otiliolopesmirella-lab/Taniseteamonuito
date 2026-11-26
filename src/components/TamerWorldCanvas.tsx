@@ -3371,7 +3371,7 @@ export function TamerWorldCanvas({
             ) {
               pushChatMessage(
                 'system',
-                'Aviso: o banco recusou a atualização do Canal (CH). Atualize as regras do Firestore do servidor para liberar channelId.',
+                'Aviso: o banco recusou a sincronização do Canal (CH) ou forma atual. Atualize as regras do Firestore do servidor para liberar channelId e os novos Digimons.',
                 { tone: 'warning' }
               );
             }
