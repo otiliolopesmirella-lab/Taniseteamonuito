@@ -476,7 +476,11 @@ export function DigimonHatchShowcaseModal({
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
+              <div
+                className={`grid grid-cols-2 gap-2.5 sm:gap-3 ${
+                  evolutionChain.length === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-4'
+                }`}
+              >
                 {evolutionChain.map((evoForm, idx) => {
                   const isVisible = idx < revealedEvoCount;
                   const isBaseForm = evoForm.id === form.id;

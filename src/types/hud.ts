@@ -1,3 +1,4 @@
+import type { TamerId } from './character';
 import type { DigimonClassification } from './classification';
 import type {
   DigimonFormId,
@@ -283,6 +284,7 @@ export interface LiveWorldHudSnapshot {
   } | null;
   minimapEnemies: Array<{
     id: string;
+    species: string;
     x: number;
     y: number;
     alive: boolean;
@@ -291,6 +293,7 @@ export interface LiveWorldHudSnapshot {
   minimapPlayers?: Array<{
     uid: string;
     tamerName: string;
+    characterId?: TamerId;
     x: number;
     y: number;
     isGm: boolean;

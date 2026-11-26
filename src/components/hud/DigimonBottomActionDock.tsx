@@ -11,8 +11,10 @@ import {
 } from '../../services/hudGameService';
 import {
   getDigimonFormProfile,
+  resolveStarterIdForForm,
   type DigimonFormId,
   type DigimonFormProfile,
+  type StarterDigimonId,
 } from '../../types/digimon';
 import type {
   DigimonRuntimeStats,
@@ -27,6 +29,7 @@ import {
 
 interface DigimonBottomActionDockProps {
   digimon: DigimonFormProfile;
+  starterId?: StarterDigimonId;
   stats: DigimonRuntimeStats;
   snapshot: LiveWorldHudSnapshot;
   ownedEvoluters?: number;
@@ -59,6 +62,7 @@ const STAGE_SHORT_TAG: Record<string, string> = {
  */
 export const DigimonBottomActionDock = memo(function DigimonBottomActionDock({
   digimon,
+  starterId,
   stats,
   snapshot,
   ownedEvoluters = 0,
@@ -184,7 +188,8 @@ export const DigimonBottomActionDock = memo(function DigimonBottomActionDock({
     },
   ];
 
-  const evoChain = DIGIMON_EVOLUTION_CHAINS[digimon.starterId] ?? [];
+  const effectiveStarterId = resolveStarterIdForForm(starterId, digimon.id);
+  const evoChain = DIGIMON_EVOLUTION_CHAINS[effectiveStarterId] ?? [];
 
   const consumableQuickSlots = [
     {
@@ -581,7 +586,7 @@ export const DigimonBottomActionDock = memo(function DigimonBottomActionDock({
             );
             const evoluterUnlocked = stepFormId
               ? isEvolutionSlotUnlockedByEvoluter(
-                  digimon.starterId,
+                  effectiveStarterId,
                   stepFormId,
                   stats
                 )

@@ -20,7 +20,10 @@ export type StarterDigimonId =
   | 'renamon'
   | 'monodramon'
   | 'biyomon'
-  | 'kunemon';
+  | 'kunemon'
+  | 'salamon'
+  | 'patamon'
+  | 'starmon';
 
 export type DigimonFormId =
   | 'agumon'
@@ -102,7 +105,17 @@ export type DigimonFormId =
   | 'kunemon'
   | 'flymon'
   | 'okuwamon'
-  | 'grankuwagamon';
+  | 'grankuwagamon'
+  | 'salamon'
+  | 'gatomon'
+  | 'angewomon'
+  | 'magnadramon'
+  | 'patamon'
+  | 'angemon'
+  | 'magnaangemon'
+  | 'seraphimon'
+  | 'starmon'
+  | 'superstarmon';
 
 export type DigimonEvolutionStage = 'Rookie' | 'Champion' | 'Ultimate' | 'Mega';
 
@@ -1271,6 +1284,136 @@ const GRANKUWAGAMON_THEME: StarterDigimonTheme = {
   cardBgGradient:
     'linear-gradient(180deg, rgba(59,7,100,0.66) 0%, rgba(136,19,55,0.38) 48%, rgba(10,6,16,0.98) 100%)',
   badgeBgClass: 'bg-purple-500/30 text-purple-100 border-rose-400/80',
+};
+
+const SALAMON_THEME: StarterDigimonTheme = {
+  accentHex: '#fef08a',
+  secondaryHex: '#f472b6',
+  glowRgba: 'rgba(254, 240, 138, 0.92)',
+  borderClass: 'border-amber-200',
+  selectedGlowShadow: '0 0 28px rgba(254, 240, 138, 0.9)',
+  pedestalGradient:
+    'radial-gradient(ellipse at center, rgba(254,249,195,0.92) 0%, rgba(244,114,182,0.52) 52%, rgba(250,204,21,0.18) 78%, transparent 100%)',
+  cardBgGradient:
+    'linear-gradient(180deg, rgba(131,24,67,0.45) 0%, rgba(113,63,18,0.28) 50%, rgba(6,16,38,0.95) 100%)',
+  badgeBgClass: 'bg-amber-300/25 text-amber-100 border-pink-300/75',
+};
+
+const GATOMON_THEME: StarterDigimonTheme = {
+  accentHex: '#fde047',
+  secondaryHex: '#c084fc',
+  glowRgba: 'rgba(253, 224, 71, 0.94)',
+  borderClass: 'border-yellow-300',
+  selectedGlowShadow: '0 0 32px rgba(253, 224, 71, 0.92)',
+  pedestalGradient:
+    'radial-gradient(ellipse at center, rgba(254,240,138,0.94) 0%, rgba(168,85,247,0.58) 50%, rgba(250,204,21,0.2) 78%, transparent 100%)',
+  cardBgGradient:
+    'linear-gradient(180deg, rgba(88,28,135,0.5) 0%, rgba(133,77,14,0.3) 50%, rgba(6,16,38,0.96) 100%)',
+  badgeBgClass: 'bg-yellow-400/25 text-yellow-100 border-purple-300/75',
+};
+
+const ANGEWOMON_THEME: StarterDigimonTheme = {
+  accentHex: '#facc15',
+  secondaryHex: '#f472b6',
+  glowRgba: 'rgba(250, 204, 21, 0.96)',
+  borderClass: 'border-amber-300',
+  selectedGlowShadow: '0 0 36px rgba(250, 204, 21, 0.95)',
+  pedestalGradient:
+    'radial-gradient(ellipse at center, rgba(255,255,255,0.96) 0%, rgba(244,114,182,0.68) 48%, rgba(250,204,21,0.24) 78%, transparent 100%)',
+  cardBgGradient:
+    'linear-gradient(180deg, rgba(157,23,77,0.56) 0%, rgba(161,98,7,0.34) 48%, rgba(8,14,36,0.97) 100%)',
+  badgeBgClass: 'bg-pink-400/25 text-amber-100 border-amber-300/80',
+};
+
+const MAGNADRAMON_THEME: StarterDigimonTheme = {
+  accentHex: '#f472b6',
+  secondaryHex: '#fde047',
+  glowRgba: 'rgba(244, 114, 182, 0.97)',
+  borderClass: 'border-pink-300',
+  selectedGlowShadow: '0 0 40px rgba(244, 114, 182, 0.97)',
+  pedestalGradient:
+    'radial-gradient(ellipse at center, rgba(253,242,248,0.97) 0%, rgba(236,72,153,0.74) 48%, rgba(250,204,21,0.28) 78%, transparent 100%)',
+  cardBgGradient:
+    'linear-gradient(180deg, rgba(157,23,77,0.66) 0%, rgba(161,98,7,0.36) 48%, rgba(12,8,24,0.98) 100%)',
+  badgeBgClass: 'bg-pink-500/30 text-pink-100 border-amber-300/80',
+};
+
+const PATAMON_THEME: StarterDigimonTheme = {
+  accentHex: '#fb923c',
+  secondaryHex: '#38bdf8',
+  glowRgba: 'rgba(251, 146, 60, 0.92)',
+  borderClass: 'border-orange-300',
+  selectedGlowShadow: '0 0 28px rgba(251, 146, 60, 0.9)',
+  pedestalGradient:
+    'radial-gradient(ellipse at center, rgba(255,237,213,0.94) 0%, rgba(56,189,248,0.5) 52%, rgba(251,146,60,0.18) 78%, transparent 100%)',
+  cardBgGradient:
+    'linear-gradient(180deg, rgba(154,52,18,0.46) 0%, rgba(14,116,144,0.28) 50%, rgba(6,16,38,0.95) 100%)',
+  badgeBgClass: 'bg-orange-400/25 text-orange-100 border-sky-300/75',
+};
+
+const ANGEMON_THEME: StarterDigimonTheme = {
+  accentHex: '#38bdf8',
+  secondaryHex: '#facc15',
+  glowRgba: 'rgba(56, 189, 248, 0.95)',
+  borderClass: 'border-sky-300',
+  selectedGlowShadow: '0 0 32px rgba(56, 189, 248, 0.92)',
+  pedestalGradient:
+    'radial-gradient(ellipse at center, rgba(224,242,254,0.96) 0%, rgba(56,189,248,0.64) 50%, rgba(250,204,21,0.22) 78%, transparent 100%)',
+  cardBgGradient:
+    'linear-gradient(180deg, rgba(12,74,110,0.56) 0%, rgba(133,77,14,0.28) 50%, rgba(6,16,38,0.96) 100%)',
+  badgeBgClass: 'bg-sky-400/25 text-sky-100 border-amber-300/75',
+};
+
+const MAGNAANGEMON_THEME: StarterDigimonTheme = {
+  accentHex: '#c084fc',
+  secondaryHex: '#fde047',
+  glowRgba: 'rgba(192, 132, 252, 0.96)',
+  borderClass: 'border-purple-300',
+  selectedGlowShadow: '0 0 36px rgba(192, 132, 252, 0.95)',
+  pedestalGradient:
+    'radial-gradient(ellipse at center, rgba(243,232,255,0.96) 0%, rgba(168,85,247,0.68) 48%, rgba(250,204,21,0.24) 78%, transparent 100%)',
+  cardBgGradient:
+    'linear-gradient(180deg, rgba(88,28,135,0.6) 0%, rgba(133,77,14,0.32) 48%, rgba(8,14,36,0.97) 100%)',
+  badgeBgClass: 'bg-purple-400/25 text-purple-100 border-amber-300/80',
+};
+
+const SERAPHIMON_THEME: StarterDigimonTheme = {
+  accentHex: '#60a5fa',
+  secondaryHex: '#facc15',
+  glowRgba: 'rgba(96, 165, 250, 0.98)',
+  borderClass: 'border-blue-300',
+  selectedGlowShadow: '0 0 42px rgba(96, 165, 250, 0.98)',
+  pedestalGradient:
+    'radial-gradient(ellipse at center, rgba(255,255,255,0.98) 0%, rgba(59,130,246,0.74) 48%, rgba(250,204,21,0.3) 78%, transparent 100%)',
+  cardBgGradient:
+    'linear-gradient(180deg, rgba(30,58,138,0.68) 0%, rgba(161,98,7,0.36) 48%, rgba(6,12,32,0.98) 100%)',
+  badgeBgClass: 'bg-blue-500/30 text-blue-100 border-amber-300/85',
+};
+
+const STARMON_THEME: StarterDigimonTheme = {
+  accentHex: '#facc15',
+  secondaryHex: '#38bdf8',
+  glowRgba: 'rgba(250, 204, 21, 0.94)',
+  borderClass: 'border-yellow-300',
+  selectedGlowShadow: '0 0 30px rgba(250, 204, 21, 0.92)',
+  pedestalGradient:
+    'radial-gradient(ellipse at center, rgba(254,249,195,0.95) 0%, rgba(56,189,248,0.54) 52%, rgba(250,204,21,0.2) 78%, transparent 100%)',
+  cardBgGradient:
+    'linear-gradient(180deg, rgba(133,77,14,0.48) 0%, rgba(12,74,110,0.34) 50%, rgba(6,16,38,0.96) 100%)',
+  badgeBgClass: 'bg-yellow-400/25 text-yellow-100 border-sky-300/75',
+};
+
+const SUPERSTARMON_THEME: StarterDigimonTheme = {
+  accentHex: '#fde047',
+  secondaryHex: '#ef4444',
+  glowRgba: 'rgba(253, 224, 71, 0.96)',
+  borderClass: 'border-amber-300',
+  selectedGlowShadow: '0 0 36px rgba(253, 224, 71, 0.96)',
+  pedestalGradient:
+    'radial-gradient(ellipse at center, rgba(255,255,255,0.96) 0%, rgba(250,204,21,0.7) 48%, rgba(239,68,68,0.26) 78%, transparent 100%)',
+  cardBgGradient:
+    'linear-gradient(180deg, rgba(161,98,7,0.6) 0%, rgba(153,27,27,0.34) 48%, rgba(8,14,36,0.97) 100%)',
+  badgeBgClass: 'bg-amber-400/30 text-amber-100 border-red-300/80',
 };
 
 export const STARTER_DIGIMONS: readonly StarterDigimonProfile[] = [
@@ -5639,10 +5782,553 @@ export const DIGIMON_FORM_PROFILES: Record<DigimonFormId, DigimonFormProfile> = 
     },
     theme: GRANKUWAGAMON_THEME,
   },
+  // 21. Salamon Line (Gatomon / Angewomon / Magnadramon)
+  salamon: {
+    id: 'salamon',
+    starterId: 'salamon',
+    name: 'SALAMON',
+    stage: 'Rookie',
+    unlockLevel: 1,
+    element: 'Velocidade',
+    portraitUrl: '/assets/digimon/salamon.png?v=holy1',
+    special1Name: 'Uivo do Filhote',
+    special2Name: 'Soco Sagrado',
+    basicHitIntervalSec: 0.94,
+    special1CooldownSec: 3.2,
+    special2CooldownSec: 5.5,
+    hpMult: 0.96,
+    dsMult: 1.12,
+    atkMult: 1.0,
+    defMult: 1.04,
+    spdMult: 1.08,
+    skill1PowerMult: 1.48,
+    skill2PowerMult: 2.2,
+    baseStats: {
+      hpBase: 485,
+      hpPerLv: 26.2,
+      dsBase: 325,
+      dsPerLv: 15.5,
+      atBase: 66,
+      atPerLv: 4.8,
+      deBase: 24,
+      dePerLv: 2.2,
+      asSec: 1.88,
+      ctBase: 5.2,
+      ctPerLv: 0.08,
+      htBase: 110,
+      htPerLv: 4.15,
+      evBase: 5.2,
+      evPerLv: 0.08,
+      blBase: 2.8,
+      blPerLv: 0.05,
+      skill1Ratio: 1.48,
+      skill2Ratio: 2.2,
+    },
+    worldScale: 0.52,
+    worldDimensions: {
+      heightPx: 56,
+      widthPx: 58,
+      shadowRx: 17,
+      shadowRy: 6.0,
+      nameplateOffsetY: 66,
+      attackPoseHeight: 60,
+      followGapBonus: 0,
+      canonicalHeightMeters: 0.8,
+    },
+    theme: SALAMON_THEME,
+  },
+  gatomon: {
+    id: 'gatomon',
+    starterId: 'salamon',
+    name: 'GATOMON',
+    stage: 'Champion',
+    unlockLevel: 15,
+    element: 'Velocidade',
+    portraitUrl: '/assets/digimon/gatomon.png?v=holy1',
+    special1Name: 'Pata Relâmpago',
+    special2Name: 'Olhos de Gato',
+    basicHitIntervalSec: 0.86,
+    special1CooldownSec: 4.0,
+    special2CooldownSec: 6.5,
+    hpMult: 1.48,
+    dsMult: 1.62,
+    atkMult: 1.64,
+    defMult: 1.5,
+    spdMult: 1.24,
+    skill1PowerMult: 1.8,
+    skill2PowerMult: 2.68,
+    baseStats: {
+      hpBase: 1090,
+      hpPerLv: 38.5,
+      dsBase: 550,
+      dsPerLv: 19.8,
+      atBase: 142,
+      atPerLv: 8.0,
+      deBase: 48,
+      dePerLv: 3.35,
+      asSec: 1.72,
+      ctBase: 7.0,
+      ctPerLv: 0.09,
+      htBase: 158,
+      htPerLv: 4.85,
+      evBase: 7.0,
+      evPerLv: 0.09,
+      blBase: 3.6,
+      blPerLv: 0.06,
+      skill1Ratio: 1.8,
+      skill2Ratio: 2.68,
+    },
+    worldScale: 0.66,
+    worldDimensions: {
+      heightPx: 74,
+      widthPx: 68,
+      shadowRx: 20,
+      shadowRy: 7.2,
+      nameplateOffsetY: 86,
+      attackPoseHeight: 78,
+      followGapBonus: 4,
+      canonicalHeightMeters: 1.15,
+    },
+    theme: GATOMON_THEME,
+  },
+  angewomon: {
+    id: 'angewomon',
+    starterId: 'salamon',
+    name: 'ANGEWOMON',
+    stage: 'Ultimate',
+    unlockLevel: 30,
+    element: 'Velocidade',
+    portraitUrl: '/assets/digimon/angewomon.png?v=holy1',
+    special1Name: 'Flecha Celestial',
+    special2Name: 'Encanto dos Céus',
+    basicHitIntervalSec: 0.84,
+    special1CooldownSec: 4.8,
+    special2CooldownSec: 8.0,
+    hpMult: 2.0,
+    dsMult: 2.18,
+    atkMult: 2.22,
+    defMult: 2.02,
+    spdMult: 1.32,
+    skill1PowerMult: 2.08,
+    skill2PowerMult: 3.04,
+    baseStats: {
+      hpBase: 1950,
+      hpPerLv: 52,
+      dsBase: 940,
+      dsPerLv: 25.5,
+      atBase: 254,
+      atPerLv: 11.1,
+      deBase: 86,
+      dePerLv: 4.75,
+      asSec: 1.66,
+      ctBase: 9.0,
+      ctPerLv: 0.1,
+      htBase: 214,
+      htPerLv: 5.4,
+      evBase: 8.6,
+      evPerLv: 0.09,
+      blBase: 4.8,
+      blPerLv: 0.06,
+      skill1Ratio: 2.08,
+      skill2Ratio: 3.04,
+    },
+    worldScale: 1.12,
+    worldDimensions: {
+      heightPx: 128,
+      widthPx: 120,
+      shadowRx: 28,
+      shadowRy: 9.5,
+      nameplateOffsetY: 152,
+      attackPoseHeight: 136,
+      followGapBonus: 16,
+      canonicalHeightMeters: 2.6,
+    },
+    theme: ANGEWOMON_THEME,
+  },
+  magnadramon: {
+    id: 'magnadramon',
+    starterId: 'salamon',
+    name: 'MAGNADRAMON',
+    stage: 'Mega',
+    unlockLevel: 50,
+    element: 'Fogo',
+    portraitUrl: '/assets/digimon/magnadramon.png?v=holy1',
+    special1Name: 'Chama do Dragão',
+    special2Name: 'Apocalipse Celestial',
+    basicHitIntervalSec: 0.82,
+    special1CooldownSec: 5.5,
+    special2CooldownSec: 9.5,
+    hpMult: 2.68,
+    dsMult: 2.75,
+    atkMult: 2.9,
+    defMult: 2.62,
+    spdMult: 1.38,
+    skill1PowerMult: 2.4,
+    skill2PowerMult: 3.5,
+    baseStats: {
+      hpBase: 3340,
+      hpPerLv: 69.5,
+      dsBase: 1500,
+      dsPerLv: 32.5,
+      atBase: 454,
+      atPerLv: 15.6,
+      deBase: 160,
+      dePerLv: 6.6,
+      asSec: 1.58,
+      ctBase: 11.0,
+      ctPerLv: 0.11,
+      htBase: 294,
+      htPerLv: 6.2,
+      evBase: 10.2,
+      evPerLv: 0.1,
+      blBase: 6.2,
+      blPerLv: 0.07,
+      skill1Ratio: 2.4,
+      skill2Ratio: 3.5,
+    },
+    worldScale: 1.34,
+    worldDimensions: {
+      heightPx: 148,
+      widthPx: 162,
+      shadowRx: 38,
+      shadowRy: 12.2,
+      nameplateOffsetY: 176,
+      attackPoseHeight: 158,
+      followGapBonus: 22,
+      canonicalHeightMeters: 4.1,
+    },
+    theme: MAGNADRAMON_THEME,
+  },
+  // 22. Patamon Line (Angemon / MagnaAngemon / Seraphimon)
+  patamon: {
+    id: 'patamon',
+    starterId: 'patamon',
+    name: 'PATAMON',
+    stage: 'Rookie',
+    unlockLevel: 1,
+    element: 'Velocidade',
+    portraitUrl: '/assets/digimon/patamon.png?v=holy1',
+    special1Name: 'Bolha de Ar',
+    special2Name: 'Ataque Aéreo',
+    basicHitIntervalSec: 0.92,
+    special1CooldownSec: 3.0,
+    special2CooldownSec: 5.5,
+    hpMult: 0.96,
+    dsMult: 1.1,
+    atkMult: 1.02,
+    defMult: 1.0,
+    spdMult: 1.1,
+    skill1PowerMult: 1.48,
+    skill2PowerMult: 2.2,
+    baseStats: {
+      hpBase: 485,
+      hpPerLv: 26.2,
+      dsBase: 320,
+      dsPerLv: 15.2,
+      atBase: 67,
+      atPerLv: 4.85,
+      deBase: 23,
+      dePerLv: 2.15,
+      asSec: 1.84,
+      ctBase: 5.4,
+      ctPerLv: 0.08,
+      htBase: 112,
+      htPerLv: 4.2,
+      evBase: 5.4,
+      evPerLv: 0.09,
+      blBase: 2.6,
+      blPerLv: 0.05,
+      skill1Ratio: 1.48,
+      skill2Ratio: 2.2,
+    },
+    worldScale: 0.54,
+    worldDimensions: {
+      heightPx: 58,
+      widthPx: 62,
+      shadowRx: 17,
+      shadowRy: 6.0,
+      nameplateOffsetY: 72,
+      attackPoseHeight: 62,
+      followGapBonus: 0,
+      canonicalHeightMeters: 0.85,
+    },
+    theme: PATAMON_THEME,
+  },
+  angemon: {
+    id: 'angemon',
+    starterId: 'patamon',
+    name: 'ANGEMON',
+    stage: 'Champion',
+    unlockLevel: 15,
+    element: 'Velocidade',
+    portraitUrl: '/assets/digimon/angemon.png?v=holy1',
+    special1Name: 'Mão do Destino',
+    special2Name: 'Bastão Celestial',
+    basicHitIntervalSec: 0.86,
+    special1CooldownSec: 4.0,
+    special2CooldownSec: 6.5,
+    hpMult: 1.52,
+    dsMult: 1.58,
+    atkMult: 1.66,
+    defMult: 1.52,
+    spdMult: 1.24,
+    skill1PowerMult: 1.82,
+    skill2PowerMult: 2.7,
+    baseStats: {
+      hpBase: 1120,
+      hpPerLv: 39.8,
+      dsBase: 535,
+      dsPerLv: 19.2,
+      atBase: 145,
+      atPerLv: 8.15,
+      deBase: 49,
+      dePerLv: 3.4,
+      asSec: 1.72,
+      ctBase: 7.2,
+      ctPerLv: 0.09,
+      htBase: 158,
+      htPerLv: 4.8,
+      evBase: 6.8,
+      evPerLv: 0.09,
+      blBase: 3.8,
+      blPerLv: 0.06,
+      skill1Ratio: 1.82,
+      skill2Ratio: 2.7,
+    },
+    worldScale: 0.98,
+    worldDimensions: {
+      heightPx: 110,
+      widthPx: 108,
+      shadowRx: 25,
+      shadowRy: 8.8,
+      nameplateOffsetY: 132,
+      attackPoseHeight: 116,
+      followGapBonus: 10,
+      canonicalHeightMeters: 2.2,
+    },
+    theme: ANGEMON_THEME,
+  },
+  magnaangemon: {
+    id: 'magnaangemon',
+    starterId: 'patamon',
+    name: 'MAGNAANGEMON',
+    stage: 'Ultimate',
+    unlockLevel: 30,
+    element: 'Velocidade',
+    portraitUrl: '/assets/digimon/magnaangemon.png?v=holy1',
+    special1Name: 'Excalibur Sagrada',
+    special2Name: 'Portão do Destino',
+    basicHitIntervalSec: 0.84,
+    special1CooldownSec: 4.8,
+    special2CooldownSec: 8.2,
+    hpMult: 2.04,
+    dsMult: 2.16,
+    atkMult: 2.24,
+    defMult: 2.06,
+    spdMult: 1.32,
+    skill1PowerMult: 2.1,
+    skill2PowerMult: 3.08,
+    baseStats: {
+      hpBase: 1990,
+      hpPerLv: 53.5,
+      dsBase: 925,
+      dsPerLv: 25.0,
+      atBase: 258,
+      atPerLv: 11.3,
+      deBase: 89,
+      dePerLv: 4.85,
+      asSec: 1.66,
+      ctBase: 9.0,
+      ctPerLv: 0.1,
+      htBase: 214,
+      htPerLv: 5.4,
+      evBase: 8.4,
+      evPerLv: 0.09,
+      blBase: 5.2,
+      blPerLv: 0.07,
+      skill1Ratio: 2.1,
+      skill2Ratio: 3.08,
+    },
+    worldScale: 1.16,
+    worldDimensions: {
+      heightPx: 132,
+      widthPx: 130,
+      shadowRx: 29,
+      shadowRy: 10.0,
+      nameplateOffsetY: 158,
+      attackPoseHeight: 140,
+      followGapBonus: 16,
+      canonicalHeightMeters: 2.75,
+    },
+    theme: MAGNAANGEMON_THEME,
+  },
+  seraphimon: {
+    id: 'seraphimon',
+    starterId: 'patamon',
+    name: 'SERAPHIMON',
+    stage: 'Mega',
+    unlockLevel: 50,
+    element: 'Velocidade',
+    portraitUrl: '/assets/digimon/seraphimon.png?v=holy1',
+    special1Name: 'Sete Céus',
+    special2Name: 'Testamento Sagrado',
+    basicHitIntervalSec: 0.8,
+    special1CooldownSec: 5.5,
+    special2CooldownSec: 9.5,
+    hpMult: 2.68,
+    dsMult: 2.78,
+    atkMult: 2.92,
+    defMult: 2.66,
+    spdMult: 1.4,
+    skill1PowerMult: 2.42,
+    skill2PowerMult: 3.52,
+    baseStats: {
+      hpBase: 3360,
+      hpPerLv: 70.0,
+      dsBase: 1520,
+      dsPerLv: 33.0,
+      atBase: 460,
+      atPerLv: 15.8,
+      deBase: 164,
+      dePerLv: 6.75,
+      asSec: 1.56,
+      ctBase: 11.2,
+      ctPerLv: 0.11,
+      htBase: 296,
+      htPerLv: 6.2,
+      evBase: 10.4,
+      evPerLv: 0.1,
+      blBase: 6.4,
+      blPerLv: 0.08,
+      skill1Ratio: 2.42,
+      skill2Ratio: 3.52,
+    },
+    worldScale: 1.38,
+    worldDimensions: {
+      heightPx: 154,
+      widthPx: 158,
+      shadowRx: 36,
+      shadowRy: 11.8,
+      nameplateOffsetY: 184,
+      attackPoseHeight: 162,
+      followGapBonus: 22,
+      canonicalHeightMeters: 3.8,
+    },
+    theme: SERAPHIMON_THEME,
+  },
+  // 23. Starmon Line (3-Stage Line: Starmon -> SuperStarmon -> Justimon)
+  starmon: {
+    id: 'starmon',
+    starterId: 'starmon',
+    name: 'STARMON',
+    stage: 'Rookie',
+    unlockLevel: 1,
+    element: 'Velocidade',
+    portraitUrl: '/assets/digimon/starmon.png?v=holy1',
+    special1Name: 'Chuva de Meteoros',
+    special2Name: 'Raio Estelar',
+    basicHitIntervalSec: 0.92,
+    special1CooldownSec: 3.2,
+    special2CooldownSec: 5.5,
+    hpMult: 1.0,
+    dsMult: 1.06,
+    atkMult: 1.04,
+    defMult: 1.02,
+    spdMult: 1.08,
+    skill1PowerMult: 1.5,
+    skill2PowerMult: 2.22,
+    baseStats: {
+      hpBase: 505,
+      hpPerLv: 27.5,
+      dsBase: 305,
+      dsPerLv: 14.6,
+      atBase: 70,
+      atPerLv: 5.0,
+      deBase: 25,
+      dePerLv: 2.25,
+      asSec: 1.88,
+      ctBase: 5.4,
+      ctPerLv: 0.08,
+      htBase: 110,
+      htPerLv: 4.15,
+      evBase: 4.9,
+      evPerLv: 0.08,
+      blBase: 3.0,
+      blPerLv: 0.05,
+      skill1Ratio: 1.5,
+      skill2Ratio: 2.22,
+    },
+    worldScale: 0.62,
+    worldDimensions: {
+      heightPx: 68,
+      widthPx: 68,
+      shadowRx: 19,
+      shadowRy: 6.8,
+      nameplateOffsetY: 78,
+      attackPoseHeight: 74,
+      followGapBonus: 2,
+      canonicalHeightMeters: 1.1,
+    },
+    theme: STARMON_THEME,
+  },
+  superstarmon: {
+    id: 'superstarmon',
+    starterId: 'starmon',
+    name: 'SUPERSTARMON',
+    stage: 'Ultimate',
+    unlockLevel: 30,
+    element: 'Velocidade',
+    portraitUrl: '/assets/digimon/superstarmon.png?v=holy1',
+    special1Name: 'Tempestade Halley',
+    special2Name: 'Olho Galáctico',
+    basicHitIntervalSec: 0.84,
+    special1CooldownSec: 4.8,
+    special2CooldownSec: 8.0,
+    hpMult: 2.04,
+    dsMult: 2.08,
+    atkMult: 2.24,
+    defMult: 2.04,
+    spdMult: 1.32,
+    skill1PowerMult: 2.08,
+    skill2PowerMult: 3.06,
+    baseStats: {
+      hpBase: 1995,
+      hpPerLv: 53.5,
+      dsBase: 890,
+      dsPerLv: 24.2,
+      atBase: 258,
+      atPerLv: 11.3,
+      deBase: 88,
+      dePerLv: 4.8,
+      asSec: 1.68,
+      ctBase: 9.0,
+      ctPerLv: 0.1,
+      htBase: 214,
+      htPerLv: 5.4,
+      evBase: 8.4,
+      evPerLv: 0.09,
+      blBase: 5.0,
+      blPerLv: 0.07,
+      skill1Ratio: 2.08,
+      skill2Ratio: 3.06,
+    },
+    worldScale: 1.12,
+    worldDimensions: {
+      heightPx: 124,
+      widthPx: 122,
+      shadowRx: 28,
+      shadowRy: 9.5,
+      nameplateOffsetY: 146,
+      attackPoseHeight: 132,
+      followGapBonus: 16,
+      canonicalHeightMeters: 2.4,
+    },
+    theme: SUPERSTARMON_THEME,
+  },
 };
 
 /**
- * Balanced HP, DS, AT, DE, AS, CT, HT, EV, BL curves synchronized across all 56 playable
+ * Balanced HP, DS, AT, DE, AS, CT, HT, EV, BL curves synchronized across all 90 playable
  * Digimon forms so DS pools match per-skill DS costs and every species reflects its archetype.
  */
 const DMO_BASE_STAT_TABLE: Record<
@@ -5768,9 +6454,25 @@ const DMO_BASE_STAT_TABLE: Record<
   flymon: { hpBase: 1125, hpPerLv: 40, dsBase: 510, dsPerLv: 18.2, atBase: 142, atPerLv: 8.0, deBase: 48, dePerLv: 3.3, asSec: 1.74, ctBase: 6.8, ctPerLv: 0.09, htBase: 156, htPerLv: 4.75, evBase: 6.6, evPerLv: 0.09, blBase: 3.6, blPerLv: 0.06 },
   okuwamon: { hpBase: 1995, hpPerLv: 53.5, dsBase: 860, dsPerLv: 23.5, atBase: 256, atPerLv: 11.2, deBase: 90, dePerLv: 4.9, asSec: 1.72, ctBase: 8.6, ctPerLv: 0.1, htBase: 210, htPerLv: 5.3, evBase: 7.8, evPerLv: 0.09, blBase: 5.2, blPerLv: 0.07 },
   grankuwagamon: { hpBase: 3350, hpPerLv: 69.5, dsBase: 1420, dsPerLv: 30.8, atBase: 458, atPerLv: 15.8, deBase: 162, dePerLv: 6.7, asSec: 1.6, ctBase: 11.0, ctPerLv: 0.11, htBase: 294, htPerLv: 6.2, evBase: 9.8, evPerLv: 0.1, blBase: 6.4, blPerLv: 0.08 },
+
+  // 21. Salamon Line (Vaccine Light -> Fire/Holy Dragon -> Gatomon -> Angewomon -> Magnadramon)
+  salamon: { hpBase: 485, hpPerLv: 26.2, dsBase: 325, dsPerLv: 15.5, atBase: 66, atPerLv: 4.8, deBase: 24, dePerLv: 2.2, asSec: 1.88, ctBase: 5.2, ctPerLv: 0.08, htBase: 110, htPerLv: 4.15, evBase: 5.2, evPerLv: 0.08, blBase: 2.8, blPerLv: 0.05 },
+  gatomon: { hpBase: 1090, hpPerLv: 38.5, dsBase: 550, dsPerLv: 19.8, atBase: 142, atPerLv: 8.0, deBase: 48, dePerLv: 3.35, asSec: 1.72, ctBase: 7.0, ctPerLv: 0.09, htBase: 158, htPerLv: 4.85, evBase: 7.0, evPerLv: 0.09, blBase: 3.6, blPerLv: 0.06 },
+  angewomon: { hpBase: 1950, hpPerLv: 52, dsBase: 940, dsPerLv: 25.5, atBase: 254, atPerLv: 11.1, deBase: 86, dePerLv: 4.75, asSec: 1.66, ctBase: 9.0, ctPerLv: 0.1, htBase: 214, htPerLv: 5.4, evBase: 8.6, evPerLv: 0.09, blBase: 4.8, blPerLv: 0.06 },
+  magnadramon: { hpBase: 3340, hpPerLv: 69.5, dsBase: 1500, dsPerLv: 32.5, atBase: 454, atPerLv: 15.6, deBase: 160, dePerLv: 6.6, asSec: 1.58, ctBase: 11.0, ctPerLv: 0.11, htBase: 294, htPerLv: 6.2, evBase: 10.2, evPerLv: 0.1, blBase: 6.2, blPerLv: 0.07 },
+
+  // 22. Patamon Line (Data Wind -> Vaccine Light -> Angemon -> MagnaAngemon -> Seraphimon)
+  patamon: { hpBase: 485, hpPerLv: 26.2, dsBase: 320, dsPerLv: 15.2, atBase: 67, atPerLv: 4.85, deBase: 23, dePerLv: 2.15, asSec: 1.84, ctBase: 5.4, ctPerLv: 0.08, htBase: 112, htPerLv: 4.2, evBase: 5.4, evPerLv: 0.09, blBase: 2.6, blPerLv: 0.05 },
+  angemon: { hpBase: 1120, hpPerLv: 39.8, dsBase: 535, dsPerLv: 19.2, atBase: 145, atPerLv: 8.15, deBase: 49, dePerLv: 3.4, asSec: 1.72, ctBase: 7.2, ctPerLv: 0.09, htBase: 158, htPerLv: 4.8, evBase: 6.8, evPerLv: 0.09, blBase: 3.8, blPerLv: 0.06 },
+  magnaangemon: { hpBase: 1990, hpPerLv: 53.5, dsBase: 925, dsPerLv: 25.0, atBase: 258, atPerLv: 11.3, deBase: 89, dePerLv: 4.85, asSec: 1.66, ctBase: 9.0, ctPerLv: 0.1, htBase: 214, htPerLv: 5.4, evBase: 8.4, evPerLv: 0.09, blBase: 5.2, blPerLv: 0.07 },
+  seraphimon: { hpBase: 3360, hpPerLv: 70.0, dsBase: 1520, dsPerLv: 33.0, atBase: 460, atPerLv: 15.8, deBase: 164, dePerLv: 6.75, asSec: 1.56, ctBase: 11.2, ctPerLv: 0.11, htBase: 296, htPerLv: 6.2, evBase: 10.4, evPerLv: 0.1, blBase: 6.4, blPerLv: 0.08 },
+
+  // 23. Starmon Line (Data Iron/Light -> SuperStarmon -> Justimon)
+  starmon: { hpBase: 505, hpPerLv: 27.5, dsBase: 305, dsPerLv: 14.6, atBase: 70, atPerLv: 5.0, deBase: 25, dePerLv: 2.25, asSec: 1.88, ctBase: 5.4, ctPerLv: 0.08, htBase: 110, htPerLv: 4.15, evBase: 4.9, evPerLv: 0.08, blBase: 3.0, blPerLv: 0.05 },
+  superstarmon: { hpBase: 1995, hpPerLv: 53.5, dsBase: 890, dsPerLv: 24.2, atBase: 258, atPerLv: 11.3, deBase: 88, dePerLv: 4.8, asSec: 1.68, ctBase: 9.0, ctPerLv: 0.1, htBase: 214, htPerLv: 5.4, evBase: 8.4, evPerLv: 0.09, blBase: 5.0, blPerLv: 0.07 },
 };
 
-// Apply unified skills, cooldowns & base stats across all 56 playable Digimon forms
+// Apply unified skills, cooldowns & base stats across all 90 playable Digimon forms
 for (const formId of Object.keys(DIGIMON_FORM_PROFILES) as DigimonFormId[]) {
   const profile = DIGIMON_FORM_PROFILES[formId];
   const skills = DMO_SKILL_CATALOG[formId];
@@ -5913,6 +6615,23 @@ export const EVOLUTION_FORM_CHAINS: Record<
     DIGIMON_FORM_PROFILES.flymon,
     DIGIMON_FORM_PROFILES.okuwamon,
     DIGIMON_FORM_PROFILES.grankuwagamon,
+  ],
+  salamon: [
+    DIGIMON_FORM_PROFILES.salamon,
+    DIGIMON_FORM_PROFILES.gatomon,
+    DIGIMON_FORM_PROFILES.angewomon,
+    DIGIMON_FORM_PROFILES.magnadramon,
+  ],
+  patamon: [
+    DIGIMON_FORM_PROFILES.patamon,
+    DIGIMON_FORM_PROFILES.angemon,
+    DIGIMON_FORM_PROFILES.magnaangemon,
+    DIGIMON_FORM_PROFILES.seraphimon,
+  ],
+  starmon: [
+    DIGIMON_FORM_PROFILES.starmon,
+    DIGIMON_FORM_PROFILES.superstarmon,
+    DIGIMON_FORM_PROFILES.justimon,
   ],
 };
 
@@ -6176,6 +6895,51 @@ export function getStarterDigimonById(
       theme: kn.theme,
     };
   }
+  if (id === 'salamon') {
+    const sl = DIGIMON_FORM_PROFILES.salamon;
+    return {
+      id: 'salamon',
+      name: sl.name,
+      element: sl.element,
+      personality: 'Nobre e devota',
+      description: 'A pequena Salamon da linhagem sagrada de Gatomon, Angewomon e Magnadramon!',
+      cardCaption: 'Luz celestial e as chamas divinas do dragão sagrado Magnadramon!',
+      portraitUrl: sl.portraitUrl,
+      special1Name: sl.special1Name,
+      special2Name: sl.special2Name,
+      theme: sl.theme,
+    };
+  }
+  if (id === 'patamon') {
+    const pt = DIGIMON_FORM_PROFILES.patamon;
+    return {
+      id: 'patamon',
+      name: pt.name,
+      element: pt.element,
+      personality: 'Corajoso e esperançoso',
+      description: 'O alado Patamon da linhagem angelical de Angemon, MagnaAngemon e Seraphimon!',
+      cardCaption: 'Portões dimensionais da luz e os sete céus de Seraphimon!',
+      portraitUrl: pt.portraitUrl,
+      special1Name: pt.special1Name,
+      special2Name: pt.special2Name,
+      theme: pt.theme,
+    };
+  }
+  if (id === 'starmon') {
+    const st = DIGIMON_FORM_PROFILES.starmon;
+    return {
+      id: 'starmon',
+      name: st.name,
+      element: st.element,
+      personality: 'Carismático e justiceiro',
+      description: 'O astro cósmico Starmon em uma linhagem exclusiva de 3 evoluções até Justimon!',
+      cardCaption: 'Chuva de meteoros, poder estelar e a justiça fulminante de Justimon!',
+      portraitUrl: st.portraitUrl,
+      special1Name: st.special1Name,
+      special2Name: st.special2Name,
+      theme: st.theme,
+    };
+  }
   return STARTER_DIGIMONS[0];
 }
 
@@ -6189,6 +6953,19 @@ export function getEvolutionChainForStarter(
   starterId: StarterDigimonId
 ): readonly DigimonFormProfile[] {
   return EVOLUTION_FORM_CHAINS[starterId] ?? EVOLUTION_FORM_CHAINS.agumon;
+}
+
+export function resolveStarterIdForForm(
+  preferredStarterId: StarterDigimonId | undefined | null,
+  formId: DigimonFormId
+): StarterDigimonId {
+  if (preferredStarterId) {
+    const chain = EVOLUTION_FORM_CHAINS[preferredStarterId];
+    if (chain?.some((f) => f.id === formId)) {
+      return preferredStarterId;
+    }
+  }
+  return getDigimonFormProfile(formId).starterId;
 }
 
 export function resolveActiveFormProfile(

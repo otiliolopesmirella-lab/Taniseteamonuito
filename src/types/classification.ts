@@ -658,6 +658,22 @@ const PLAYABLE_CLASSIFICATION_MAP = new Map<string, DigimonClassification>([
   ['flymon', { attribute: 'VI', element: 'wind' }],
   ['okuwamon', { attribute: 'VI', element: 'wood' }],
   ['grankuwagamon', { attribute: 'VI', element: 'darkness' }],
+
+  // Salamon Evolution Line (Gatomon / Angewomon / Magnadramon)
+  ['salamon', { attribute: 'VA', element: 'light' }],
+  ['gatomon', { attribute: 'VA', element: 'light' }],
+  ['angewomon', { attribute: 'VA', element: 'light' }],
+  ['magnadramon', { attribute: 'VA', element: 'fire' }],
+
+  // Patamon Evolution Line (Angemon / MagnaAngemon / Seraphimon)
+  ['patamon', { attribute: 'DA', element: 'wind' }],
+  ['angemon', { attribute: 'VA', element: 'light' }],
+  ['magnaangemon', { attribute: 'VA', element: 'light' }],
+  ['seraphimon', { attribute: 'VA', element: 'light' }],
+
+  // Starmon Evolution Line (SuperStarmon / Justimon)
+  ['starmon', { attribute: 'DA', element: 'iron' }],
+  ['superstarmon', { attribute: 'DA', element: 'light' }],
 ]);
 
 const WILD_CLASSIFICATION_MAP = new Map<string, DigimonClassification>([

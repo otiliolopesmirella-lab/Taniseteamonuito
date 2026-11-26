@@ -153,6 +153,16 @@ const FORM_SKILL_THEMES: Record<DigimonFormId, SkillSlotVisualTheme> = {
   flymon: NATURE_THEME,
   okuwamon: CRIMSON_THEME,
   grankuwagamon: DARK_THEME,
+  salamon: ROYAL_KNIGHT_THEME,
+  gatomon: ROYAL_KNIGHT_THEME,
+  angewomon: BLOSSOM_THEME,
+  magnadramon: ROSE_THEME,
+  patamon: FIRE_THEME,
+  angemon: SPEED_THEME,
+  magnaangemon: DARK_THEME,
+  seraphimon: ROYAL_KNIGHT_THEME,
+  starmon: ROYAL_KNIGHT_THEME,
+  superstarmon: ROYAL_KNIGHT_THEME,
 };
 
 const IMPMON_LINE_FORMS: ReadonlySet<DigimonFormId> = new Set<DigimonFormId>([
@@ -229,6 +239,25 @@ const BK_LINE_FORMS: ReadonlySet<DigimonFormId> = new Set<DigimonFormId>([
   'grankuwagamon',
 ]);
 
+const HOLY_STAR_LINE_FORMS: ReadonlySet<DigimonFormId> = new Set<DigimonFormId>([
+  'salamon',
+  'gatomon',
+  'angewomon',
+  'magnadramon',
+  'patamon',
+  'angemon',
+  'magnaangemon',
+  'seraphimon',
+  'starmon',
+  'superstarmon',
+]);
+
+const POLISHED_SKILL_FORMS: ReadonlySet<DigimonFormId> = new Set<DigimonFormId>([
+  'lilamon',
+  'rosemon',
+  'justimon',
+]);
+
 /**
  * Returns the individual 256x256 MMORPG combat skill icon path for any Digimon form (F1 or F2).
  */
@@ -236,19 +265,23 @@ export function getDigimonSkillIconUrl(
   formId: DigimonFormId,
   slot: SkillSlotKey
 ): string {
-  const version = IMPMON_LINE_FORMS.has(formId)
-    ? '?v=impmon_icon2'
-    : VK_LINE_FORMS.has(formId)
-      ? '?v=vk1'
-      : MH_LINE_FORMS.has(formId)
-        ? '?v=mh1'
-        : TDK_LINE_FORMS.has(formId)
-          ? '?v=tdk1'
-          : GERM_LINE_FORMS.has(formId)
-            ? '?v=germ1'
-            : BK_LINE_FORMS.has(formId)
-              ? '?v=bk1'
-              : '';
+  const version = HOLY_STAR_LINE_FORMS.has(formId)
+    ? '?v=holy1'
+    : POLISHED_SKILL_FORMS.has(formId)
+      ? '?v=lalamon_icon3'
+      : IMPMON_LINE_FORMS.has(formId)
+        ? '?v=impmon_icon2'
+        : VK_LINE_FORMS.has(formId)
+          ? '?v=vk1'
+          : MH_LINE_FORMS.has(formId)
+            ? '?v=mh1'
+            : TDK_LINE_FORMS.has(formId)
+              ? '?v=tdk1'
+              : GERM_LINE_FORMS.has(formId)
+                ? '?v=germ1'
+                : BK_LINE_FORMS.has(formId)
+                  ? '?v=bk1'
+                  : '';
   return `/assets/skills/${formId}_${slot}.png${version}`;
 }
 
@@ -259,19 +292,23 @@ export function getDigimonSkillFallbackUrl(
   formId: DigimonFormId,
   slot: SkillSlotKey
 ): string {
-  const version = IMPMON_LINE_FORMS.has(formId)
-    ? '?v=impmon_fx2'
-    : VK_LINE_FORMS.has(formId)
-      ? '?v=vk_fx1'
-      : MH_LINE_FORMS.has(formId)
-        ? '?v=mh_fx2'
-        : TDK_LINE_FORMS.has(formId)
-          ? '?v=tdk_fx2'
-          : GERM_LINE_FORMS.has(formId)
-            ? '?v=germ_fx2'
-            : BK_LINE_FORMS.has(formId)
-              ? '?v=bk_fx1'
-              : '?v=fx3';
+  const version = HOLY_STAR_LINE_FORMS.has(formId)
+    ? '?v=holy_fx1'
+    : POLISHED_SKILL_FORMS.has(formId)
+      ? '?v=lalamon_fx3'
+      : IMPMON_LINE_FORMS.has(formId)
+        ? '?v=impmon_fx2'
+        : VK_LINE_FORMS.has(formId)
+          ? '?v=vk_fx1'
+          : MH_LINE_FORMS.has(formId)
+            ? '?v=mh_fx2'
+            : TDK_LINE_FORMS.has(formId)
+              ? '?v=tdk_fx2'
+              : GERM_LINE_FORMS.has(formId)
+                ? '?v=germ_fx2'
+                : BK_LINE_FORMS.has(formId)
+                  ? '?v=bk_fx1'
+                  : '?v=fx3';
   return `/assets/sprites/digimon/${formId}/${slot === 'f1' ? 'atk1_fx' : 'atk2_fx'}.png${version}`;
 }
 

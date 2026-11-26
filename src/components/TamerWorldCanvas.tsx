@@ -316,6 +316,7 @@ import {
   sendGuildInvite,
   subscribeIncomingGuildInvites,
   subscribePlayerGuild,
+  updateGuildLeaderPhoto,
   type GuildInviteRecord,
   type GuildRecord,
 } from '../services/guildService';
@@ -414,6 +415,7 @@ import {
   getDigimonFormProfile,
   getEvolutionChainForStarter,
   resolveActiveFormProfile,
+  resolveStarterIdForForm,
   type DigimonFormId,
   type DigimonFormProfile,
   type PartnerAttackKind,
@@ -541,6 +543,19 @@ interface TamerWorldCanvasProps {
 }
 
 const PLAYER_RADIUS = 18;
+
+const DATS_SOUTH_PORTAL_LINK: MapPortalLink = {
+  id: 'digital-world-portal',
+  role: 'next',
+  x: 800,
+  y: 1316,
+  radius: 86,
+  targetMapId: D_TERMINAL_MAP_ID,
+  minLevel: 1,
+  title: 'D-Terminal',
+  subtitle: 'Estação Trailmon · Acesso ao Mundo Digital',
+  theme: 'digital',
+};
 
 function isCombatWorldMap(mapId: ActiveWorldMapId): boolean {
   return (
@@ -1008,9 +1023,14 @@ export function TamerWorldCanvas({
       ),
     [starterDigimon.digimonId, hudAccount.digimon.activeFormId]
   );
-  const activeStarterId: StarterDigimonId = activeFormProfile.starterId;
+  const activeStarterId: StarterDigimonId = resolveStarterIdForForm(
+    starterDigimon.digimonId,
+    activeFormProfile.id
+  );
   const activeFormRef = useRef<DigimonFormProfile>(activeFormProfile);
   activeFormRef.current = activeFormProfile;
+  const activeStarterIdRef = useRef<StarterDigimonId>(activeStarterId);
+  activeStarterIdRef.current = activeStarterId;
 
   const runtimeMetaRef = useRef({
     characterId: selection.characterId,
@@ -1126,6 +1146,10 @@ export function TamerWorldCanvas({
   const pendingConductorWalkRef = useRef(false);
   const pendingTargetPortalRef = useRef<MapPortalLink | null>(null);
   const nearbyPortalRef = useRef<MapPortalLink | null>(null);
+  const [pendingPortalConfirm, setPendingPortalConfirm] =
+    useState<MapPortalLink | null>(null);
+  const pendingPortalConfirmRef = useRef<MapPortalLink | null>(null);
+  pendingPortalConfirmRef.current = pendingPortalConfirm;
   const pendingDatsPointIdRef = useRef<string | null>(null);
   const activeHudWindowRef = useRef<HudWindowId>(null);
   activeHudWindowRef.current = activeHudWindow;
@@ -1133,6 +1157,7 @@ export function TamerWorldCanvas({
     mudShop: false,
     npc: false,
     station: false,
+    portalConfirm: false,
     hud: false,
     inventory: false,
   });
@@ -1140,6 +1165,7 @@ export function TamerWorldCanvas({
     mudShop: mudfrigimonShopOpen || playerMarketOpen,
     npc: activeNpcDialogue !== null,
     station: activeStationModal !== null,
+    portalConfirm: pendingPortalConfirm !== null,
     hud:
       activeHudWindow !== null ||
       hatchShowcase !== null ||
@@ -1894,12 +1920,16 @@ export function TamerWorldCanvas({
               ? (rawCloudDigi.activeFormId as DigimonFormId)
               : curBeforeLevels.digimon.activeFormId
           );
+          const resolvedStarterId = resolveStarterIdForForm(
+            starterDigimon.digimonId,
+            resolvedForm.id
+          );
           const safeForm =
             nextDigiLevel >= resolvedForm.unlockLevel
               ? resolvedForm
-              : getEvolutionChainForStarter(resolvedForm.starterId)[0];
+              : getEvolutionChainForStarter(resolvedStarterId)[0];
           const nextUnlockedFormIds = sanitizeUnlockedFormIdsForDigimon(
-            resolvedForm.starterId,
+            resolvedStarterId,
             nextDigiLevel,
             Array.isArray(rawCloudDigi?.unlockedFormIds)
               ? (rawCloudDigi.unlockedFormIds as string[])
@@ -2208,12 +2238,16 @@ export function TamerWorldCanvas({
           starterDigimon.digimonId,
           backup.digimonFormId ?? latest.digimon.activeFormId
         );
+        const resolvedStarterId = resolveStarterIdForForm(
+          starterDigimon.digimonId,
+          resolvedForm.id
+        );
         const safeForm =
           nextDigiLevel >= resolvedForm.unlockLevel
             ? resolvedForm
-            : getEvolutionChainForStarter(resolvedForm.starterId)[0];
+            : getEvolutionChainForStarter(resolvedStarterId)[0];
         const nextUnlockedFormIds = sanitizeUnlockedFormIdsForDigimon(
-          resolvedForm.starterId,
+          resolvedStarterId,
           nextDigiLevel,
           latest.digimon.unlockedFormIds,
           safeForm.id
@@ -3839,6 +3873,7 @@ export function TamerWorldCanvas({
               actorUid,
               tamerName: runtimeMetaRef.current.tamerName,
               tamerLevel: prevAcc.tamer.level,
+              characterId: selection.characterId,
               digimonFormId: prevAcc.digimon.activeFormId ?? starterDigimon.digimonId,
               expGain: 180,
               mobsKilled: 1,
@@ -3852,7 +3887,7 @@ export function TamerWorldCanvas({
             });
           }
 
-          const activeLineStarterId = activeFormRef.current.starterId;
+          const activeLineStarterId = activeStarterIdRef.current;
           const tamerRes = applyExpToTamer(
             prevAcc.tamer,
             gainedTamerExp,
@@ -4225,9 +4260,17 @@ export function TamerWorldCanvas({
       hudAccountRef.current = next;
       setHudAccount(next);
       saveAccountHudState(next, true);
+      if (playerGuildRef.current?.masterUid === actorUid) {
+        void updateGuildLeaderPhoto({
+          guildId: playerGuildRef.current.guildId,
+          leaderUid: actorUid,
+          characterId: selection.characterId,
+          tamerPhotoUrl: safePhoto,
+        });
+      }
       playDigitalTone('confirm', soundEnabled);
     },
-    [soundEnabled]
+    [actorUid, selection.characterId, soundEnabled]
   );
 
   const handleUpdateTamerCover = useCallback(
@@ -4377,6 +4420,8 @@ export function TamerWorldCanvas({
         actorUid,
         tamerName: runtimeMetaRef.current.tamerName,
         tamerLevel: acc.tamer.level,
+        characterId: selection.characterId,
+        tamerPhotoUrl: acc.tamerPhotoUrl ?? null,
         digimonFormId: activeFormRef.current.id,
         currentGuild: playerGuildRef.current,
       });
@@ -4419,9 +4464,18 @@ export function TamerWorldCanvas({
     [actorUid, remotePlayers, activeFormProfile.id]
   );
 
+  const onlineCharacterByUid = useMemo(
+    () => ({
+      ...Object.fromEntries(remotePlayers.map((p) => [p.uid, p.characterId])),
+      [actorUid]: character.id,
+    }),
+    [actorUid, remotePlayers, character.id]
+  );
+
   function travelToMap(targetMap: ActiveWorldMapId) {
     const sim = simRef.current;
     setActiveStationModal(null);
+    setPendingPortalConfirm(null);
     pendingPortalWalkRef.current = false;
     pendingConductorWalkRef.current = false;
     pendingTargetPortalRef.current = null;
@@ -4718,7 +4772,16 @@ export function TamerWorldCanvas({
       );
       return;
     }
-    travelToMap(portal.targetMapId);
+    const sim = simRef.current;
+    pendingPortalWalkRef.current = false;
+    pendingTargetPortalRef.current = null;
+    sim.tapTarget = null;
+    sim.keyOrder = [];
+    sim.joyVx = 0;
+    sim.joyVy = 0;
+    sim.joyMag = 0;
+    playDigitalTone('click', soundEnabled);
+    setPendingPortalConfirm(portal);
   }
 
   function handleMeetPlayer(target: RemoteWorldPlayer) {
@@ -4823,11 +4886,11 @@ export function TamerWorldCanvas({
       sim.discoveredZones.add(found.id);
     }
     persistProgress();
-    playDigitalTone('confirm', soundEnabled);
     if (found.id === 'digital-world-portal') {
-      travelToMap(D_TERMINAL_MAP_ID);
+      attemptPortalTravel(DATS_SOUTH_PORTAL_LINK);
       return;
     }
+    playDigitalTone('confirm', soundEnabled);
     if (found.id === DATS_INCUBATOR_STATION.id) {
       pendingIncubatorWalkRef.current = false;
       pendingArchiveWalkRef.current = false;
@@ -4942,13 +5005,14 @@ export function TamerWorldCanvas({
       const targetId: DigimonFormId =
         typeof targetFormOrId === 'string' ? targetFormOrId : targetFormOrId.id;
       const currentAcc = hudAccountRef.current;
+      const currentStarterId = activeStarterIdRef.current;
       const currentForm = resolveActiveFormProfile(
-        activeFormRef.current.starterId,
+        currentStarterId,
         currentAcc.digimon.activeFormId
       );
       const res = evolveDigimonAccountState(
         currentAcc,
-        currentForm.starterId,
+        currentStarterId,
         targetId
       );
       if (res.needsEvoluter) {
@@ -5012,7 +5076,7 @@ export function TamerWorldCanvas({
       const currentAcc = hudAccountRef.current;
       const res = unlockDigimonEvolutionWithEvoluters(
         currentAcc,
-        activeFormRef.current.starterId,
+        activeStarterIdRef.current,
         targetFormId
       );
       if (!res.ok || !res.unlockedForm) {
@@ -5053,7 +5117,7 @@ export function TamerWorldCanvas({
     (targetLevel: number) => {
       if (!isGM) return;
       const prevAcc = hudAccountRef.current;
-      const currentStarterId = activeFormRef.current.starterId;
+      const currentStarterId = activeStarterIdRef.current;
       const res = setDigimonLevelForTesting(
         prevAcc.digimon,
         currentStarterId,
@@ -5085,13 +5149,13 @@ export function TamerWorldCanvas({
       if (res.newlyUnlockedForms.length > 0) {
         for (const unlocked of res.newlyUnlockedForms) {
           const evoCost = getFormEvoluterCost(
-            nextForm.starterId,
+            currentStarterId,
             unlocked.id
           );
           const needsEvoUnlock =
             evoCost > 0 &&
             !isEvolutionSlotUnlockedByEvoluter(
-              nextForm.starterId,
+              currentStarterId,
               unlocked.id,
               res.next
             );
@@ -5121,7 +5185,7 @@ export function TamerWorldCanvas({
     (expAmount: number) => {
       if (!isGM) return;
       const prevAcc = hudAccountRef.current;
-      const currentStarterId = activeFormRef.current.starterId;
+      const currentStarterId = activeStarterIdRef.current;
       const res = applyExpToDigimon(
         prevAcc.digimon,
         expAmount,
@@ -5145,13 +5209,13 @@ export function TamerWorldCanvas({
       if (res.newlyUnlockedForms.length > 0) {
         for (const unlocked of res.newlyUnlockedForms) {
           const evoCost = getFormEvoluterCost(
-            activeFormNow.starterId,
+            currentStarterId,
             unlocked.id
           );
           const needsEvoUnlock =
             evoCost > 0 &&
             !isEvolutionSlotUnlockedByEvoluter(
-              activeFormNow.starterId,
+              currentStarterId,
               unlocked.id,
               res.next
             );
@@ -5208,13 +5272,28 @@ export function TamerWorldCanvas({
   }, [isGM, pushChatMessage, soundEnabled]);
 
   const handleAdminPullAnyDigimon = useCallback(
-    (formId: DigimonFormId, grade: HatchQualityGrade) => {
+    (
+      formId: DigimonFormId,
+      grade: HatchQualityGrade,
+      preferredStarterId?: StarterDigimonId
+    ) => {
       if (!isGM) return;
       const prevAcc = hudAccountRef.current;
-      const switched = switchActiveDigimonForAdmin(prevAcc, formId, grade);
+      const switched = switchActiveDigimonForAdmin(
+        prevAcc,
+        formId,
+        grade,
+        undefined,
+        undefined,
+        preferredStarterId
+      );
+      const resolvedStarterId = resolveStarterIdForForm(
+        preferredStarterId,
+        switched.form.id
+      );
       void preloadDigimonPartnerAssets(formId);
-      if (switched.form.starterId !== starterDigimon.digimonId) {
-        onAdminSwitchStarter?.(switched.form.starterId);
+      if (resolvedStarterId !== starterDigimon.digimonId) {
+        onAdminSwitchStarter?.(resolvedStarterId);
       }
       commitHudAccount(switched.next);
       setEvolutionUnlockAlert(null);
@@ -5233,9 +5312,19 @@ export function TamerWorldCanvas({
   );
 
   const handleAdminAddDigimonToParty = useCallback(
-    (formId: DigimonFormId, grade: HatchQualityGrade) => {
+    (
+      formId: DigimonFormId,
+      grade: HatchQualityGrade,
+      preferredStarterId?: StarterDigimonId
+    ) => {
       if (!isGM) return;
-      const res = addDigimonToPartyReserve(hudAccountRef.current, formId, grade);
+      const res = addDigimonToPartyReserve(
+        hudAccountRef.current,
+        formId,
+        grade,
+        undefined,
+        preferredStarterId
+      );
       if (!res.ok || !res.entry) {
         playDigitalTone('error', soundEnabled);
         pushChatMessage('system', `[GM] ${res.error ?? 'Não foi possível adicionar à equipe.'}`, {
@@ -5258,12 +5347,18 @@ export function TamerWorldCanvas({
   );
 
   const handleAdminAddDigimonToArchive = useCallback(
-    (formId: DigimonFormId, grade: HatchQualityGrade) => {
+    (
+      formId: DigimonFormId,
+      grade: HatchQualityGrade,
+      preferredStarterId?: StarterDigimonId
+    ) => {
       if (!isGM) return;
       const res = addDigimonToArchiveForAdmin(
         hudAccountRef.current,
         formId,
-        grade
+        grade,
+        undefined,
+        preferredStarterId
       );
       if (!res.ok || !res.entry) {
         playDigitalTone('error', soundEnabled);
@@ -5377,7 +5472,7 @@ export function TamerWorldCanvas({
       if (!isGM) return;
       const prevAcc = hudAccountRef.current;
       const currentForm = resolveActiveFormProfile(
-        activeFormRef.current.starterId,
+        activeStarterIdRef.current,
         prevAcc.digimon.activeFormId
       );
       const qProf = getHatchQualityProfile(grade);
@@ -5796,6 +5891,15 @@ export function TamerWorldCanvas({
         return;
       }
 
+      if (pendingPortalConfirmRef.current) {
+        if (e.key.toLowerCase() === 'escape') {
+          e.preventDefault();
+          playDigitalTone('click', soundEnabled);
+          setPendingPortalConfirm(null);
+        }
+        return;
+      }
+
       if (e.key === 'F1') {
         e.preventDefault();
         handleTriggerManualSkill('special1');
@@ -5829,7 +5933,9 @@ export function TamerWorldCanvas({
         e.preventDefault();
       }
       if (k === 'escape') {
-        if (overlayLayerRef.current.mudShop) {
+        if (overlayLayerRef.current.portalConfirm) {
+          setPendingPortalConfirm(null);
+        } else if (overlayLayerRef.current.mudShop) {
           setMudfrigimonShopOpen(false);
           setPlayerMarketOpen(false);
         } else if (overlayLayerRef.current.npc) {
@@ -7574,6 +7680,7 @@ export function TamerWorldCanvas({
                 actorUid,
                 tamerName: runtimeMetaRef.current.tamerName,
                 tamerLevel: tamerRes.next.level,
+                characterId: selection.characterId,
                 digimonFormId: digiRes.next.activeFormId ?? starterDigimon.digimonId,
                 expGain: Math.max(8, Math.round(enemy.expReward * 0.35)),
                 mobsKilled: 1,
@@ -7781,7 +7888,8 @@ export function TamerWorldCanvas({
         if (
           pendingTargetPortalRef.current &&
           nearDtReturn &&
-          !overlayLayerRef.current.hud
+          !overlayLayerRef.current.hud &&
+          !overlayLayerRef.current.portalConfirm
         ) {
           const targetPortal = pendingTargetPortalRef.current;
           pendingTargetPortalRef.current = null;
@@ -7844,12 +7952,13 @@ export function TamerWorldCanvas({
         } else if (
           pendingPortalWalkRef.current &&
           closestPt?.id === 'digital-world-portal' &&
-          !overlayLayerRef.current.hud
+          !overlayLayerRef.current.hud &&
+          !overlayLayerRef.current.portalConfirm
         ) {
           pendingPortalWalkRef.current = false;
           sim.tapTarget = null;
           sim.keyOrder = [];
-          travelToMap(D_TERMINAL_MAP_ID);
+          attemptPortalTravel(DATS_SOUTH_PORTAL_LINK);
         } else if (
           pendingDatsPointIdRef.current &&
           closestPt?.id === pendingDatsPointIdRef.current &&
@@ -7894,7 +8003,8 @@ export function TamerWorldCanvas({
 
         if (
           pendingTargetPortalRef.current &&
-          !overlayLayerRef.current.hud
+          !overlayLayerRef.current.hud &&
+          !overlayLayerRef.current.portalConfirm
         ) {
           const targetPortal = pendingTargetPortalRef.current;
           const distToTarget = Math.hypot(
@@ -9228,6 +9338,7 @@ export function TamerWorldCanvas({
               minimapEnemies: isCombatMap
                 ? sim.enemies.map((e) => ({
                     id: e.id,
+                    species: e.species,
                     x: e.x,
                     y: e.y,
                     alive: e.alive,
@@ -9243,6 +9354,7 @@ export function TamerWorldCanvas({
                 .map((s) => ({
                   uid: s.player.uid,
                   tamerName: s.player.tamerName,
+                  characterId: s.player.characterId,
                   x: s.renderX,
                   y: s.renderY,
                   isGm: s.player.isGm,
@@ -9496,7 +9608,7 @@ export function TamerWorldCanvas({
       pendingArchiveWalkRef.current = false;
       pendingDatsPointIdRef.current = null;
       if (sim.nearbyPointId === 'digital-world-portal') {
-        travelToMap(D_TERMINAL_MAP_ID);
+        attemptPortalTravel(DATS_SOUTH_PORTAL_LINK);
       } else {
         pendingPortalWalkRef.current = true;
         sim.tapTarget = { x: 800, y: 1316 };
@@ -10871,7 +10983,7 @@ export function TamerWorldCanvas({
     const prevFormId = prevForm.id;
     const res = swapActiveDigimonWithArchiveSlot(
       hudAccountRef.current,
-      prevForm.starterId,
+      activeStarterIdRef.current,
       slotIndex
     );
     if (!res.ok) {
@@ -10912,7 +11024,7 @@ export function TamerWorldCanvas({
     const prevFormId = prevForm.id;
     const res = swapActiveDigimonWithPartyReserve(
       hudAccountRef.current,
-      prevForm.starterId,
+      activeStarterIdRef.current,
       reserveIndex
     );
     if (!res.ok) {
@@ -11211,6 +11323,9 @@ export function TamerWorldCanvas({
           <MinimapHudPanel
             snapshot={liveSnapshot}
             minimapSize={preferences.minimapSize}
+            tamerId={selection.characterId}
+            tamerPhotoUrl={hudAccount.tamerPhotoUrl ?? null}
+            partnerFormId={activeFormProfile.id}
             onOpenFullMap={() => handleOpenHudWindow('map')}
           />
           {worldBossState && worldBossState.mapId === liveSnapshot.mapId && (
@@ -11760,6 +11875,7 @@ export function TamerWorldCanvas({
       <div className="pointer-events-none absolute bottom-2 left-1/2 z-[28] -translate-x-1/2 sm:bottom-3 md:left-[calc(50%+86px)] xl:left-1/2">
         <DigimonBottomActionDock
           digimon={activeFormProfile}
+          starterId={activeStarterId}
           stats={hudAccount.digimon}
           snapshot={liveSnapshot}
           ownedEvoluters={getOwnedEvoluterCount(hudAccount.inventory)}
@@ -12150,6 +12266,86 @@ export function TamerWorldCanvas({
         </div>
       )}
 
+      {/* Portal Travel Confirmation Modal (Sim / Não) */}
+      {pendingPortalConfirm && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/62 p-4 backdrop-blur-[2px]"
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            playDigitalTone('click', soundEnabled);
+            setPendingPortalConfirm(null);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="portal-confirm-title"
+            className="w-full max-w-[380px] rounded-2xl border border-cyan-400/50 bg-[#071a3e]/98 p-5 text-sky-100 shadow-[0_24px_60px_rgba(0,0,0,0.82)]"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-400/40 bg-cyan-500/20 text-cyan-300">
+                <DoorOpen className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-black uppercase tracking-wider text-cyan-300">
+                  Atravessar Portal
+                </p>
+                <h3
+                  id="portal-confirm-title"
+                  className="mt-0.5 text-base font-black text-white"
+                >
+                  {pendingPortalConfirm.title}
+                </h3>
+                {pendingPortalConfirm.subtitle && (
+                  <p className="mt-0.5 text-xs text-sky-200/80">
+                    {pendingPortalConfirm.subtitle}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <p className="mt-4 text-sm font-medium leading-relaxed text-sky-100">
+              Deseja ir para{' '}
+              <span className="font-black text-white">
+                {pendingPortalConfirm.title}
+              </span>
+              ?
+            </p>
+            {pendingPortalConfirm.minLevel > 1 && (
+              <p className="mt-1 text-xs text-cyan-200/80">
+                Requisito mínimo: Tamer ou Digimon Nv.{' '}
+                {pendingPortalConfirm.minLevel}+
+              </p>
+            )}
+
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  playDigitalTone('click', soundEnabled);
+                  setPendingPortalConfirm(null);
+                }}
+                className="min-h-[44px] rounded-xl border border-slate-500/50 bg-slate-800/85 px-4 py-2.5 text-sm font-black text-slate-100 transition hover:bg-slate-700/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+              >
+                Não
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const targetPortal = pendingPortalConfirm;
+                  setPendingPortalConfirm(null);
+                  travelToMap(targetPortal.targetMapId);
+                }}
+                className="min-h-[44px] rounded-xl border border-cyan-300/70 bg-gradient-to-b from-cyan-500 to-sky-600 px-4 py-2.5 text-sm font-black text-white shadow-[0_6px_20px_rgba(6,182,212,0.35)] transition hover:from-cyan-400 hover:to-sky-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200"
+              >
+                Sim
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Fixed DATS NPC Dialogue Modal (Richard Sampson & Field NPCs) */}
       {activeNpcDialogue && (
         <NpcDialogueModal
@@ -12201,6 +12397,7 @@ export function TamerWorldCanvas({
         inventory={hudAccount.inventory}
         guildName={hudAccount.guildName}
         digimon={activeFormProfile}
+        activeStarterId={activeStarterId}
         digimonStats={hudAccount.digimon}
         snapshot={liveSnapshot}
         bits={hudAccount.bits}
@@ -12284,6 +12481,7 @@ export function TamerWorldCanvas({
         onStartWhisper={handleStartWhisperFriend}
         onlinePlayerUids={onlinePlayerUids}
         onlineDigimonByUid={onlineDigimonByUid}
+        onlineCharacterByUid={onlineCharacterByUid}
         onDeductGuildCreationBits={handleDeductGuildCreationBits}
         onNotifyImportantEvent={pushNotification}
         onBuyDwCoinOffer={handleBuyDwCoinOffer}

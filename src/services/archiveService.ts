@@ -6,6 +6,7 @@ import {
 import {
   getDigimonFormProfile,
   resolveActiveFormProfile,
+  resolveStarterIdForForm,
   type DigimonFormId,
   type StarterDigimonId,
 } from '../types/digimon';
@@ -86,6 +87,10 @@ function sanitizeDigimonEntryList(
         ? Math.max(0, Math.min(maxDs, Math.floor(raw.ds)))
         : maxDs;
 
+    const resolvedStarterId = resolveStarterIdForForm(
+      raw.starterId as StarterDigimonId | undefined,
+      form.id
+    );
     usedSlots.add(slotIndex);
     cleaned.push({
       id:
@@ -93,7 +98,7 @@ function sanitizeDigimonEntryList(
           ? raw.id
           : `${idPrefix}_${form.id}_${slotIndex}_${Date.now()}`,
       slotIndex,
-      starterId: form.starterId,
+      starterId: resolvedStarterId,
       activeFormId: form.id,
       nickname:
         typeof raw.nickname === 'string' && raw.nickname.trim()
@@ -107,7 +112,7 @@ function sanitizeDigimonEntryList(
       ds,
       maxDs,
       unlockedFormIds: sanitizeUnlockedFormIdsForDigimon(
-        form.starterId,
+        resolvedStarterId,
         level,
         raw.unlockedFormIds,
         form.id
@@ -170,9 +175,11 @@ function buildNewDigimonEntry(
   sizePct: number,
   levelOverride?: number,
   idPrefix = 'arch',
-  extraUnlockedFormIds?: readonly DigimonFormId[]
+  extraUnlockedFormIds?: readonly DigimonFormId[],
+  preferredStarterId?: StarterDigimonId
 ): ArchivedDigimonEntry {
   const form = getDigimonFormProfile(formId);
+  const resolvedStarterId = resolveStarterIdForForm(preferredStarterId, form.id);
   const qualityProfile = getHatchQualityProfile(grade);
   const safeSizePct = clampHatchSizePct(qualityProfile.grade, sizePct);
   const level = Math.max(
@@ -185,7 +192,7 @@ function buildNewDigimonEntry(
   return {
     id: `${idPrefix}_${form.id}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     slotIndex,
-    starterId: form.starterId,
+    starterId: resolvedStarterId,
     activeFormId: form.id,
     level,
     exp: 0,
@@ -195,7 +202,7 @@ function buildNewDigimonEntry(
     ds: maxDs,
     maxDs,
     unlockedFormIds: (() => {
-      const chainSpecs = DIGIMON_EVOLUTION_CHAINS[form.starterId] ?? [];
+      const chainSpecs = DIGIMON_EVOLUTION_CHAINS[resolvedStarterId] ?? [];
       const targetIdx = chainSpecs.findIndex((s) => s.formId === form.id);
       const baseIds = chainSpecs
         .slice(0, Math.max(0, targetIdx) + 1)
@@ -206,7 +213,7 @@ function buildNewDigimonEntry(
           ? Array.from(new Set<DigimonFormId>([...baseIds, ...extraUnlockedFormIds]))
           : baseIds;
       return sanitizeUnlockedFormIdsForDigimon(
-        form.starterId,
+        resolvedStarterId,
         level,
         initialIds,
         form.id
@@ -273,7 +280,8 @@ export function addDigimonToPartyReserve(
   state: AccountHudPersistence,
   formId: DigimonFormId,
   grade: HatchQualityGrade,
-  levelOverride?: number
+  levelOverride?: number,
+  preferredStarterId?: StarterDigimonId
 ): {
   ok: boolean;
   next: AccountHudPersistence;
@@ -304,7 +312,9 @@ export function addDigimonToPartyReserve(
     qualityProfile.grade,
     rolledSize,
     targetLevel,
-    'party'
+    'party',
+    undefined,
+    preferredStarterId
   );
   const nextParty = [...currentParty, entry].sort(
     (a, b) => a.slotIndex - b.slotIndex
@@ -325,7 +335,8 @@ export function addDigimonToArchiveForAdmin(
   state: AccountHudPersistence,
   formId: DigimonFormId,
   grade: HatchQualityGrade,
-  levelOverride?: number
+  levelOverride?: number,
+  preferredStarterId?: StarterDigimonId
 ): {
   ok: boolean;
   next: AccountHudPersistence;
@@ -359,7 +370,9 @@ export function addDigimonToArchiveForAdmin(
     qualityProfile.grade,
     rolledSize,
     targetLevel,
-    'arch'
+    'arch',
+    undefined,
+    preferredStarterId
   );
   const nextArchive = [...currentArchive, entry].sort(
     (a, b) => a.slotIndex - b.slotIndex
@@ -424,6 +437,7 @@ export function swapActiveDigimonWithPartyReserve(
     currentStarterId,
     state.digimon.activeFormId
   );
+  const outgoingStarterId = resolveStarterIdForForm(currentStarterId, currentForm.id);
   const currentGrade = getHatchQualityProfile(state.digimon.hatchGrade).grade;
   const currentSizePct = clampHatchSizePct(
     currentGrade,
@@ -433,7 +447,7 @@ export function swapActiveDigimonWithPartyReserve(
   const outgoingToReserve: ArchivedDigimonEntry = {
     id: `party_${currentForm.id}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     slotIndex: reserveSlotIndex,
-    starterId: currentForm.starterId,
+    starterId: outgoingStarterId,
     activeFormId: currentForm.id,
     nickname: state.digimon.nickname,
     level: state.digimon.level,
@@ -444,7 +458,7 @@ export function swapActiveDigimonWithPartyReserve(
     ds: Math.max(0, Math.min(state.digimon.maxDs, state.digimon.ds)),
     maxDs: state.digimon.maxDs,
     unlockedFormIds: sanitizeUnlockedFormIdsForDigimon(
-      currentForm.starterId,
+      outgoingStarterId,
       state.digimon.level,
       state.digimon.unlockedFormIds,
       currentForm.id
@@ -455,6 +469,7 @@ export function swapActiveDigimonWithPartyReserve(
   };
 
   const incomingForm = getDigimonFormProfile(target.activeFormId);
+  const incomingStarterId = resolveStarterIdForForm(target.starterId, incomingForm.id);
   const incomingGrade = getHatchQualityProfile(target.hatchGrade).grade;
   const incomingSizePct = clampHatchSizePct(incomingGrade, target.hatchSizePct);
   const incomingMaxHp = calcDigimonMaxHp(
@@ -478,7 +493,7 @@ export function swapActiveDigimonWithPartyReserve(
 
   return {
     ok: true,
-    newStarterId: incomingForm.starterId,
+    newStarterId: incomingStarterId,
     activatedName: target.nickname ?? incomingForm.name,
     storedName: state.digimon.nickname ?? currentForm.name,
     next: {
@@ -494,7 +509,7 @@ export function swapActiveDigimonWithPartyReserve(
         activeFormId: incomingForm.id,
         nickname: target.nickname,
         unlockedFormIds: sanitizeUnlockedFormIdsForDigimon(
-          incomingForm.starterId,
+          incomingStarterId,
           target.level,
           target.unlockedFormIds,
           incomingForm.id
@@ -651,6 +666,7 @@ export function swapActiveDigimonWithArchiveSlot(
     currentStarterId,
     state.digimon.activeFormId
   );
+  const outgoingStarterId = resolveStarterIdForForm(currentStarterId, currentForm.id);
   const currentGrade = getHatchQualityProfile(state.digimon.hatchGrade).grade;
   const currentSizePct = clampHatchSizePct(
     currentGrade,
@@ -660,7 +676,7 @@ export function swapActiveDigimonWithArchiveSlot(
   const archivedOutgoing: ArchivedDigimonEntry = {
     id: `arch_${currentForm.id}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     slotIndex,
-    starterId: currentForm.starterId,
+    starterId: outgoingStarterId,
     activeFormId: currentForm.id,
     nickname: state.digimon.nickname,
     level: state.digimon.level,
@@ -671,7 +687,7 @@ export function swapActiveDigimonWithArchiveSlot(
     ds: Math.max(0, Math.min(state.digimon.maxDs, state.digimon.ds)),
     maxDs: state.digimon.maxDs,
     unlockedFormIds: sanitizeUnlockedFormIdsForDigimon(
-      currentForm.starterId,
+      outgoingStarterId,
       state.digimon.level,
       state.digimon.unlockedFormIds,
       currentForm.id
@@ -682,6 +698,7 @@ export function swapActiveDigimonWithArchiveSlot(
   };
 
   const incomingForm = getDigimonFormProfile(target.activeFormId);
+  const incomingStarterId = resolveStarterIdForForm(target.starterId, incomingForm.id);
   const incomingGrade = getHatchQualityProfile(target.hatchGrade).grade;
   const incomingSizePct = clampHatchSizePct(incomingGrade, target.hatchSizePct);
   const incomingMaxHp = calcDigimonMaxHp(
@@ -705,7 +722,7 @@ export function swapActiveDigimonWithArchiveSlot(
 
   return {
     ok: true,
-    newStarterId: incomingForm.starterId,
+    newStarterId: incomingStarterId,
     activatedName: target.nickname ?? incomingForm.name,
     storedName: state.digimon.nickname ?? currentForm.name,
     next: {
@@ -721,7 +738,7 @@ export function swapActiveDigimonWithArchiveSlot(
         activeFormId: incomingForm.id,
         nickname: target.nickname,
         unlockedFormIds: sanitizeUnlockedFormIdsForDigimon(
-          incomingForm.starterId,
+          incomingStarterId,
           target.level,
           target.unlockedFormIds,
           incomingForm.id

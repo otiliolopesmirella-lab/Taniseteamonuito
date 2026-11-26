@@ -338,7 +338,10 @@ export function getSavedStarterDigimonForAccount(
       parsed.digimonId === 'renamon' ||
       parsed.digimonId === 'monodramon' ||
       parsed.digimonId === 'biyomon' ||
-      parsed.digimonId === 'kunemon'
+      parsed.digimonId === 'kunemon' ||
+      parsed.digimonId === 'salamon' ||
+      parsed.digimonId === 'patamon' ||
+      parsed.digimonId === 'starmon'
     ) {
       return parsed;
     }

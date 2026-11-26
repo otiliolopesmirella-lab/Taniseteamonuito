@@ -120,6 +120,7 @@ type PullDestinationMode = 'active' | 'party' | 'archive';
 
 interface AdminTestModalProps {
   digimon: DigimonFormProfile;
+  activeStarterId?: StarterDigimonId;
   digimonStats: DigimonRuntimeStats;
   currentMapId: PlayableMapId;
   currentTamerId: TamerId;
@@ -135,11 +136,20 @@ interface AdminTestModalProps {
   onSetDigimonLevel: (level: number) => void;
   onAddDigimonExp: (expAmount: number) => void;
   onEvolveForm: (targetFormId: DigimonFormId) => void;
-  onPullAnyDigimon: (formId: DigimonFormId, grade: HatchQualityGrade) => void;
-  onAddDigimonToParty?: (formId: DigimonFormId, grade: HatchQualityGrade) => void;
+  onPullAnyDigimon: (
+    formId: DigimonFormId,
+    grade: HatchQualityGrade,
+    preferredStarterId?: StarterDigimonId
+  ) => void;
+  onAddDigimonToParty?: (
+    formId: DigimonFormId,
+    grade: HatchQualityGrade,
+    preferredStarterId?: StarterDigimonId
+  ) => void;
   onAddDigimonToArchive?: (
     formId: DigimonFormId,
-    grade: HatchQualityGrade
+    grade: HatchQualityGrade,
+    preferredStarterId?: StarterDigimonId
   ) => void;
   onUnlockArchiveSlots?: (targetUnlockedSlots: number) => void;
   onSimulateEggDrop?: (
@@ -191,6 +201,9 @@ const STARTER_LINE_META: ReadonlyArray<{
   { id: 'monodramon', label: 'Linha Dragão / Justiça (Monodramon / Justimon)', dotClass: 'bg-red-400' },
   { id: 'biyomon', label: 'Linha Vento / Fogo (Biyomon / Phoenixmon)', dotClass: 'bg-pink-400' },
   { id: 'kunemon', label: 'Linha Trovão / Inseto (Kunemon / GranKuwagamon)', dotClass: 'bg-yellow-400' },
+  { id: 'salamon', label: 'Linha Luz / Sagrada (Salamon / Angewomon / Magnadramon)', dotClass: 'bg-pink-300' },
+  { id: 'patamon', label: 'Linha Luz / Arcanjo (Patamon / Angemon / Seraphimon)', dotClass: 'bg-amber-300' },
+  { id: 'starmon', label: 'Linha Cósmica / 3 Evoluções (Starmon / SuperStarmon / Justimon)', dotClass: 'bg-yellow-400' },
 ];
 
 const ALL_DATAS_CATALOG = listAllDataDefinitions();
@@ -243,6 +256,7 @@ function formatDropChancePct(pct: number): string {
 
 function AdminTestModalInner({
   digimon,
+  activeStarterId,
   digimonStats,
   currentMapId,
   currentTamerId,
@@ -546,16 +560,19 @@ function AdminTestModalInner({
   const allDatas = ALL_DATAS_CATALOG;
   const allEggs = ALL_EGGS_CATALOG;
 
-  function handleSelectDigimonForm(formId: DigimonFormId) {
+  function handleSelectDigimonForm(
+    formId: DigimonFormId,
+    preferredStarterId: StarterDigimonId
+  ) {
     if (pullMode === 'party' && onAddDigimonToParty) {
-      onAddDigimonToParty(formId, activeQuality.grade);
+      onAddDigimonToParty(formId, activeQuality.grade, preferredStarterId);
       return;
     }
     if (pullMode === 'archive' && onAddDigimonToArchive) {
-      onAddDigimonToArchive(formId, activeQuality.grade);
+      onAddDigimonToArchive(formId, activeQuality.grade, preferredStarterId);
       return;
     }
-    onPullAnyDigimon(formId, activeQuality.grade);
+    onPullAnyDigimon(formId, activeQuality.grade, preferredStarterId);
   }
 
   const ownedQtyMap = useMemo(() => {
@@ -986,15 +1003,22 @@ function AdminTestModalInner({
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                      <div
+                        className={`grid grid-cols-2 gap-1.5 ${
+                          line.forms.length === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-4'
+                        }`}
+                      >
                         {line.forms.map((form) => {
-                          const isActive = form.id === digimon.id;
+                          const effectiveActiveStarter = activeStarterId ?? digimon.starterId;
+                          const isActive =
+                            form.id === digimon.id &&
+                            (form.id !== 'justimon' || effectiveActiveStarter === line.id);
                           const evoCost = getFormEvoluterCost(line.id, form.id);
                           return (
                             <button
-                              key={form.id}
+                              key={`${line.id}-${form.id}`}
                               type="button"
-                              onClick={() => handleSelectDigimonForm(form.id)}
+                              onClick={() => handleSelectDigimonForm(form.id, line.id)}
                               style={
                                 isActive
                                   ? {

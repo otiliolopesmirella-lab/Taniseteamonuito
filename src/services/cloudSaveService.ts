@@ -250,7 +250,10 @@ function sanitizeStarterDigimonForCloud(
     rawId !== 'renamon' &&
     rawId !== 'monodramon' &&
     rawId !== 'biyomon' &&
-    rawId !== 'kunemon'
+    rawId !== 'kunemon' &&
+    rawId !== 'salamon' &&
+    rawId !== 'patamon' &&
+    rawId !== 'starmon'
   ) {
     return null;
   }
@@ -276,6 +279,9 @@ function sanitizeStarterDigimonForCloud(
     monodramon: 'Fogo',
     biyomon: 'Velocidade',
     kunemon: 'Velocidade',
+    salamon: 'Velocidade',
+    patamon: 'Velocidade',
+    starmon: 'Velocidade',
   };
   const rawEl = String(obj.element ?? '');
   const element: StarterDigimonElement =
@@ -1255,7 +1261,7 @@ function diagnosePlayerSaveMismatch(
       'agumon', 'agumon_classic', 'gabumon', 'impmon', 'veemon', 'keramon',
       'gaomon', 'lalamon', 'guilmon', 'demimeramon', 'hawkmon', 'tentomon',
       'drimogemon', 'kiwimon', 'gotsumon', 'elecmon', 'renamon', 'monodramon',
-      'biyomon', 'kunemon',
+      'biyomon', 'kunemon', 'salamon', 'patamon', 'starmon',
     ].includes(st.digimonId)) {
       issues.push(`st.id(${String(st.digimonId)})`);
     }

@@ -486,6 +486,9 @@ export const DIGIEGG_HATCH_RECIPE_CONFIG: {
     digiegg_demimeramon: { requiredDataQuantity: 7 },
     digiegg_keramon: { requiredDataQuantity: 10 },
     digiegg_veemon: { requiredDataQuantity: 10 },
+    digiegg_salamon: { requiredDataQuantity: 7 },
+    digiegg_patamon: { requiredDataQuantity: 7 },
+    digiegg_starmon: { requiredDataQuantity: 7 },
   },
 };
 
@@ -771,7 +774,7 @@ export const DIGIEGG_ITEMS_CONFIG: readonly DigiEggConfigInput[] = [
     dataType: 'insect',
     itemKey: 'digiegg_kunemon',
     name: 'DigiEgg: Kunemon',
-    iconUrl: '/assets/items/digieggs/egg_kunemon.png',
+    iconUrl: '/assets/items/digieggs/egg_kunemon.png?v=egg2',
     accentColor: '#eab308',
     speciesLabel: 'Kunemon',
     hatchedFormId: 'kunemon',
@@ -819,6 +822,46 @@ export const DIGIEGG_ITEMS_CONFIG: readonly DigiEggConfigInput[] = [
       'DigiEgg Mercenário de Veemon dropado por Veedramon na Fortaleza Tecnológica Central (linha: Veemon → Veedramon → AeroVeedramon → UlforceVeedramon).',
     usageRequirements:
       'Inserir na Incubadora do DATS com DATA DRAGON até atingir 3/5, 4/5 ou 5/5 para chocar.',
+  },
+  // === DIGIEGGS SAGRADOS & CÓSMICOS ===
+  {
+    dataType: 'beast',
+    itemKey: 'digiegg_salamon',
+    name: 'DigiEgg: Salamon',
+    iconUrl: '/assets/items/digieggs/egg_salamon.png?v=egg2',
+    accentColor: '#f472b6',
+    speciesLabel: 'Salamon',
+    hatchedFormId: 'salamon',
+    description:
+      'DigiEgg Mercenário de Salamon envolto em luz sagrada (linha: Salamon → Gatomon → Angewomon → Magnadramon).',
+    usageRequirements:
+      'Inserir na Incubadora do DATS com DATA BEAST até atingir 3/5, 4/5 ou 5/5 para chocar.',
+  },
+  {
+    dataType: 'bird',
+    itemKey: 'digiegg_patamon',
+    name: 'DigiEgg: Patamon',
+    iconUrl: '/assets/items/digieggs/egg_patamon.png?v=egg2',
+    accentColor: '#fb923c',
+    speciesLabel: 'Patamon',
+    hatchedFormId: 'patamon',
+    description:
+      'DigiEgg Mercenário de Patamon com marcas celestes (linha: Patamon → Angemon → MagnaAngemon → Seraphimon).',
+    usageRequirements:
+      'Inserir na Incubadora do DATS com DATA BIRD até atingir 3/5, 4/5 ou 5/5 para chocar.',
+  },
+  {
+    dataType: 'rock',
+    itemKey: 'digiegg_starmon',
+    name: 'DigiEgg: Starmon',
+    iconUrl: '/assets/items/digieggs/egg_starmon.png?v=egg2',
+    accentColor: '#facc15',
+    speciesLabel: 'Starmon',
+    hatchedFormId: 'starmon',
+    description:
+      'DigiEgg Mercenário de Starmon com núcleo estelar de 3 evoluções (linha: Starmon → SuperStarmon → Justimon).',
+    usageRequirements:
+      'Inserir na Incubadora do DATS com DATA ROCK até atingir 3/5, 4/5 ou 5/5 para chocar.',
   },
 ];
 

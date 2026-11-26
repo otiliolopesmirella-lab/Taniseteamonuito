@@ -25,6 +25,7 @@ import {
   D_TERMINAL_RETURN_PORTAL,
   D_TERMINAL_WORLD_H,
   D_TERMINAL_WORLD_W,
+  PAWNCHESSMON_BLACK_SPRITE_URL,
 } from '../../maps/dTerminalMap';
 import { getPortalsForMap } from '../../maps/mapPortals';
 import {
@@ -104,27 +105,191 @@ import {
   HUNTING_WORLD_H,
   HUNTING_WORLD_W,
 } from '../../maps/huntingFieldMap';
-import { DATS_FIXED_NPCS } from '../../sprites/npcSprites';
+import {
+  DATS_FIXED_NPCS,
+  getProcessedNpcPortraitUrl,
+  preloadFixedNpcSprite,
+} from '../../sprites/npcSprites';
+import { getWildDigimonPortraitUrl } from '../../sprites/wildDigimonSprites';
+import type { TamerId } from '../../types/character';
+import type { DigimonFormId } from '../../types/digimon';
 import type { LiveWorldHudSnapshot } from '../../types/hud';
+import { isValidCoverPhotoDataUrl } from '../../utils/avatarPhoto';
 
 interface MinimapHudPanelProps {
   snapshot: LiveWorldHudSnapshot;
   minimapSize?: 'compacto' | 'padrao';
+  tamerId?: TamerId;
+  tamerPhotoUrl?: string | null;
+  partnerFormId?: DigimonFormId;
   onOpenFullMap: () => void;
+}
+
+type PortraitCropMode =
+  | 'contain'
+  | 'cover'
+  | 'tamer-sheet'
+  | 'npc-upper'
+  | 'kuwagamon-sheet';
+
+const MINIMAP_DPR = 2;
+
+function getMinimapDigimonThumbUrl(species: string): string {
+  if (species === 'kuwagamon') {
+    return getWildDigimonPortraitUrl('kuwagamon') ?? '/assets/sprites/mobs/kuwagamon.png?v=hd2';
+  }
+  return `/assets/digimon/thumbs/${species}.png?v=tdk1`;
+}
+
+function drawCircularPortraitMarker(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  radius: number,
+  img: HTMLImageElement | null,
+  opts: {
+    bgColor: string;
+    ringColor: string;
+    ringWidth: number;
+    outerStrokeColor?: string;
+    cropMode?: PortraitCropMode;
+    fallbackDotColor?: string;
+  }
+): void {
+  const {
+    bgColor,
+    ringColor,
+    ringWidth,
+    outerStrokeColor = '#020617',
+    cropMode = 'contain',
+    fallbackDotColor = ringColor,
+  } = opts;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.fillStyle = img ? bgColor : fallbackDotColor;
+  ctx.fill();
+
+  if (img && img.naturalWidth > 0 && img.naturalHeight > 0) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, Math.max(1, radius - 0.5), 0, Math.PI * 2);
+    ctx.clip();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    const nw = img.naturalWidth;
+    const nh = img.naturalHeight;
+    const d = radius * 2;
+
+    if (cropMode === 'tamer-sheet') {
+      const cols = nw >= 288 ? Math.max(1, Math.round(nw / 144)) : 1;
+      const cellW = nw / cols;
+      const side = Math.min(cellW * 0.84, nh * 0.84);
+      const sx = (cellW - side) * 0.5;
+      const sy = nh * 0.03;
+      ctx.drawImage(img, sx, sy, side, side, cx - radius, cy - radius, d, d);
+    } else if (cropMode === 'cover') {
+      const side = Math.min(nw, nh);
+      const sx = (nw - side) * 0.5;
+      const sy = (nh - side) * 0.5;
+      ctx.drawImage(img, sx, sy, side, side, cx - radius, cy - radius, d, d);
+    } else if (cropMode === 'npc-upper') {
+      if (nh > nw * 1.15) {
+        const side = Math.min(nw * 0.92, nh);
+        const sx = (nw - side) * 0.5;
+        const sy = nh * 0.02;
+        ctx.drawImage(img, sx, sy, side, side, cx - radius, cy - radius, d, d);
+      } else {
+        const scale = Math.min((d * 0.92) / nw, (d * 0.92) / nh);
+        const dw = nw * scale;
+        const dh = nh * scale;
+        ctx.drawImage(img, cx - dw / 2, cy - dh / 2, dw, dh);
+      }
+    } else if (cropMode === 'kuwagamon-sheet' && nw > nh * 2.2) {
+      const cellW = nw / 5;
+      const scale = Math.min((d * 0.92) / cellW, (d * 0.92) / nh);
+      const dw = cellW * scale;
+      const dh = nh * scale;
+      ctx.drawImage(img, 0, 0, cellW, nh, cx - dw / 2, cy - dh / 2, dw, dh);
+    } else {
+      const scale = Math.min((d * 0.92) / nw, (d * 0.92) / nh);
+      const dw = nw * scale;
+      const dh = nh * scale;
+      ctx.drawImage(img, cx - dw / 2, cy - dh / 2, dw, dh);
+    }
+    ctx.restore();
+  }
+
+  // Crisp contrast border so circular photos stay distinct on any terrain
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.strokeStyle = outerStrokeColor;
+  ctx.lineWidth = ringWidth + 1.1;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.strokeStyle = ringColor;
+  ctx.lineWidth = ringWidth;
+  ctx.stroke();
+  ctx.restore();
 }
 
 export const MinimapHudPanel = memo(function MinimapHudPanel({
   snapshot,
   minimapSize = 'padrao',
+  tamerId = 'kai',
+  tamerPhotoUrl = null,
+  partnerFormId = 'agumon',
   onOpenFullMap,
 }: MinimapHudPanelProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // Pre-baked aspect-accurate offscreen thumbnails per map (exact 16:9 for combat maps, exact 1600:1480 for DATS)
   const thumbCacheRef = useRef<Partial<Record<string, HTMLCanvasElement>>>({});
   const loadingMapRef = useRef<Set<string>>(new Set());
+  const markerImgCacheRef = useRef<
+    Map<string, HTMLImageElement | 'loading' | 'error'>
+  >(new Map());
+  const mountedRef = useRef(true);
   const [thumbVersion, setThumbVersion] = useState(0);
+  const [spriteVersion, setSpriteVersion] = useState(0);
   const [zoom, setZoom] = useState<number>(1.0);
   const [minimized, setMinimized] = useState(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const getCachedMarkerImage = (url: string | null | undefined): HTMLImageElement | null => {
+    if (!url) return null;
+    const cached = markerImgCacheRef.current.get(url);
+    if (cached === 'loading' || cached === 'error') return null;
+    if (cached) return cached;
+
+    markerImgCacheRef.current.set(url, 'loading');
+    const img = new Image();
+    img.decoding = 'async';
+    img.onload = () => {
+      if (img.naturalWidth > 0) {
+        markerImgCacheRef.current.set(url, img);
+      } else {
+        markerImgCacheRef.current.set(url, 'error');
+      }
+      if (mountedRef.current) {
+        setSpriteVersion((v) => v + 1);
+      }
+    };
+    img.onerror = () => {
+      markerImgCacheRef.current.set(url, 'error');
+    };
+    img.src = url;
+    return null;
+  };
 
   const isDTerminal = snapshot.mapId === D_TERMINAL_MAP_ID;
   const isHunting = snapshot.mapId === HUNTING_MAP_ID;
@@ -209,8 +374,8 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
       loadingMapRef.current.add(mapId);
       const source = buildDatsCenterStaticLayer();
       const thumb = document.createElement('canvas');
-      thumb.width = 240;
-      thumb.height = 222;
+      thumb.width = 240 * MINIMAP_DPR;
+      thumb.height = 222 * MINIMAP_DPR;
       const tCtx = thumb.getContext('2d');
       if (tCtx) {
         tCtx.imageSmoothingEnabled = true;
@@ -219,6 +384,13 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
       }
       thumbCacheRef.current[mapId] = thumb;
       setThumbVersion((v) => v + 1);
+      void Promise.all(DATS_FIXED_NPCS.map((npc) => preloadFixedNpcSprite(npc))).then(
+        () => {
+          if (mountedRef.current) {
+            setSpriteVersion((v) => v + 1);
+          }
+        }
+      );
       return;
     }
 
@@ -250,8 +422,8 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
     img.src = url;
     img.onload = () => {
       const thumb = document.createElement('canvas');
-      thumb.width = mapId === D_TERMINAL_MAP_ID ? 270 : 320;
-      thumb.height = 180;
+      thumb.width = (mapId === D_TERMINAL_MAP_ID ? 270 : 320) * MINIMAP_DPR;
+      thumb.height = 180 * MINIMAP_DPR;
       const tCtx = thumb.getContext('2d');
       if (tCtx) {
         tCtx.imageSmoothingEnabled = true;
@@ -275,8 +447,8 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const w = canvas.width;
-    const h = canvas.height;
+    const w = canvasW;
+    const h = canvasH;
     const worldW = isDTerminal
       ? D_TERMINAL_WORLD_W
       : isVirtualWorld
@@ -316,6 +488,7 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
                       ? HUNTING_WORLD_H
                       : DATS_WORLD_H;
 
+    ctx.setTransform(MINIMAP_DPR, 0, 0, MINIMAP_DPR, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
     const baseScaleX = w / worldW;
@@ -359,7 +532,7 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
       ctx.arc(
         D_TERMINAL_RETURN_PORTAL.x * scaleX,
         D_TERMINAL_RETURN_PORTAL.y * scaleY,
-        4.8,
+        5.2,
         0,
         Math.PI * 2
       );
@@ -368,44 +541,83 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
       ctx.lineWidth = 1.4;
       ctx.stroke();
 
-      // PawnChessmon (Black) Trailmon Conductor NPC marker
-      ctx.fillStyle = '#34d399';
-      ctx.beginPath();
-      ctx.arc(
+      // PawnChessmon (Black) Trailmon Conductor NPC circular photo
+      const conductorImg = getCachedMarkerImage(PAWNCHESSMON_BLACK_SPRITE_URL);
+      drawCircularPortraitMarker(
+        ctx,
         D_TERMINAL_CONDUCTOR_NPC.x * scaleX,
         D_TERMINAL_CONDUCTOR_NPC.y * scaleY,
-        5.0,
-        0,
-        Math.PI * 2
+        8.2,
+        conductorImg,
+        {
+          bgColor: '#06202e',
+          ringColor: '#fde047',
+          ringWidth: 1.4,
+          cropMode: 'npc-upper',
+          fallbackDotColor: '#34d399',
+        }
       );
-      ctx.fill();
-      ctx.strokeStyle = '#fde047';
-      ctx.lineWidth = 1.6;
-      ctx.stroke();
     } else if (!isCombatMap) {
-      // DATS portals & interactive nodes
+      // DATS portals, machines & interactive nodes
       for (const pt of DATS_INTERACTION_POINTS) {
-        if (pt.id === 'dats-mudfrigimon-npc') continue;
+        if (
+          pt.id === 'dats-mudfrigimon-npc' ||
+          pt.id === 'dats-player-market-npc'
+        ) {
+          continue;
+        }
         const px = pt.x * scaleX;
         const py = pt.y * scaleY;
+        if (pt.id === 'dats-digimon-incubator') {
+          const incImg = getCachedMarkerImage(
+            '/assets/dats/digimon_incubator_machine.png'
+          );
+          drawCircularPortraitMarker(ctx, px, py, 7.6, incImg, {
+            bgColor: '#061f3d',
+            ringColor: '#38e8ff',
+            ringWidth: 1.2,
+            cropMode: 'contain',
+          });
+          continue;
+        }
+        if (pt.id === 'dats-digimon-archive') {
+          const arcImg = getCachedMarkerImage(
+            '/assets/dats/digimon_archive_machine.png'
+          );
+          drawCircularPortraitMarker(ctx, px, py, 7.6, arcImg, {
+            bgColor: '#1f0b38',
+            ringColor: '#e879f9',
+            ringWidth: 1.2,
+            cropMode: 'contain',
+          });
+          continue;
+        }
         ctx.fillStyle = pt.kind === 'world-portal' ? '#ffd43b' : '#38e8ff';
         ctx.beginPath();
-        ctx.arc(px, py, pt.kind === 'world-portal' ? 4.4 : 3.4, 0, Math.PI * 2);
+        ctx.arc(px, py, pt.kind === 'world-portal' ? 4.8 : 3.6, 0, Math.PI * 2);
         ctx.fill();
         ctx.strokeStyle = '#020617';
         ctx.lineWidth = 1.2;
         ctx.stroke();
       }
 
-      // Official Fixed DATS NPCs
+      // Official Fixed DATS NPCs (Richard Sampson, MudFrigimon, Miki) with circular photos
       for (const npc of DATS_FIXED_NPCS) {
-        ctx.fillStyle = '#34d399';
-        ctx.beginPath();
-        ctx.arc(npc.x * scaleX, npc.y * scaleY, 4.0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#fde047';
-        ctx.lineWidth = 1.2;
-        ctx.stroke();
+        const npcImg = getCachedMarkerImage(getProcessedNpcPortraitUrl(npc));
+        drawCircularPortraitMarker(
+          ctx,
+          npc.x * scaleX,
+          npc.y * scaleY,
+          8.0,
+          npcImg,
+          {
+            bgColor: '#052236',
+            ringColor: '#34d399',
+            ringWidth: 1.3,
+            cropMode: 'npc-upper',
+            fallbackDotColor: '#34d399',
+          }
+        );
       }
     } else {
       const safeZone = isVirtualWorld
@@ -526,80 +738,136 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
         ctx.fill();
       }
 
-      // Friendly Field NPCs
+      // Friendly Field NPCs (tiny circular NPC photos)
+      const fieldNpcImg =
+        npcs.length > 0
+          ? getCachedMarkerImage(
+              '/assets/aistudio/file_0000000053c8820eae813279e80351a1_7e409ad6.webp'
+            )
+          : null;
       for (const npc of npcs) {
-        ctx.fillStyle = '#34d399';
-        ctx.beginPath();
-        ctx.arc(npc.x * scaleX, npc.y * scaleY, 3.6, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#020617';
-        ctx.lineWidth = 1;
-        ctx.stroke();
+        drawCircularPortraitMarker(
+          ctx,
+          npc.x * scaleX,
+          npc.y * scaleY,
+          7.4,
+          fieldNpcImg,
+          {
+            bgColor: '#052236',
+            ringColor: '#34d399',
+            ringWidth: 1.2,
+            cropMode: 'npc-upper',
+            fallbackDotColor: '#34d399',
+          }
+        );
       }
 
-      // Active Wild Digimons + Raid Boss Beacon
+      // Active Wild Digimons + Raid Boss circular miniature photos (normal mobs first, Boss on top)
       for (const en of snapshot.minimapEnemies) {
-        if (!en.alive) continue;
-        if (en.isBoss) {
-          ctx.fillStyle = 'rgba(239, 68, 68, 0.36)';
-          ctx.beginPath();
-          ctx.arc(en.x * scaleX, en.y * scaleY, 9.2, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = '#ef4444';
-          ctx.beginPath();
-          ctx.arc(en.x * scaleX, en.y * scaleY, 5.4, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.strokeStyle = '#fde047';
-          ctx.lineWidth = 1.6;
-          ctx.stroke();
-          continue;
-        }
-        ctx.fillStyle = '#fb7185';
+        if (!en.alive || en.isBoss) continue;
+        const mobUrl = getMinimapDigimonThumbUrl(en.species);
+        const mobImg = getCachedMarkerImage(mobUrl);
+        drawCircularPortraitMarker(
+          ctx,
+          en.x * scaleX,
+          en.y * scaleY,
+          6.4,
+          mobImg,
+          {
+            bgColor: '#140a24',
+            ringColor: '#fb7185',
+            ringWidth: 1.0,
+            cropMode: 'contain',
+            fallbackDotColor: '#fb7185',
+          }
+        );
+      }
+      for (const en of snapshot.minimapEnemies) {
+        if (!en.alive || !en.isBoss) continue;
+        const bossUrl = getMinimapDigimonThumbUrl(en.species);
+        const bossImg = getCachedMarkerImage(bossUrl);
+        const bx = en.x * scaleX;
+        const by = en.y * scaleY;
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.36)';
         ctx.beginPath();
-        ctx.arc(en.x * scaleX, en.y * scaleY, 2.3, 0, Math.PI * 2);
+        ctx.arc(bx, by, 13.0, 0, Math.PI * 2);
         ctx.fill();
+        drawCircularPortraitMarker(ctx, bx, by, 9.8, bossImg, {
+          bgColor: '#290711',
+          ringColor: '#fde047',
+          ringWidth: 1.4,
+          outerStrokeColor: '#ef4444',
+          cropMode:
+            en.species === 'kuwagamon' && !bossUrl.startsWith('data:')
+              ? 'kuwagamon-sheet'
+              : 'contain',
+          fallbackDotColor: '#ef4444',
+        });
       }
     }
 
-    // Other Online Players on the same map
+    // Other Online Players on the same map (circular Tamer photo)
     for (const remote of snapshot.minimapPlayers ?? []) {
-      ctx.fillStyle = remote.isGm ? '#facc15' : '#34d399';
-      ctx.beginPath();
-      ctx.arc(
+      const remoteCharId: TamerId = remote.characterId ?? 'kai';
+      const remoteImg = getCachedMarkerImage(
+        `/assets/sprites/tamers/${remoteCharId}/idle.png?v=hd3`
+      );
+      drawCircularPortraitMarker(
+        ctx,
         remote.x * scaleX,
         remote.y * scaleY,
-        remote.isGm ? 4.8 : 4.1,
-        0,
-        Math.PI * 2
+        remote.isGm ? 7.4 : 6.6,
+        remoteImg,
+        {
+          bgColor: '#07214c',
+          ringColor: remote.isGm ? '#facc15' : '#34d399',
+          ringWidth: 1.2,
+          cropMode: 'tamer-sheet',
+          fallbackDotColor: remote.isGm ? '#facc15' : '#34d399',
+        }
       );
-      ctx.fill();
-      ctx.strokeStyle = '#020617';
-      ctx.lineWidth = 1.4;
-      ctx.stroke();
     }
 
-    // Partner Digimon gold dot
-    ctx.fillStyle = '#fde047';
-    ctx.beginPath();
-    ctx.arc(snapshot.partnerX * scaleX, snapshot.partnerY * scaleY, 3.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#020617';
-    ctx.lineWidth = 1.1;
-    ctx.stroke();
+    // Partner Digimon circular photo with gold ring
+    const partnerImg = getCachedMarkerImage(
+      getMinimapDigimonThumbUrl(partnerFormId)
+    );
+    drawCircularPortraitMarker(
+      ctx,
+      snapshot.partnerX * scaleX,
+      snapshot.partnerY * scaleY,
+      6.8,
+      partnerImg,
+      {
+        bgColor: '#081d4a',
+        ringColor: '#fde047',
+        ringWidth: 1.2,
+        cropMode: 'contain',
+        fallbackDotColor: '#fde047',
+      }
+    );
 
-    // Tamer Cyan Pin with crisp halo
-    ctx.fillStyle = 'rgba(56, 232, 255, 0.32)';
+    // Local Tamer circular photo with cyan halo
+    const customTamerUrl = isValidCoverPhotoDataUrl(tamerPhotoUrl)
+      ? tamerPhotoUrl
+      : null;
+    const localTamerUrl =
+      customTamerUrl ?? `/assets/sprites/tamers/${tamerId}/idle.png?v=hd3`;
+    const localTamerImg = getCachedMarkerImage(localTamerUrl);
+    const tx = snapshot.tamerX * scaleX;
+    const ty = snapshot.tamerY * scaleY;
+    ctx.fillStyle = 'rgba(56, 232, 255, 0.34)';
     ctx.beginPath();
-    ctx.arc(snapshot.tamerX * scaleX, snapshot.tamerY * scaleY, 8.2, 0, Math.PI * 2);
+    ctx.arc(tx, ty, 11.0, 0, Math.PI * 2);
     ctx.fill();
-
-    ctx.fillStyle = '#38e8ff';
-    ctx.beginPath();
-    ctx.arc(snapshot.tamerX * scaleX, snapshot.tamerY * scaleY, 5.0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1.8;
-    ctx.stroke();
+    drawCircularPortraitMarker(ctx, tx, ty, 7.8, localTamerImg, {
+      bgColor: '#082761',
+      ringColor: '#ffffff',
+      ringWidth: 1.3,
+      outerStrokeColor: '#0891b2',
+      cropMode: customTamerUrl ? 'cover' : 'tamer-sheet',
+      fallbackDotColor: '#38e8ff',
+    });
 
     ctx.restore();
   }, [
@@ -617,8 +885,12 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
     isCombatMap,
     minimized,
     thumbVersion,
+    spriteVersion,
     canvasW,
     canvasH,
+    tamerId,
+    tamerPhotoUrl,
+    partnerFormId,
   ]);
 
   // Exact CSS width classes matching each map's natural proportions and user size preference
@@ -691,8 +963,8 @@ export const MinimapHudPanel = memo(function MinimapHudPanel({
           >
             <canvas
               ref={canvasRef}
-              width={canvasW}
-              height={canvasH}
+              width={canvasW * MINIMAP_DPR}
+              height={canvasH * MINIMAP_DPR}
               className="block h-full w-full"
             />
           </button>

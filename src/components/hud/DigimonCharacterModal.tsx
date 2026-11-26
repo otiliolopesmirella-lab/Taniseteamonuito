@@ -44,8 +44,10 @@ import {
 } from '../../types/classification';
 import {
   getDigimonFormProfile,
+  resolveStarterIdForForm,
   type DigimonFormId,
   type DigimonFormProfile,
+  type StarterDigimonId,
 } from '../../types/digimon';
 import type {
   DigimonRuntimeStats,
@@ -61,6 +63,7 @@ import { DigimonClassificationBadges } from './DigimonClassificationBadges';
 
 interface DigimonCharacterModalProps {
   digimon: DigimonFormProfile;
+  starterId?: StarterDigimonId;
   digimonStats: DigimonRuntimeStats;
   tamerStats: TamerRuntimeStats;
   equippedItems: Partial<Record<EquipmentSlotId, InventoryItem>>;
@@ -415,6 +418,7 @@ const DigimonPreviewStage = memo(function DigimonPreviewStage({
 
 export function DigimonCharacterModal({
   digimon,
+  starterId,
   digimonStats,
   tamerStats,
   equippedItems,
@@ -523,15 +527,16 @@ export function DigimonCharacterModal({
     ? getDigimonElementMeta(activeSkillBreakdown.spec.element)
     : null;
 
-  const evoChain = DIGIMON_EVOLUTION_CHAINS[digimon.starterId];
-  const isFreeStarterLine = isStarterFreeEvolutionLine(digimon.starterId);
+  const effectiveStarterId = resolveStarterIdForForm(starterId, digimon.id);
+  const evoChain = DIGIMON_EVOLUTION_CHAINS[effectiveStarterId];
+  const isFreeStarterLine = isStarterFreeEvolutionLine(effectiveStarterId);
   const ownedEvoluters = useMemo(
     () => getOwnedEvoluterCount(inventory),
     [inventory]
   );
   const { readyToEvolve, readyToUnlockWithEvoluters, nextEvoluterCost } = useMemo(
-    () => getNextEvolutionInfo(digimon.starterId, digimonStats),
-    [digimon.starterId, digimonStats]
+    () => getNextEvolutionInfo(effectiveStarterId, digimonStats),
+    [effectiveStarterId, digimonStats]
   );
   const activeDirection = ROTATION_DIRS[dirIndex];
   const digiExpPct = Math.min(
@@ -863,7 +868,7 @@ export function DigimonCharacterModal({
                         const unlockedByLevel = digimonStats.level >= step.unlockLevel;
                         const evoluterUnlocked = step.formId
                           ? isEvolutionSlotUnlockedByEvoluter(
-                              digimon.starterId,
+                              effectiveStarterId,
                               step.formId,
                               digimonStats
                             )

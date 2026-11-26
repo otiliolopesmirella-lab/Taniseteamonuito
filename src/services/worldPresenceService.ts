@@ -213,6 +213,16 @@ const VALID_FORMS = new Set<DigimonFormId>([
   'flymon',
   'okuwamon',
   'grankuwagamon',
+  'salamon',
+  'gatomon',
+  'angewomon',
+  'magnadramon',
+  'patamon',
+  'angemon',
+  'magnaangemon',
+  'seraphimon',
+  'starmon',
+  'superstarmon',
 ]);
 
 /**

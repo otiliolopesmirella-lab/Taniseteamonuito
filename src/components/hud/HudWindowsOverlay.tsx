@@ -42,7 +42,11 @@ import {
   type AppPreferences,
 } from '../../types/auth';
 import type { TamerCharacter, TamerId } from '../../types/character';
-import type { DigimonFormId, DigimonFormProfile } from '../../types/digimon';
+import type {
+  DigimonFormId,
+  DigimonFormProfile,
+  StarterDigimonId,
+} from '../../types/digimon';
 import type {
   AccountHudPersistence,
   DigimonRuntimeStats,
@@ -79,6 +83,7 @@ interface HudWindowsOverlayProps {
   inventory: InventoryItem[];
   guildName: string | null;
   digimon: DigimonFormProfile;
+  activeStarterId?: StarterDigimonId;
   digimonStats: DigimonRuntimeStats;
   snapshot: LiveWorldHudSnapshot;
   bits: number;
@@ -141,14 +146,20 @@ interface HudWindowsOverlayProps {
   onPlayTone: (tone: 'click' | 'confirm' | 'error') => void;
   onAdminSetDigimonLevel: (level: number) => void;
   onAdminAddDigimonExp: (expAmount: number) => void;
-  onAdminPullAnyDigimon: (formId: DigimonFormId, grade: HatchQualityGrade) => void;
+  onAdminPullAnyDigimon: (
+    formId: DigimonFormId,
+    grade: HatchQualityGrade,
+    preferredStarterId?: StarterDigimonId
+  ) => void;
   onAdminAddDigimonToParty: (
     formId: DigimonFormId,
-    grade: HatchQualityGrade
+    grade: HatchQualityGrade,
+    preferredStarterId?: StarterDigimonId
   ) => void;
   onAdminAddDigimonToArchive: (
     formId: DigimonFormId,
-    grade: HatchQualityGrade
+    grade: HatchQualityGrade,
+    preferredStarterId?: StarterDigimonId
   ) => void;
   onAdminUnlockArchiveSlots: (targetUnlockedSlots: number) => void;
   onAdminSimulateEggDrop: (
@@ -179,6 +190,7 @@ interface HudWindowsOverlayProps {
   onStartWhisper?: (friendName: string) => void;
   onlinePlayerUids?: string[];
   onlineDigimonByUid?: Record<string, DigimonFormId>;
+  onlineCharacterByUid?: Record<string, TamerId>;
   onDeductGuildCreationBits?: (costBits: number) => boolean;
   onNotifyImportantEvent?: (title: string, detail: string) => void;
   onBuyDwCoinOffer?: (offer: DwCoinShopOffer) => { ok: boolean; message: string };
@@ -203,6 +215,7 @@ export function HudWindowsOverlay({
   inventory,
   guildName,
   digimon,
+  activeStarterId,
   digimonStats,
   snapshot,
   bits,
@@ -256,6 +269,7 @@ export function HudWindowsOverlay({
   onStartWhisper,
   onlinePlayerUids = [],
   onlineDigimonByUid = {},
+  onlineCharacterByUid = {},
   onDeductGuildCreationBits,
   onNotifyImportantEvent,
   onBuyDwCoinOffer,
@@ -298,6 +312,7 @@ export function HudWindowsOverlay({
     return (
       <DigimonCharacterModal
         digimon={digimon}
+        starterId={activeStarterId}
         digimonStats={digimonStats}
         tamerStats={tamerStats}
         equippedItems={equippedItems}
@@ -350,6 +365,7 @@ export function HudWindowsOverlay({
     return (
       <AdminTestModal
         digimon={digimon}
+        activeStarterId={activeStarterId}
         digimonStats={digimonStats}
         currentMapId={snapshot.mapId}
         currentTamerId={character.id}
@@ -413,9 +429,12 @@ export function HudWindowsOverlay({
         actorUid={actorUid}
         tamerName={tamerName}
         tamerLevel={tamerStats.level}
+        tamerId={character.id}
+        tamerPhotoUrl={hudAccount.tamerPhotoUrl ?? null}
         activeDigimonFormId={digimon.id}
         onlinePlayerUids={onlinePlayerUids}
         onlineDigimonByUid={onlineDigimonByUid}
+        onlineCharacterByUid={onlineCharacterByUid}
         bits={bits}
         isGM={isGM}
         onDeductCreationBits={onDeductGuildCreationBits ?? (() => false)}

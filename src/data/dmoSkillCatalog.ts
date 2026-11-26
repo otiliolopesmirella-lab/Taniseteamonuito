@@ -2208,6 +2208,269 @@ export const DMO_SKILL_CATALOG: Record<DigimonFormId, DigimonSkillPair> = {
         'Concentra energia abissal carmesim nas mandíbulas e detona uma explosão avassaladora.',
     },
   },
+  // ── 21. SALAMON LINE ─────────────────────────────────────────────────────
+  salamon: {
+    f1: {
+      slot: 'f1',
+      name: 'Puppy Howling',
+      element: 'light',
+      rangeLabelPt: 'Alcance Médio · Onda Sônica Sagrada',
+      dsCost: 13,
+      cooldownSec: 3.2,
+      baseDamage: 120,
+      atScalingRatio: 1.48,
+      descriptionPt:
+        'Emite um uivo agudo carregado de luz dourada que atordoa e fere o inimigo.',
+    },
+    f2: {
+      slot: 'f2',
+      name: 'Petit Punch',
+      element: 'light',
+      rangeLabelPt: 'Curto Alcance · Impacto Brilhante',
+      dsCost: 24,
+      cooldownSec: 5.5,
+      baseDamage: 256,
+      atScalingRatio: 2.2,
+      descriptionPt:
+        'Avança em alta velocidade com um golpe concentrado de aura luminosa.',
+    },
+  },
+  gatomon: {
+    f1: {
+      slot: 'f1',
+      name: 'Lightning Paw',
+      element: 'light',
+      rangeLabelPt: 'Curto Alcance · Garras Relâmpago',
+      dsCost: 35,
+      cooldownSec: 4.0,
+      baseDamage: 392,
+      atScalingRatio: 1.8,
+      descriptionPt:
+        'Desfere cortes velozes com suas luvas sagradas deixando rastros de energia elétrica.',
+    },
+    f2: {
+      slot: 'f2',
+      name: "Cat's Eye",
+      element: 'light',
+      rangeLabelPt: 'Média Distância · Raio Hipnótico',
+      dsCost: 66,
+      cooldownSec: 6.5,
+      baseDamage: 810,
+      atScalingRatio: 2.68,
+      descriptionPt:
+        'Dispara um feixe violeta-dourado dos olhos que perfura a guarda do oponente.',
+    },
+  },
+  angewomon: {
+    f1: {
+      slot: 'f1',
+      name: 'Celestial Arrow',
+      element: 'light',
+      rangeLabelPt: 'Longo Alcance · Flecha Sagrada',
+      dsCost: 70,
+      cooldownSec: 4.8,
+      baseDamage: 748,
+      atScalingRatio: 2.08,
+      descriptionPt:
+        'Conjura um arco angelical de luz pura e dispara uma flecha celestial fulminante.',
+    },
+    f2: {
+      slot: 'f2',
+      name: "Heaven's Charm",
+      element: 'light',
+      rangeLabelPt: 'Área · Cruz Purificadora',
+      dsCost: 138,
+      cooldownSec: 8.0,
+      baseDamage: 1530,
+      atScalingRatio: 3.04,
+      descriptionPt:
+        'Invoca um selo rosado-dourado nos céus que purifica e explode todo mal ao redor.',
+    },
+  },
+  magnadramon: {
+    f1: {
+      slot: 'f1',
+      name: 'Dragon Fire',
+      element: 'fire',
+      rangeLabelPt: 'Longo Alcance · Chama Sagrada',
+      dsCost: 120,
+      cooldownSec: 5.5,
+      baseDamage: 1245,
+      atScalingRatio: 2.4,
+      descriptionPt:
+        'Sopra uma torrente colossal de fogo sagrado magenta-dourado contra o inimigo.',
+    },
+    f2: {
+      slot: 'f2',
+      name: 'Apocalypse',
+      element: 'light',
+      rangeLabelPt: 'Área · Juízo Celestial',
+      dsCost: 238,
+      cooldownSec: 9.5,
+      baseDamage: 2510,
+      atScalingRatio: 3.5,
+      descriptionPt:
+        'Faz chover colunas de energia divina rosada e relâmpagos sagrados sobre todo o campo.',
+    },
+  },
+  // ── 22. PATAMON LINE ─────────────────────────────────────────────────────
+  patamon: {
+    f1: {
+      slot: 'f1',
+      name: 'Boom Bubble',
+      element: 'wind',
+      rangeLabelPt: 'Média Distância · Disparo de Ar',
+      dsCost: 12,
+      cooldownSec: 3.0,
+      baseDamage: 118,
+      atScalingRatio: 1.48,
+      descriptionPt:
+        'Inala grande volume de ar e dispara uma esfera de vento comprimido altamente explosiva.',
+    },
+    f2: {
+      slot: 'f2',
+      name: 'Slamming Attack',
+      element: 'wind',
+      rangeLabelPt: 'Curto Alcance · Investida Alada',
+      dsCost: 23,
+      cooldownSec: 5.5,
+      baseDamage: 254,
+      atScalingRatio: 2.2,
+      descriptionPt:
+        'Plana com suas orelhas gigantes e mergulha em velocidade envolto por uma aura dourada.',
+    },
+  },
+  angemon: {
+    f1: {
+      slot: 'f1',
+      name: 'Hand of Fate',
+      element: 'light',
+      rangeLabelPt: 'Longo Alcance · Feixe do Destino',
+      dsCost: 36,
+      cooldownSec: 4.0,
+      baseDamage: 405,
+      atScalingRatio: 1.82,
+      descriptionPt:
+        'Dispara um raio dourado concentrado do punho sagrado que desintegra forças sombrias.',
+    },
+    f2: {
+      slot: 'f2',
+      name: "Heaven's Knuckle",
+      element: 'light',
+      rangeLabelPt: 'Curto Alcance · Golpe Celestial',
+      dsCost: 68,
+      cooldownSec: 6.5,
+      baseDamage: 830,
+      atScalingRatio: 2.7,
+      descriptionPt:
+        'Concentra energia angelical azul-dourada no bastão e nos punhos para esmagar o alvo.',
+    },
+  },
+  magnaangemon: {
+    f1: {
+      slot: 'f1',
+      name: 'Excalibur',
+      element: 'light',
+      rangeLabelPt: 'Curto Alcance · Lâmina Sagrada',
+      dsCost: 72,
+      cooldownSec: 4.8,
+      baseDamage: 765,
+      atScalingRatio: 2.1,
+      descriptionPt:
+        'Estende a lâmina de luz do braço direito em um corte veloz que rasga o ar.',
+    },
+    f2: {
+      slot: 'f2',
+      name: 'Gate of Destiny',
+      element: 'light',
+      rangeLabelPt: 'Área · Portal Dimensional',
+      dsCost: 142,
+      cooldownSec: 8.2,
+      baseDamage: 1565,
+      atScalingRatio: 3.08,
+      descriptionPt:
+        'Abre o grandioso Portal do Destino atrás de si para selar e destruir os inimigos.',
+    },
+  },
+  seraphimon: {
+    f1: {
+      slot: 'f1',
+      name: 'Seven Heavens',
+      element: 'light',
+      rangeLabelPt: 'Longo Alcance · Sete Esferas Divinas',
+      dsCost: 124,
+      cooldownSec: 5.5,
+      baseDamage: 1270,
+      atScalingRatio: 2.42,
+      descriptionPt:
+        'Lança sete esferas superaquecidas de luz celestial que bombardeiam o alvo sem piedade.',
+    },
+    f2: {
+      slot: 'f2',
+      name: 'Testament',
+      element: 'light',
+      rangeLabelPt: 'Área · Big Bang Angelical',
+      dsCost: 244,
+      cooldownSec: 9.5,
+      baseDamage: 2560,
+      atScalingRatio: 3.52,
+      descriptionPt:
+        'Libera toda a energia sagrada de suas dez asas douradas em uma explosão cósmica divina.',
+    },
+  },
+  // ── 23. STARMON LINE (3-STAGE -> JUSTIMON) ───────────────────────────────
+  starmon: {
+    f1: {
+      slot: 'f1',
+      name: 'Meteor Squall',
+      element: 'light',
+      rangeLabelPt: 'Média Distância · Chuva Estelar',
+      dsCost: 14,
+      cooldownSec: 3.2,
+      baseDamage: 126,
+      atScalingRatio: 1.5,
+      descriptionPt:
+        'Invoca uma rajada cintilante de pequenos meteoros estelares sobre o adversário.',
+    },
+    f2: {
+      slot: 'f2',
+      name: 'Starlight Beam',
+      element: 'light',
+      rangeLabelPt: 'Longo Alcance · Feixe Cósmico',
+      dsCost: 25,
+      cooldownSec: 5.5,
+      baseDamage: 266,
+      atScalingRatio: 2.22,
+      descriptionPt:
+        'Concentra energia das estrelas no visor e dispara um feixe prismático cortante.',
+    },
+  },
+  superstarmon: {
+    f1: {
+      slot: 'f1',
+      name: 'Halley Squall',
+      element: 'light',
+      rangeLabelPt: 'Longo Alcance · Cometas Dourados',
+      dsCost: 70,
+      cooldownSec: 4.8,
+      baseDamage: 755,
+      atScalingRatio: 2.08,
+      descriptionPt:
+        'Desencadeia uma enxurrada intensa de cometas incandescentes em queda livre.',
+    },
+    f2: {
+      slot: 'f2',
+      name: 'Galactic Gale',
+      element: 'light',
+      rangeLabelPt: 'Área · Supernova Estelar',
+      dsCost: 138,
+      cooldownSec: 8.0,
+      baseDamage: 1545,
+      atScalingRatio: 3.06,
+      descriptionPt:
+        'Cria uma onda gravitacional de luz galáctica e estrelas explosivas ao redor.',
+    },
+  },
 };
 
 export function getDigimonSkillSpecs(formId: DigimonFormId): DigimonSkillPair {

@@ -2,6 +2,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   limit,
   onSnapshot,
@@ -15,6 +16,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
+import type { TamerId } from '../types/character';
 import { processSquarePhotoUpload } from '../utils/avatarPhoto';
 
 export type GuildRole = 'master' | 'submaster' | 'officer' | 'member';
@@ -28,6 +30,8 @@ export interface GuildMemberRecord {
   contributionExp: number;
   joinedAtIso: string;
   digimonFormId?: string;
+  characterId?: TamerId;
+  tamerPhotoUrl?: string | null;
   /** Mobs defeated today (resets at 23:59 -> 00:00 Brasília time). */
   dailyKills?: number;
   /** Server day key (YYYY-MM-DD) for dailyKills. */
@@ -127,6 +131,11 @@ export function getGuildMaxMembersForLevel(level: number): number {
 
 const VALID_PHOTO_DATA_URL_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
 const MAX_GUILD_PHOTO_DATA_URL_LEN = 44_000;
+const VALID_TAMER_IDS = new Set<TamerId>(['kai', 'ren', 'hina', 'yuna']);
+
+export function sanitizeGuildTamerId(value: unknown): TamerId | undefined {
+  return VALID_TAMER_IDS.has(value as TamerId) ? (value as TamerId) : undefined;
+}
 
 export function sanitizeGuildPhotoUrl(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -501,6 +510,8 @@ function parseGuildDoc(raw: Record<string, unknown>, fallbackId: string): GuildR
       roleVal === 'member'
         ? roleVal
         : 'member';
+    const parsedCharacterId = sanitizeGuildTamerId(m.characterId);
+    const parsedTamerPhotoUrl = sanitizeGuildPhotoUrl(m.tamerPhotoUrl);
     members[uid] = {
       uid,
       tamerName: String(m.tamerName ?? 'Tamer').slice(0, 24),
@@ -513,6 +524,8 @@ function parseGuildDoc(raw: Record<string, unknown>, fallbackId: string): GuildR
         typeof m.digimonFormId === 'string' && m.digimonFormId.length <= 32
           ? m.digimonFormId
           : undefined,
+      ...(parsedCharacterId ? { characterId: parsedCharacterId } : {}),
+      ...(parsedTamerPhotoUrl ? { tamerPhotoUrl: parsedTamerPhotoUrl } : {}),
       dailyKills: Math.max(0, Math.round(Number(m.dailyKills) || 0)),
       dailyKillsDate:
         typeof m.dailyKillsDate === 'string' && DAY_KEY_RE.test(m.dailyKillsDate)
@@ -689,6 +702,8 @@ export async function createNewGuild(params: {
   actorUid: string;
   tamerName: string;
   tamerLevel: number;
+  characterId?: TamerId;
+  tamerPhotoUrl?: string | null;
   digimonFormId?: string;
   name: string;
   tag: string;
@@ -706,6 +721,8 @@ export async function createNewGuild(params: {
     params.notice.trim().slice(0, 160) ||
     `Juntos somos mais fortes! Bem-vindos à guilda ${cleanName}.`;
   const safePhoto = sanitizeGuildPhotoUrl(params.emblemPhotoUrl);
+  const safeCharacterId = sanitizeGuildTamerId(params.characterId);
+  const safeTamerPhoto = sanitizeGuildPhotoUrl(params.tamerPhotoUrl);
 
   if (cleanName.length < 3) {
     return { ok: false, error: 'O nome da Guilda precisa ter pelo menos 3 caracteres.' };
@@ -747,6 +764,8 @@ export async function createNewGuild(params: {
         contributionExp: 0,
         joinedAtIso: nowIso,
         digimonFormId: params.digimonFormId || 'agumon',
+        ...(safeCharacterId ? { characterId: safeCharacterId } : {}),
+        ...(safeTamerPhoto ? { tamerPhotoUrl: safeTamerPhoto } : {}),
         dailyKills: 0,
         dailyKillsDate: todayKey,
         totalKills: 0,
@@ -801,11 +820,15 @@ export async function joinRecruitingGuild(params: {
   actorUid: string;
   tamerName: string;
   tamerLevel: number;
+  characterId?: TamerId;
+  tamerPhotoUrl?: string | null;
   digimonFormId?: string;
 }): Promise<{ ok: boolean; guildName?: string; error?: string }> {
   const cleanTamer = params.tamerName.trim().slice(0, 24) || 'Tamer';
   const nowIso = new Date().toISOString();
   const formId = params.digimonFormId || 'agumon';
+  const safeCharacterId = sanitizeGuildTamerId(params.characterId);
+  const safeTamerPhoto = sanitizeGuildPhotoUrl(params.tamerPhotoUrl);
 
   if (!isFirestoreReady()) {
     const map = readLocalGuilds();
@@ -831,6 +854,8 @@ export async function joinRecruitingGuild(params: {
           contributionExp: 0,
           joinedAtIso: nowIso,
           digimonFormId: formId,
+          ...(safeCharacterId ? { characterId: safeCharacterId } : {}),
+          ...(safeTamerPhoto ? { tamerPhotoUrl: safeTamerPhoto } : {}),
         },
       },
       chatMessages: [
@@ -874,6 +899,8 @@ export async function joinRecruitingGuild(params: {
           contributionExp: 0,
           joinedAtIso: nowIso,
           digimonFormId: formId,
+          ...(safeCharacterId ? { characterId: safeCharacterId } : {}),
+          ...(safeTamerPhoto ? { tamerPhotoUrl: safeTamerPhoto } : {}),
         },
       };
       const nextChat: GuildChatEntry[] = [
@@ -1098,6 +1125,117 @@ export async function updateGuildEmblemPhoto(params: {
     const msg =
       error instanceof Error ? error.message : 'Sem permissão para atualizar a foto da Guilda.';
     return { ok: false, error: msg };
+  }
+}
+
+export async function updateGuildLeaderPhoto(params: {
+  guildId: string;
+  leaderUid: string;
+  characterId?: TamerId;
+  tamerPhotoUrl: string | null;
+}): Promise<{ ok: boolean; error?: string }> {
+  const safePhoto =
+    params.tamerPhotoUrl === null ? null : sanitizeGuildPhotoUrl(params.tamerPhotoUrl);
+  if (params.tamerPhotoUrl !== null && !safePhoto) {
+    return { ok: false, error: 'Formato de foto inválido.' };
+  }
+  const safeCharacterId = sanitizeGuildTamerId(params.characterId);
+
+  const applyLeaderPhoto = (g: GuildRecord): GuildRecord => {
+    if (g.masterUid !== params.leaderUid) {
+      throw new Error('Apenas o Líder da Guilda pode alterar a foto do Líder.');
+    }
+    const existingMember = g.members[params.leaderUid] ?? {
+      uid: params.leaderUid,
+      tamerName: g.masterName,
+      role: 'master' as GuildRole,
+      tamerLevel: 1,
+      contributionExp: 0,
+      joinedAtIso: new Date().toISOString(),
+    };
+    const nextLeaderMember: GuildMemberRecord = {
+      ...existingMember,
+      ...(safeCharacterId ? { characterId: safeCharacterId } : {}),
+    };
+    if (safePhoto) {
+      nextLeaderMember.tamerPhotoUrl = safePhoto;
+    } else {
+      delete nextLeaderMember.tamerPhotoUrl;
+    }
+    return {
+      ...g,
+      members: {
+        ...g.members,
+        [params.leaderUid]: nextLeaderMember,
+      },
+    };
+  };
+
+  if (!isFirestoreReady()) {
+    const map = readLocalGuilds();
+    const g = map[params.guildId];
+    if (!g) return { ok: false, error: 'Guilda não encontrada.' };
+    try {
+      map[params.guildId] = applyLeaderPhoto(g);
+      writeLocalGuilds(map);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : 'Erro ao atualizar foto.' };
+    }
+  }
+
+  const ref = doc(db, 'guilds', params.guildId);
+  try {
+    let updatedGuild: GuildRecord | null = null;
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists()) throw new Error('Guilda não encontrada.');
+      const g = parseGuildDoc((snap.data() ?? {}) as Record<string, unknown>, snap.id);
+      const next = applyLeaderPhoto(g);
+      updatedGuild = next;
+      tx.update(ref, {
+        members: next.members,
+        updatedAt: serverTimestamp(),
+      });
+    });
+    if (updatedGuild) {
+      const map = readLocalGuilds();
+      map[params.guildId] = updatedGuild;
+      writeLocalGuilds(map);
+    }
+    return { ok: true };
+  } catch (error) {
+    const msg =
+      error instanceof Error ? error.message : 'Sem permissão para atualizar a foto do Líder.';
+    return { ok: false, error: msg };
+  }
+}
+
+export async function fetchLeaderTamerProfileFallback(
+  leaderUid: string
+): Promise<{ characterId?: TamerId; tamerPhotoUrl?: string | null } | null> {
+  if (!leaderUid) return null;
+  try {
+    if (!isFirestoreReady()) {
+      const raw = window.localStorage.getItem('dw_local_player_rankings_v1');
+      if (!raw) return null;
+      const map = JSON.parse(raw) as Record<string, Record<string, unknown>>;
+      const rec = map?.[leaderUid];
+      if (!rec) return null;
+      return {
+        characterId: sanitizeGuildTamerId(rec.characterId),
+        tamerPhotoUrl: sanitizeGuildPhotoUrl(rec.tamerPhotoUrl),
+      };
+    }
+    const snap = await getDoc(doc(db, 'playerRankings', leaderUid));
+    if (!snap.exists()) return null;
+    const data = (snap.data() ?? {}) as Record<string, unknown>;
+    return {
+      characterId: sanitizeGuildTamerId(data.characterId),
+      tamerPhotoUrl: sanitizeGuildPhotoUrl(data.tamerPhotoUrl),
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -1345,6 +1483,7 @@ export async function contributeGuildExp(params: {
   actorUid: string;
   tamerName: string;
   tamerLevel: number;
+  characterId?: TamerId;
   digimonFormId?: string;
   expGain: number;
   mobsKilled?: number;
@@ -1353,6 +1492,7 @@ export async function contributeGuildExp(params: {
   const killsAdded = Math.max(0, Math.round(params.mobsKilled ?? 1));
   const todayKey = getServerDayKey();
   const yesterdayKey = getPreviousServerDayKey();
+  const safeCharacterId = sanitizeGuildTamerId(params.characterId);
 
   const applyExp = (g: GuildRecord): { next: GuildRecord; leveledUp: boolean } => {
     let level = g.level;
@@ -1408,6 +1548,7 @@ export async function contributeGuildExp(params: {
           tamerLevel: Math.max(1, params.tamerLevel),
           contributionExp: m.contributionExp + gain,
           digimonFormId: params.digimonFormId || m.digimonFormId || 'agumon',
+          ...(safeCharacterId ? { characterId: safeCharacterId } : {}),
           dailyKills: memberDailyBefore + killsAdded,
           dailyKillsDate: todayKey,
           totalKills: memberTotalBefore + killsAdded,
@@ -1742,10 +1883,21 @@ export async function acceptGuildInvite(params: {
   actorUid: string;
   tamerName: string;
   tamerLevel: number;
+  characterId?: TamerId;
+  tamerPhotoUrl?: string | null;
   digimonFormId?: string;
   currentGuild: GuildRecord | null;
 }): Promise<{ ok: boolean; message: string; guildName?: string }> {
-  const { invite, actorUid, tamerName, tamerLevel, digimonFormId, currentGuild } = params;
+  const {
+    invite,
+    actorUid,
+    tamerName,
+    tamerLevel,
+    characterId,
+    tamerPhotoUrl,
+    digimonFormId,
+    currentGuild,
+  } = params;
 
   if (currentGuild && currentGuild.guildId !== invite.guildId) {
     return {
@@ -1757,6 +1909,8 @@ export async function acceptGuildInvite(params: {
   const cleanTamer = tamerName.trim().slice(0, 24) || 'Tamer';
   const nowIso = new Date().toISOString();
   const formId = digimonFormId || 'agumon';
+  const safeCharacterId = sanitizeGuildTamerId(characterId);
+  const safeTamerPhoto = sanitizeGuildPhotoUrl(tamerPhotoUrl);
 
   if (!isFirestoreReady()) {
     const map = readLocalGuilds();
@@ -1784,6 +1938,8 @@ export async function acceptGuildInvite(params: {
             contributionExp: 0,
             joinedAtIso: nowIso,
             digimonFormId: formId,
+            ...(safeCharacterId ? { characterId: safeCharacterId } : {}),
+            ...(safeTamerPhoto ? { tamerPhotoUrl: safeTamerPhoto } : {}),
           },
         },
         chatMessages: [
@@ -1844,6 +2000,8 @@ export async function acceptGuildInvite(params: {
           contributionExp: 0,
           joinedAtIso: nowIso,
           digimonFormId: formId,
+          ...(safeCharacterId ? { characterId: safeCharacterId } : {}),
+          ...(safeTamerPhoto ? { tamerPhotoUrl: safeTamerPhoto } : {}),
         },
       };
       const nextChat: GuildChatEntry[] = [

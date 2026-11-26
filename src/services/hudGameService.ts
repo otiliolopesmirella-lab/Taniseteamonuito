@@ -2,6 +2,7 @@ import {
   getDigimonFormProfile,
   getEvolutionChainForStarter,
   resolveActiveFormProfile,
+  resolveStarterIdForForm,
   type DigimonEvolutionStage,
   type DigimonFormId,
   type DigimonFormProfile,
@@ -402,6 +403,23 @@ export const DIGIMON_EVOLUTION_CHAINS: Record<
     { formId: 'okuwamon', stage: 'Ultimate', name: 'Okuwamon', unlockLevel: 30, evoluterCost: 3, playable: true },
     { formId: 'grankuwagamon', stage: 'Mega', name: 'GranKuwagamon', unlockLevel: 50, evoluterCost: 6, playable: true },
   ],
+  salamon: [
+    { formId: 'salamon', stage: 'Rookie', name: 'Salamon', unlockLevel: 1, evoluterCost: 0, playable: true },
+    { formId: 'gatomon', stage: 'Champion', name: 'Gatomon', unlockLevel: 15, evoluterCost: 0, playable: true },
+    { formId: 'angewomon', stage: 'Ultimate', name: 'Angewomon', unlockLevel: 30, evoluterCost: 3, playable: true },
+    { formId: 'magnadramon', stage: 'Mega', name: 'Magnadramon', unlockLevel: 50, evoluterCost: 8, playable: true },
+  ],
+  patamon: [
+    { formId: 'patamon', stage: 'Rookie', name: 'Patamon', unlockLevel: 1, evoluterCost: 0, playable: true },
+    { formId: 'angemon', stage: 'Champion', name: 'Angemon', unlockLevel: 15, evoluterCost: 0, playable: true },
+    { formId: 'magnaangemon', stage: 'Ultimate', name: 'MagnaAngemon', unlockLevel: 30, evoluterCost: 3, playable: true },
+    { formId: 'seraphimon', stage: 'Mega', name: 'Seraphimon', unlockLevel: 50, evoluterCost: 8, playable: true },
+  ],
+  starmon: [
+    { formId: 'starmon', stage: 'Rookie', name: 'Starmon', unlockLevel: 1, evoluterCost: 0, playable: true },
+    { formId: 'superstarmon', stage: 'Ultimate', name: 'SuperStarmon', unlockLevel: 30, evoluterCost: 3, playable: true },
+    { formId: 'justimon', stage: 'Mega', name: 'Justimon', unlockLevel: 50, evoluterCost: 8, playable: true },
+  ],
 };
 
 /**
@@ -647,7 +665,7 @@ export function getNextEvolutionInfo(
   nextEvoluterCost: number;
 } {
   const activeForm = resolveActiveFormProfile(starterId, digimon.activeFormId);
-  const effectiveStarterId = activeForm.starterId;
+  const effectiveStarterId = resolveStarterIdForForm(starterId, activeForm.id);
   const chain = getEvolutionChainForStarter(effectiveStarterId);
   const activeIdx = chain.findIndex((f) => f.id === activeForm.id);
   const nextForm =
@@ -690,7 +708,7 @@ export function unlockDigimonEvolutionWithEvoluters(
     starterId,
     state.digimon.activeFormId
   );
-  const effectiveStarterId = activeForm.starterId;
+  const effectiveStarterId = resolveStarterIdForForm(starterId, activeForm.id);
   const chain = getEvolutionChainForStarter(effectiveStarterId);
   const targetForm = chain.find((f) => f.id === targetFormId);
   if (!targetForm) {
@@ -804,7 +822,7 @@ export function evolveDigimonAccountState(
     starterId,
     state.digimon.activeFormId
   );
-  const effectiveStarterId = currentForm.starterId;
+  const effectiveStarterId = resolveStarterIdForForm(starterId, currentForm.id);
   const chain = getEvolutionChainForStarter(effectiveStarterId);
   const targetForm = chain.find((f) => f.id === targetFormId);
   if (!targetForm) {
@@ -1184,7 +1202,7 @@ export function loadAccountHudState(
     );
 
     const activeForm = resolveActiveFormProfile(starterId, mergedDigi.activeFormId);
-    const effectiveStarterId = activeForm.starterId;
+    const effectiveStarterId = resolveStarterIdForForm(starterId, activeForm.id);
     // Strict safety check: never allow a higher form if account level is below unlock requirement
     const safeForm =
       mergedDigi.level >= activeForm.unlockLevel
@@ -1412,7 +1430,7 @@ export function applyExpToDigimon(
   const qualityProfile = getHatchQualityProfile(stats.hatchGrade);
   const effectiveSizePct = clampHatchSizePct(qualityProfile.grade, stats.hatchSizePct);
   const activeForm = resolveActiveFormProfile(starterId, stats.activeFormId);
-  const effectiveStarterId = activeForm.starterId;
+  const effectiveStarterId = resolveStarterIdForForm(starterId, activeForm.id);
   const prevLevel = level;
   if (level < MAX_GAME_LEVEL) {
     exp += gainedExp;
@@ -1476,7 +1494,7 @@ export function setDigimonLevelForTesting(
   const qualityProfile = getHatchQualityProfile(stats.hatchGrade);
   const effectiveSizePct = clampHatchSizePct(qualityProfile.grade, stats.hatchSizePct);
   const currentForm = resolveActiveFormProfile(starterId, stats.activeFormId);
-  const effectiveStarterId = currentForm.starterId;
+  const effectiveStarterId = resolveStarterIdForForm(starterId, currentForm.id);
   const chain = getEvolutionChainForStarter(effectiveStarterId);
 
   const validCurrent = clampedLevel >= currentForm.unlockLevel;
@@ -1528,9 +1546,11 @@ export function switchActiveDigimonForAdmin(
   targetFormId: DigimonFormId,
   targetGrade?: HatchQualityGrade,
   explicitLevel?: number,
-  explicitSizePct?: number
+  explicitSizePct?: number,
+  preferredStarterId?: StarterDigimonId
 ): { next: AccountHudPersistence; form: DigimonFormProfile; grade: HatchQualityGrade; sizePct: number } {
   const form = getDigimonFormProfile(targetFormId);
+  const effectiveStarterId = resolveStarterIdForForm(preferredStarterId, form.id);
   const qualityProfile = getHatchQualityProfile(targetGrade ?? state.digimon.hatchGrade);
   const nextSizePct =
     explicitSizePct !== undefined
@@ -1543,14 +1563,14 @@ export function switchActiveDigimonForAdmin(
   const maxHp = calcDigimonMaxHp(nextLevel, form.id, qualityProfile.grade, nextSizePct);
   const maxDs = calcDigimonMaxDs(nextLevel, form.id, qualityProfile.grade, nextSizePct);
   // Unlock forms up to the explicitly pulled form (if pulling a Rookie, Ultimate/Mega stay locked for testing Evoluters!)
-  const chainSpecs = DIGIMON_EVOLUTION_CHAINS[form.starterId] ?? [];
+  const chainSpecs = DIGIMON_EVOLUTION_CHAINS[effectiveStarterId] ?? [];
   const targetIdx = chainSpecs.findIndex((s) => s.formId === form.id);
   const pulledUpToIds = chainSpecs
     .slice(0, Math.max(0, targetIdx) + 1)
     .map((s) => s.formId)
     .filter((id): id is DigimonFormId => Boolean(id));
   const unlockedFormIds = sanitizeUnlockedFormIdsForDigimon(
-    form.starterId,
+    effectiveStarterId,
     nextLevel,
     pulledUpToIds,
     form.id

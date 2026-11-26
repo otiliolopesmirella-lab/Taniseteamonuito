@@ -6,6 +6,7 @@ import {
   BarChart3,
   Calendar,
   Camera,
+  Check,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -14,6 +15,7 @@ import {
   Globe,
   ImagePlus,
   MessageSquare,
+  Pencil,
   Plus,
   RefreshCw,
   Search,
@@ -36,6 +38,7 @@ import {
   computeDailyGuildEventStandings,
   createNewGuild,
   disbandGuildAsMaster,
+  fetchLeaderTamerProfileFallback,
   fetchRecruitingGuilds,
   getDailyResetCountdown,
   getEffectiveGuildTotalKills,
@@ -49,23 +52,29 @@ import {
   processGuildPhotoUpload,
   sendGuildChatMessage,
   updateGuildEmblemPhoto,
+  updateGuildLeaderPhoto,
   updateGuildNoticeAndRecruiting,
   type GuildEmblemColor,
   type GuildMemberRecord,
   type GuildRecord,
   type GuildRole,
 } from '../../services/guildService';
+import type { TamerId } from '../../types/character';
 import { getDigimonFormProfile, type DigimonFormId } from '../../types/digimon';
 import { isValidCoverPhotoDataUrl } from '../../utils/avatarPhoto';
+import { TamerPortraitAvatar } from './TamerPortraitAvatar';
 
 interface GuildSystemModalProps {
   guild: GuildRecord | null;
   actorUid: string;
   tamerName: string;
   tamerLevel: number;
+  tamerId?: TamerId;
+  tamerPhotoUrl?: string | null;
   activeDigimonFormId?: DigimonFormId;
   onlinePlayerUids?: string[];
   onlineDigimonByUid?: Record<string, DigimonFormId>;
+  onlineCharacterByUid?: Record<string, TamerId>;
   bits: number;
   isGM: boolean;
   onDeductCreationBits: (costBits: number) => boolean;
@@ -367,9 +376,12 @@ export function GuildSystemModal({
   actorUid,
   tamerName,
   tamerLevel,
+  tamerId = 'kai',
+  tamerPhotoUrl = null,
   activeDigimonFormId = 'agumon',
   onlinePlayerUids = [],
   onlineDigimonByUid = {},
+  onlineCharacterByUid = {},
   bits,
   isGM,
   onDeductCreationBits,
@@ -401,6 +413,12 @@ export function GuildSystemModal({
   const [rankingOpen, setRankingOpen] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [noticeDraft, setNoticeDraft] = useState(guild?.notice ?? '');
+  const [editingLeaderPhrase, setEditingLeaderPhrase] = useState(false);
+  const [leaderPhraseDraft, setLeaderPhraseDraft] = useState(guild?.notice ?? '');
+  const [legacyLeaderProfile, setLegacyLeaderProfile] = useState<{
+    characterId?: TamerId;
+    tamerPhotoUrl?: string | null;
+  } | null>(null);
   const [recruitingDraft, setRecruitingDraft] = useState(guild?.recruiting ?? true);
   const [colorDraft, setColorDraft] = useState<GuildEmblemColor>(guild?.emblemColor ?? 'cyan');
   const [photoDraft, setPhotoDraft] = useState<string | null>(guild?.emblemPhotoUrl ?? null);
@@ -414,6 +432,7 @@ export function GuildSystemModal({
   const createFileInputRef = useRef<HTMLInputElement | null>(null);
   const settingsFileInputRef = useRef<HTMLInputElement | null>(null);
   const quickHeaderFileInputRef = useRef<HTMLInputElement | null>(null);
+  const leaderFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const onlineSet = useMemo(() => {
     const s = new Set<string>(onlinePlayerUids);
@@ -430,6 +449,36 @@ export function GuildSystemModal({
       setPhotoDraft(guild.emblemPhotoUrl ?? null);
     }
   }, [guild]);
+
+  useEffect(() => {
+    setEditingLeaderPhrase(false);
+    setLeaderPhraseDraft(guild?.notice ?? '');
+  }, [guild?.guildId]);
+
+  useEffect(() => {
+    if (!editingLeaderPhrase) {
+      setLeaderPhraseDraft(guild?.notice ?? '');
+    }
+  }, [guild?.notice, editingLeaderPhrase]);
+
+  useEffect(() => {
+    if (!guild || guild.masterUid === actorUid) {
+      setLegacyLeaderProfile(null);
+      return;
+    }
+    const member = guild.members[guild.masterUid];
+    if (member?.characterId && member?.tamerPhotoUrl) {
+      setLegacyLeaderProfile(null);
+      return;
+    }
+    let cancelled = false;
+    void fetchLeaderTamerProfileFallback(guild.masterUid).then((res) => {
+      if (!cancelled) setLegacyLeaderProfile(res);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [guild?.guildId, guild?.masterUid, actorUid, guild?.members[guild?.masterUid ?? '']?.characterId, guild?.members[guild?.masterUid ?? '']?.tamerPhotoUrl]);
 
   // Load recruiting/server guilds for Search & Daily Event Ranking calculations
   const reloadServerGuilds = async () => {
@@ -628,6 +677,96 @@ export function GuildSystemModal({
     }
   };
 
+  const handleLeaderPhotoFileSelected = async (
+    file: File | null | undefined,
+    inputEl?: HTMLInputElement | null
+  ) => {
+    if (!file || !guild || !isMaster) {
+      if (inputEl) inputEl.value = '';
+      return;
+    }
+    setFeedback(null);
+    setUploadingPhoto(true);
+    try {
+      const res = await processGuildPhotoUpload(file);
+      if (!res.ok || !res.dataUrl) {
+        onPlayTone('error');
+        setFeedback({ type: 'err', text: res.error ?? 'Não foi possível carregar esta foto.' });
+        return;
+      }
+      setBusy(true);
+      try {
+        const saveRes = await updateGuildLeaderPhoto({
+          guildId: guild.guildId,
+          leaderUid: actorUid,
+          characterId: tamerId,
+          tamerPhotoUrl: res.dataUrl,
+        });
+        if (saveRes.ok) {
+          onPlayTone('confirm');
+          setFeedback({ type: 'ok', text: 'Foto do Líder atualizada com sucesso!' });
+        } else {
+          onPlayTone('error');
+          setFeedback({ type: 'err', text: saveRes.error ?? 'Erro ao salvar foto do Líder.' });
+        }
+      } finally {
+        setBusy(false);
+      }
+    } catch {
+      onPlayTone('error');
+      setFeedback({ type: 'err', text: 'Não foi possível processar esta foto.' });
+    } finally {
+      setUploadingPhoto(false);
+      if (inputEl) {
+        try {
+          inputEl.value = '';
+        } catch {
+          // Ignore reset errors
+        }
+      }
+    }
+  };
+
+  const handleResetLeaderPhoto = async () => {
+    if (!guild || !isMaster) return;
+    setFeedback(null);
+    setBusy(true);
+    const res = await updateGuildLeaderPhoto({
+      guildId: guild.guildId,
+      leaderUid: actorUid,
+      characterId: tamerId,
+      tamerPhotoUrl: null,
+    });
+    setBusy(false);
+    if (!res.ok) {
+      onPlayTone('error');
+      setFeedback({ type: 'err', text: res.error ?? 'Não foi possível remover a foto.' });
+      return;
+    }
+    onPlayTone('confirm');
+    setFeedback({ type: 'ok', text: 'Foto do Líder restaurada para o Tamer padrão.' });
+  };
+
+  const handleSaveLeaderPhrase = async () => {
+    if (!guild || !isMaster) return;
+    setFeedback(null);
+    setBusy(true);
+    const res = await updateGuildNoticeAndRecruiting({
+      guildId: guild.guildId,
+      notice: leaderPhraseDraft,
+      recruiting: guild.recruiting,
+    });
+    setBusy(false);
+    if (!res.ok) {
+      onPlayTone('error');
+      setFeedback({ type: 'err', text: res.error ?? 'Sem permissão para salvar a frase.' });
+      return;
+    }
+    setEditingLeaderPhrase(false);
+    onPlayTone('confirm');
+    setFeedback({ type: 'ok', text: 'Frase do Líder atualizada!' });
+  };
+
   const handleCreateGuild = async () => {
     setFeedback(null);
     if (GUILD_CREATION_COST_BITS > 0 && !isGM && bits < GUILD_CREATION_COST_BITS) {
@@ -644,6 +783,8 @@ export function GuildSystemModal({
       actorUid,
       tamerName,
       tamerLevel,
+      characterId: tamerId,
+      tamerPhotoUrl,
       digimonFormId: activeDigimonFormId,
       name: createName,
       tag: createTag,
@@ -678,6 +819,8 @@ export function GuildSystemModal({
       actorUid,
       tamerName,
       tamerLevel,
+      characterId: tamerId,
+      tamerPhotoUrl,
       digimonFormId: activeDigimonFormId,
     });
     setBusy(false);
@@ -1289,11 +1432,17 @@ export function GuildSystemModal({
   // =========================================================================
   const masterMember = guild.members[guild.masterUid];
   const masterOnline = onlineSet.has(guild.masterUid);
-  const masterPortrait = resolveMemberPortraitUrl(
-    masterMember,
-    onlineDigimonByUid,
-    guild.masterUid === actorUid ? activeDigimonFormId : 'agumon'
-  );
+  const resolvedMasterTamerId: TamerId =
+    (guild.masterUid === actorUid ? tamerId : undefined) ||
+    masterMember?.characterId ||
+    onlineCharacterByUid[guild.masterUid] ||
+    legacyLeaderProfile?.characterId ||
+    'kai';
+  const resolvedMasterPhotoUrl: string | null =
+    masterMember?.tamerPhotoUrl ||
+    (guild.masterUid === actorUid ? tamerPhotoUrl : null) ||
+    legacyLeaderProfile?.tamerPhotoUrl ||
+    null;
 
   return (
     <div
@@ -1314,6 +1463,19 @@ export function GuildSystemModal({
         onChange={(e) => {
           const inputEl = e.currentTarget;
           void handlePhotoFileSelected(inputEl.files?.[0], 'quick-header', inputEl);
+        }}
+      />
+
+      {/* Hidden Leader Photo Input */}
+      <input
+        ref={leaderFileInputRef}
+        type="file"
+        accept="image/*"
+        tabIndex={-1}
+        className="sr-only"
+        onChange={(e) => {
+          const inputEl = e.currentTarget;
+          void handleLeaderPhotoFileSelected(inputEl.files?.[0], inputEl);
         }}
       />
 
@@ -1410,12 +1572,41 @@ export function GuildSystemModal({
               </div>
 
               <div className="my-2 flex items-center gap-3 px-1">
-                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 border-cyan-300/90 bg-gradient-to-b from-[#0c3f9e] to-[#04143c] p-0.5 shadow-[0_0_12px_rgba(56,189,248,0.45)]">
-                  <img
-                    src={masterPortrait}
-                    alt={guild.masterName}
-                    className="h-full w-full object-contain"
-                  />
+                <div className="relative shrink-0">
+                  <div className="h-14 w-14 overflow-hidden rounded-lg border-2 border-cyan-300/90 bg-gradient-to-b from-[#0c3f9e] to-[#04143c] shadow-[0_0_12px_rgba(56,189,248,0.45)]">
+                    <TamerPortraitAvatar
+                      tamerId={resolvedMasterTamerId}
+                      tamerName={guild.masterName}
+                      customPhotoUrl={resolvedMasterPhotoUrl}
+                      sizeClass="h-full w-full !rounded-none"
+                    />
+                  </div>
+                  {isMaster && (
+                    <>
+                      <button
+                        type="button"
+                        disabled={busy || uploadingPhoto}
+                        onClick={() => leaderFileInputRef.current?.click()}
+                        title="Trocar foto do Líder"
+                        aria-label="Trocar foto do Líder"
+                        className="absolute -bottom-1.5 -right-1.5 flex h-6 w-6 items-center justify-center rounded-full border border-cyan-200 bg-[#07266b] text-amber-300 shadow-[0_0_10px_rgba(0,212,255,0.7)] transition-transform hover:scale-110 hover:bg-sky-700 disabled:opacity-50"
+                      >
+                        <Camera className="h-3 w-3" />
+                      </button>
+                      {Boolean(masterMember?.tamerPhotoUrl) && (
+                        <button
+                          type="button"
+                          disabled={busy || uploadingPhoto}
+                          onClick={() => void handleResetLeaderPhoto()}
+                          title="Usar foto padrão do Tamer"
+                          aria-label="Usar foto padrão do Tamer"
+                          className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-rose-300 bg-rose-900/95 text-rose-100 shadow transition-transform hover:scale-110 hover:bg-rose-700 disabled:opacity-50"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
                 <div className="min-w-0">
                   <p className="truncate text-base font-black italic text-white">
@@ -1438,9 +1629,75 @@ export function GuildSystemModal({
                 </div>
               </div>
 
-              <div className="rounded-lg border border-cyan-400/45 bg-[#020e2e]/90 px-3 py-1.5 text-center text-[11px] sm:text-xs font-bold italic text-sky-100">
-                {guild.notice || 'Juntos somos mais fortes!'}
-              </div>
+              {isMaster && editingLeaderPhrase ? (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void handleSaveLeaderPhrase();
+                  }}
+                  className="flex flex-col gap-1.5 rounded-lg border border-amber-300/60 bg-[#020e2e]/95 p-1.5"
+                >
+                  <input
+                    type="text"
+                    maxLength={160}
+                    autoFocus
+                    value={leaderPhraseDraft}
+                    onChange={(e) => setLeaderPhraseDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') {
+                        setEditingLeaderPhrase(false);
+                        setLeaderPhraseDraft(guild.notice);
+                      }
+                    }}
+                    placeholder="Escreva a frase do Líder..."
+                    className="h-8 w-full rounded-md border border-cyan-400/60 bg-[#04143e] px-2.5 text-center text-[11px] sm:text-xs font-bold text-white placeholder:text-slate-400 focus:border-amber-300 focus:outline-none"
+                  />
+                  <div className="flex items-center justify-end gap-1.5">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        onPlayTone('click');
+                        setEditingLeaderPhrase(false);
+                        setLeaderPhraseDraft(guild.notice);
+                      }}
+                      className="min-h-[28px] rounded-md border border-cyan-400/50 bg-[#061e57] px-2.5 text-[10px] font-bold text-sky-200 hover:bg-[#082c78]"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={busy}
+                      className="inline-flex min-h-[28px] items-center gap-1 rounded-md border border-amber-200 bg-gradient-to-b from-[#ffe55c] to-[#d97706] px-2.5 text-[10px] font-black text-[#081226] hover:brightness-105 disabled:opacity-50"
+                    >
+                      <Check className="h-3 w-3" />
+                      <span>{busy ? 'Salvando...' : 'Salvar'}</span>
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="flex items-center justify-between gap-2 rounded-lg border border-cyan-400/45 bg-[#020e2e]/90 px-2.5 py-1.5">
+                  <p className="min-w-0 flex-1 break-words text-center text-[11px] sm:text-xs font-bold italic text-sky-100">
+                    {guild.notice || 'Juntos somos mais fortes!'}
+                  </p>
+                  {isMaster && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onPlayTone('click');
+                        setLeaderPhraseDraft(guild.notice);
+                        setEditingLeaderPhrase(true);
+                      }}
+                      title="Editar frase do Líder"
+                      aria-label="Editar frase do Líder"
+                      className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-amber-300/65 bg-[#082463] px-2 text-[10px] font-extrabold text-amber-200 transition-colors hover:border-amber-200 hover:bg-[#0c348c]"
+                    >
+                      <Pencil className="h-3 w-3" />
+                      <span>Editar</span>
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

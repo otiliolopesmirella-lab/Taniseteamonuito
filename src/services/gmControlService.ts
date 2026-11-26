@@ -18,6 +18,7 @@ import { clampHatchSizePct, getHatchQualityProfile } from '../data/itemsCatalog'
 import {
   getEvolutionChainForStarter,
   resolveActiveFormProfile,
+  resolveStarterIdForForm,
   type DigimonFormId,
   type StarterDigimonId,
 } from '../types/digimon';
@@ -1000,12 +1001,13 @@ export async function setPlayerLevelsForGm(input: {
           ? (rawDigimon.activeFormId as DigimonFormId)
           : undefined
       );
+      const effectiveStarterId = resolveStarterIdForForm(starterId, currentForm.id);
       const safeForm =
         nextDigimonLevel >= currentForm.unlockLevel
           ? currentForm
-          : getEvolutionChainForStarter(currentForm.starterId)[0];
+          : getEvolutionChainForStarter(effectiveStarterId)[0];
       const nextUnlockedFormIds = sanitizeUnlockedFormIdsForDigimon(
-        currentForm.starterId,
+        effectiveStarterId,
         nextDigimonLevel,
         Array.isArray(rawDigimon.unlockedFormIds)
           ? (rawDigimon.unlockedFormIds as string[])

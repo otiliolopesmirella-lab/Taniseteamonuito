@@ -238,7 +238,28 @@ export function preloadDigimonPartnerAssets(
             formId === 'flymon' ||
             formId === 'okuwamon' ||
             formId === 'grankuwagamon';
-          const cacheBust = isBkLine && !isFxAsset
+          const isHolyStarLine =
+            formId === 'salamon' ||
+            formId === 'gatomon' ||
+            formId === 'angewomon' ||
+            formId === 'magnadramon' ||
+            formId === 'patamon' ||
+            formId === 'angemon' ||
+            formId === 'magnaangemon' ||
+            formId === 'seraphimon' ||
+            formId === 'starmon' ||
+            formId === 'superstarmon';
+          const cacheBust = isHolyStarLine && !isFxAsset
+            ? '?v=holy1'
+            : isHolyStarLine
+              ? '?v=holy_fx1'
+            : formId === 'justimon' && isFxAsset
+              ? '?v=germ_fx3'
+            : (formId === 'lilamon' || formId === 'rosemon') && isFxAsset
+              ? '?v=lalamon_fx3'
+            : formId === 'rosemon' && (key === 'atk1_pose' || key === 'atk2_pose')
+              ? '?v=lalamon3'
+            : isBkLine && !isFxAsset
             ? '?v=bk1'
             : isBkLine
               ? '?v=bk_fx1'
@@ -2251,6 +2272,66 @@ const DIRECTION_CELL_MAP: Record<
     W: { idle: { col: 0, row: 2 }, walk: [{ col: 0, row: 2 }, { col: 1, row: 2 }, { col: 2, row: 2 }, { col: 3, row: 2 }] },
     E: { idle: { col: 0, row: 3 }, walk: [{ col: 0, row: 3 }, { col: 1, row: 3 }, { col: 2, row: 3 }, { col: 3, row: 3 }] },
   },
+  salamon: {
+    S: { idle: { col: 0, row: 4 }, walk: [{ col: 0, row: 0 }, { col: 1, row: 0 }, { col: 2, row: 0 }, { col: 3, row: 0 }] },
+    W: { idle: { col: 0, row: 1 }, walk: [{ col: 0, row: 1 }, { col: 1, row: 1 }, { col: 2, row: 1 }, { col: 3, row: 1 }] },
+    E: { idle: { col: 0, row: 3 }, walk: [{ col: 0, row: 3 }, { col: 1, row: 3 }, { col: 2, row: 3 }, { col: 3, row: 3 }] },
+    N: { idle: { col: 0, row: 2 }, walk: [{ col: 0, row: 2 }, { col: 1, row: 2 }, { col: 2, row: 2 }, { col: 3, row: 2 }] },
+  },
+  gatomon: {
+    S: { idle: { col: 0, row: 4 }, walk: [{ col: 0, row: 0 }, { col: 1, row: 0 }, { col: 2, row: 0 }, { col: 3, row: 0 }] },
+    W: { idle: { col: 0, row: 1 }, walk: [{ col: 0, row: 1 }, { col: 1, row: 1 }, { col: 2, row: 1 }, { col: 3, row: 1 }] },
+    E: { idle: { col: 0, row: 3 }, walk: [{ col: 0, row: 3 }, { col: 1, row: 3 }, { col: 2, row: 3 }, { col: 3, row: 3 }] },
+    N: { idle: { col: 0, row: 2 }, walk: [{ col: 0, row: 2 }, { col: 1, row: 2 }, { col: 2, row: 2 }, { col: 3, row: 2 }] },
+  },
+  angewomon: {
+    S: { idle: { col: 0, row: 4 }, walk: [{ col: 0, row: 0 }, { col: 1, row: 0 }, { col: 2, row: 0 }, { col: 3, row: 0 }] },
+    W: { idle: { col: 0, row: 1 }, walk: [{ col: 0, row: 1 }, { col: 1, row: 1 }, { col: 2, row: 1 }, { col: 3, row: 1 }] },
+    E: { idle: { col: 0, row: 3 }, walk: [{ col: 0, row: 3 }, { col: 1, row: 3 }, { col: 2, row: 3 }, { col: 3, row: 3 }] },
+    N: { idle: { col: 0, row: 2 }, walk: [{ col: 0, row: 2 }, { col: 1, row: 2 }, { col: 2, row: 2 }, { col: 3, row: 2 }] },
+  },
+  magnadramon: {
+    S: { idle: { col: 0, row: 4 }, walk: [{ col: 0, row: 0 }, { col: 1, row: 0 }, { col: 2, row: 0 }, { col: 3, row: 0 }] },
+    W: { idle: { col: 0, row: 1 }, walk: [{ col: 0, row: 1 }, { col: 1, row: 1 }, { col: 2, row: 1 }, { col: 3, row: 1 }] },
+    E: { idle: { col: 0, row: 3 }, walk: [{ col: 0, row: 3 }, { col: 1, row: 3 }, { col: 2, row: 3 }, { col: 3, row: 3 }] },
+    N: { idle: { col: 0, row: 2 }, walk: [{ col: 0, row: 2 }, { col: 1, row: 2 }, { col: 2, row: 2 }, { col: 3, row: 2 }] },
+  },
+  patamon: {
+    S: { idle: { col: 0, row: 4 }, walk: [{ col: 0, row: 0 }, { col: 1, row: 0 }, { col: 2, row: 0 }, { col: 3, row: 0 }] },
+    W: { idle: { col: 0, row: 1 }, walk: [{ col: 0, row: 1 }, { col: 1, row: 1 }, { col: 2, row: 1 }, { col: 3, row: 1 }] },
+    E: { idle: { col: 0, row: 3 }, walk: [{ col: 0, row: 3 }, { col: 1, row: 3 }, { col: 2, row: 3 }, { col: 3, row: 3 }] },
+    N: { idle: { col: 0, row: 2 }, walk: [{ col: 0, row: 2 }, { col: 1, row: 2 }, { col: 2, row: 2 }, { col: 3, row: 2 }] },
+  },
+  angemon: {
+    S: { idle: { col: 0, row: 4 }, walk: [{ col: 0, row: 0 }, { col: 1, row: 0 }, { col: 2, row: 0 }, { col: 3, row: 0 }] },
+    W: { idle: { col: 0, row: 1 }, walk: [{ col: 0, row: 1 }, { col: 1, row: 1 }, { col: 2, row: 1 }, { col: 3, row: 1 }] },
+    E: { idle: { col: 0, row: 3 }, walk: [{ col: 0, row: 3 }, { col: 1, row: 3 }, { col: 2, row: 3 }, { col: 3, row: 3 }] },
+    N: { idle: { col: 0, row: 2 }, walk: [{ col: 0, row: 2 }, { col: 1, row: 2 }, { col: 2, row: 2 }, { col: 3, row: 2 }] },
+  },
+  magnaangemon: {
+    S: { idle: { col: 0, row: 4 }, walk: [{ col: 0, row: 0 }, { col: 1, row: 0 }, { col: 2, row: 0 }, { col: 3, row: 0 }] },
+    W: { idle: { col: 0, row: 1 }, walk: [{ col: 0, row: 1 }, { col: 1, row: 1 }, { col: 2, row: 1 }, { col: 3, row: 1 }] },
+    E: { idle: { col: 0, row: 3 }, walk: [{ col: 0, row: 3 }, { col: 1, row: 3 }, { col: 2, row: 3 }, { col: 3, row: 3 }] },
+    N: { idle: { col: 0, row: 2 }, walk: [{ col: 0, row: 2 }, { col: 1, row: 2 }, { col: 2, row: 2 }, { col: 3, row: 2 }] },
+  },
+  seraphimon: {
+    S: { idle: { col: 0, row: 4 }, walk: [{ col: 0, row: 0 }, { col: 1, row: 0 }, { col: 2, row: 0 }, { col: 3, row: 0 }] },
+    W: { idle: { col: 0, row: 1 }, walk: [{ col: 0, row: 1 }, { col: 1, row: 1 }, { col: 2, row: 1 }, { col: 3, row: 1 }] },
+    E: { idle: { col: 0, row: 3 }, walk: [{ col: 0, row: 3 }, { col: 1, row: 3 }, { col: 2, row: 3 }, { col: 3, row: 3 }] },
+    N: { idle: { col: 0, row: 2 }, walk: [{ col: 0, row: 2 }, { col: 1, row: 2 }, { col: 2, row: 2 }, { col: 3, row: 2 }] },
+  },
+  starmon: {
+    S: { idle: { col: 0, row: 4 }, walk: [{ col: 0, row: 0 }, { col: 1, row: 0 }, { col: 2, row: 0 }, { col: 3, row: 0 }] },
+    W: { idle: { col: 0, row: 1 }, walk: [{ col: 0, row: 1 }, { col: 1, row: 1 }, { col: 2, row: 1 }, { col: 3, row: 1 }] },
+    E: { idle: { col: 0, row: 3 }, walk: [{ col: 0, row: 3 }, { col: 1, row: 3 }, { col: 2, row: 3 }, { col: 3, row: 3 }] },
+    N: { idle: { col: 0, row: 2 }, walk: [{ col: 0, row: 2 }, { col: 1, row: 2 }, { col: 2, row: 2 }, { col: 3, row: 2 }] },
+  },
+  superstarmon: {
+    S: { idle: { col: 0, row: 4 }, walk: [{ col: 0, row: 0 }, { col: 1, row: 0 }, { col: 2, row: 0 }, { col: 3, row: 0 }] },
+    W: { idle: { col: 0, row: 1 }, walk: [{ col: 0, row: 1 }, { col: 1, row: 1 }, { col: 2, row: 1 }, { col: 3, row: 1 }] },
+    E: { idle: { col: 0, row: 3 }, walk: [{ col: 0, row: 3 }, { col: 1, row: 3 }, { col: 2, row: 3 }, { col: 3, row: 3 }] },
+    N: { idle: { col: 0, row: 2 }, walk: [{ col: 0, row: 2 }, { col: 1, row: 2 }, { col: 2, row: 2 }, { col: 3, row: 2 }] },
+  },
 };
 
 function getPartnerScale(formId: DigimonFormId): number {
@@ -2280,17 +2361,26 @@ export function getPartnerAerialProfile(formId: DigimonFormId): PartnerAerialPro
     case 'aquilamon':
     case 'birdramon':
     case 'flymon':
+    case 'magnadramon':
       return { mode: 'soaring', baseAltitude: 24, nameplateLift: 24, isAerial: true, showsWindWisps: true };
     case 'kabuterimon':
     case 'herculeskabuterimon':
       return { mode: 'soaring', baseAltitude: 20, nameplateLift: 20, isAerial: true, showsWindWisps: true };
 
     // Winged aerial fighters (calm hover stance in idle so col 0 doesn't snap into midair jogging, smooth aerial glide when moving)
+    case 'seraphimon':
+      return { mode: 'wing_hover', baseAltitude: 26, nameplateLift: 26, isAerial: true, showsWindWisps: true };
     case 'grankuwagamon':
+    case 'angewomon':
+    case 'magnaangemon':
       return { mode: 'wing_hover', baseAltitude: 24, nameplateLift: 24, isAerial: true, showsWindWisps: true };
     case 'garudamon':
     case 'okuwamon':
       return { mode: 'wing_hover', baseAltitude: 22, nameplateLift: 22, isAerial: true, showsWindWisps: true };
+    case 'angemon':
+      return { mode: 'wing_hover', baseAltitude: 20, nameplateLift: 20, isAerial: true, showsWindWisps: true };
+    case 'patamon':
+      return { mode: 'wing_hover', baseAltitude: 14, nameplateLift: 14, isAerial: true, showsWindWisps: true };
 
     // Pure levitating / hovering Digimons (silky continuous hover with zero ground dust)
     case 'giromon':
@@ -2415,7 +2505,9 @@ export function drawDigimonPartnerFrame(
     formId === 'sakuyamon' ||
     formId === 'justimon' ||
     formId === 'phoenixmon' ||
-    formId === 'grankuwagamon';
+    formId === 'grankuwagamon' ||
+    formId === 'magnadramon' ||
+    formId === 'seraphimon';
   const isRookieForm =
     formId === 'agumon' ||
     formId === 'agumon_classic' ||
@@ -2436,7 +2528,10 @@ export function drawDigimonPartnerFrame(
     formId === 'renamon' ||
     formId === 'monodramon' ||
     formId === 'biyomon' ||
-    formId === 'kunemon';
+    formId === 'kunemon' ||
+    formId === 'salamon' ||
+    formId === 'patamon' ||
+    formId === 'starmon';
 
   // Lifelike cubic-eased inhale/exhale breathing cycle when standing still (planted at the soles of the feet)
   const breathSpeed = isRookieForm ? 2.55 : isMegaForm ? 1.95 : 2.25;
@@ -2625,7 +2720,9 @@ export function drawDigimonAttackPoseFrame(
     formId === 'sakuyamon' ||
     formId === 'justimon' ||
     formId === 'phoenixmon' ||
-    formId === 'grankuwagamon'
+    formId === 'grankuwagamon' ||
+    formId === 'magnadramon' ||
+    formId === 'seraphimon'
       ? 22
       : formId === 'machgaogamon' ||
           formId === 'lilamon' ||
@@ -2646,7 +2743,10 @@ export function drawDigimonAttackPoseFrame(
           formId === 'taomon' ||
           formId === 'cyberdramon' ||
           formId === 'garudamon' ||
-          formId === 'okuwamon'
+          formId === 'okuwamon' ||
+          formId === 'angewomon' ||
+          formId === 'magnaangemon' ||
+          formId === 'superstarmon'
         ? 19
         : formId === 'gaogamon' ||
             formId === 'sunflowmon' ||
@@ -2667,7 +2767,9 @@ export function drawDigimonAttackPoseFrame(
             formId === 'kyubimon' ||
             formId === 'strikedramon' ||
             formId === 'birdramon' ||
-            formId === 'flymon'
+            formId === 'flymon' ||
+            formId === 'gatomon' ||
+            formId === 'angemon'
           ? 17
           : 15;
   const lungeDist = attackKind === 'basic' ? baseLungeDist * 1.45 : baseLungeDist * 1.12;
@@ -2708,7 +2810,9 @@ export function drawDigimonAttackPoseFrame(
     formId === 'sakuyamon' ||
     formId === 'justimon' ||
     formId === 'phoenixmon' ||
-    formId === 'grankuwagamon'
+    formId === 'grankuwagamon' ||
+    formId === 'magnadramon' ||
+    formId === 'seraphimon'
       ? attackKind === 'basic'
         ? 9.0
         : 11.5
@@ -2743,7 +2847,10 @@ export function drawDigimonAttackPoseFrame(
                 formId === 'metaletemon' ||
                 formId === 'saberleomon' ||
                 formId === 'sakuyamon' ||
-                formId === 'phoenixmon')
+                formId === 'phoenixmon' ||
+                formId === 'magnadramon' ||
+                formId === 'seraphimon' ||
+                formId === 'superstarmon')
             ? 'rgba(250, 204, 21, 0.94)'
             : formProfile.theme.glowRgba;
 
@@ -3118,19 +3225,19 @@ const SKILL_VFX_SPECS: Record<
       archetype: 'projectile',
       primaryHex: '#e879f9',
       secondaryHex: '#fbcfe8',
-      glowRgba: 'rgba(232, 121, 249, 0.92)',
+      glowRgba: 'rgba(232, 121, 249, 0.95)',
       motif: 'petals',
-      baseSize: 84,
-      particleCount: 16,
+      baseSize: 94,
+      particleCount: 22,
     },
     special2: {
       archetype: 'burst',
       primaryHex: '#f472b6',
       secondaryHex: '#fdf2f8',
-      glowRgba: 'rgba(244, 114, 182, 0.95)',
+      glowRgba: 'rgba(244, 114, 182, 0.98)',
       motif: 'petals',
-      baseSize: 132,
-      particleCount: 18,
+      baseSize: 146,
+      particleCount: 26,
     },
   },
   rosemon: {
@@ -3138,19 +3245,19 @@ const SKILL_VFX_SPECS: Record<
       archetype: 'slash',
       primaryHex: '#f43f5e',
       secondaryHex: '#fecdd3',
-      glowRgba: 'rgba(244, 63, 94, 0.94)',
-      motif: 'lightning',
-      baseSize: 128,
-      particleCount: 16,
+      glowRgba: 'rgba(244, 63, 94, 0.96)',
+      motif: 'petals',
+      baseSize: 142,
+      particleCount: 24,
     },
     special2: {
       archetype: 'burst',
       primaryHex: '#ec4899',
-      secondaryHex: '#fb7185',
-      glowRgba: 'rgba(236, 72, 153, 0.96)',
+      secondaryHex: '#fde047',
+      glowRgba: 'rgba(236, 72, 153, 0.98)',
       motif: 'hearts',
-      baseSize: 138,
-      particleCount: 18,
+      baseSize: 158,
+      particleCount: 28,
     },
   },
   guilmon: {
@@ -4457,6 +4564,206 @@ const SKILL_VFX_SPECS: Record<
       particleCount: 32,
     },
   },
+  salamon: {
+    special1: {
+      archetype: 'burst',
+      primaryHex: '#f9a8d4',
+      secondaryHex: '#fef08a',
+      glowRgba: 'rgba(249, 168, 212, 0.96)',
+      motif: 'stars',
+      baseSize: 102,
+      particleCount: 18,
+    },
+    special2: {
+      archetype: 'projectile',
+      primaryHex: '#fef08a',
+      secondaryHex: '#f472b6',
+      glowRgba: 'rgba(250, 204, 21, 0.96)',
+      motif: 'stars',
+      baseSize: 84,
+      particleCount: 20,
+    },
+  },
+  gatomon: {
+    special1: {
+      archetype: 'slash',
+      primaryHex: '#facc15',
+      secondaryHex: '#fef9c3',
+      glowRgba: 'rgba(250, 204, 21, 0.96)',
+      motif: 'lightning',
+      baseSize: 122,
+      particleCount: 22,
+    },
+    special2: {
+      archetype: 'burst',
+      primaryHex: '#c084fc',
+      secondaryHex: '#f9a8d4',
+      glowRgba: 'rgba(192, 132, 252, 0.96)',
+      motif: 'stars',
+      baseSize: 128,
+      particleCount: 22,
+    },
+  },
+  angewomon: {
+    special1: {
+      archetype: 'projectile',
+      primaryHex: '#f472b6',
+      secondaryHex: '#fef08a',
+      glowRgba: 'rgba(244, 114, 182, 0.98)',
+      motif: 'stars',
+      baseSize: 118,
+      particleCount: 26,
+    },
+    special2: {
+      archetype: 'beam',
+      primaryHex: '#f9a8d4',
+      secondaryHex: '#ffffff',
+      glowRgba: 'rgba(249, 168, 212, 0.98)',
+      motif: 'stars',
+      baseSize: 146,
+      particleCount: 28,
+    },
+  },
+  magnadramon: {
+    special1: {
+      archetype: 'eruption',
+      primaryHex: '#fb7185',
+      secondaryHex: '#fef08a',
+      glowRgba: 'rgba(251, 113, 133, 0.98)',
+      motif: 'embers',
+      baseSize: 152,
+      particleCount: 30,
+    },
+    special2: {
+      archetype: 'burst',
+      primaryHex: '#facc15',
+      secondaryHex: '#f472b6',
+      glowRgba: 'rgba(250, 204, 21, 0.98)',
+      motif: 'stars',
+      baseSize: 166,
+      particleCount: 34,
+    },
+  },
+  patamon: {
+    special1: {
+      archetype: 'projectile',
+      primaryHex: '#38bdf8',
+      secondaryHex: '#fef08a',
+      glowRgba: 'rgba(56, 189, 248, 0.96)',
+      motif: 'sparks',
+      baseSize: 82,
+      particleCount: 18,
+    },
+    special2: {
+      archetype: 'hammer',
+      primaryHex: '#fbbf24',
+      secondaryHex: '#ffffff',
+      glowRgba: 'rgba(251, 191, 36, 0.96)',
+      motif: 'stars',
+      baseSize: 104,
+      particleCount: 20,
+    },
+  },
+  angemon: {
+    special1: {
+      archetype: 'beam',
+      primaryHex: '#facc15',
+      secondaryHex: '#ffffff',
+      glowRgba: 'rgba(250, 204, 21, 0.98)',
+      motif: 'stars',
+      baseSize: 126,
+      particleCount: 24,
+    },
+    special2: {
+      archetype: 'tornado',
+      primaryHex: '#38bdf8',
+      secondaryHex: '#fef08a',
+      glowRgba: 'rgba(56, 189, 248, 0.98)',
+      motif: 'stars',
+      baseSize: 132,
+      particleCount: 24,
+    },
+  },
+  magnaangemon: {
+    special1: {
+      archetype: 'slash',
+      primaryHex: '#38bdf8',
+      secondaryHex: '#fef08a',
+      glowRgba: 'rgba(56, 189, 248, 0.98)',
+      motif: 'stars',
+      baseSize: 142,
+      particleCount: 26,
+    },
+    special2: {
+      archetype: 'burst',
+      primaryHex: '#c084fc',
+      secondaryHex: '#fde047',
+      glowRgba: 'rgba(192, 132, 252, 0.98)',
+      motif: 'stars',
+      baseSize: 154,
+      particleCount: 30,
+    },
+  },
+  seraphimon: {
+    special1: {
+      archetype: 'burst',
+      primaryHex: '#facc15',
+      secondaryHex: '#38bdf8',
+      glowRgba: 'rgba(250, 204, 21, 0.98)',
+      motif: 'stars',
+      baseSize: 158,
+      particleCount: 32,
+    },
+    special2: {
+      archetype: 'eruption',
+      primaryHex: '#fef08a',
+      secondaryHex: '#ffffff',
+      glowRgba: 'rgba(254, 240, 138, 0.98)',
+      motif: 'stars',
+      baseSize: 168,
+      particleCount: 36,
+    },
+  },
+  starmon: {
+    special1: {
+      archetype: 'eruption',
+      primaryHex: '#facc15',
+      secondaryHex: '#38bdf8',
+      glowRgba: 'rgba(250, 204, 21, 0.96)',
+      motif: 'stars',
+      baseSize: 112,
+      particleCount: 22,
+    },
+    special2: {
+      archetype: 'burst',
+      primaryHex: '#a855f7',
+      secondaryHex: '#fef08a',
+      glowRgba: 'rgba(168, 85, 247, 0.96)',
+      motif: 'stars',
+      baseSize: 116,
+      particleCount: 22,
+    },
+  },
+  superstarmon: {
+    special1: {
+      archetype: 'eruption',
+      primaryHex: '#fbbf24',
+      secondaryHex: '#38bdf8',
+      glowRgba: 'rgba(251, 191, 36, 0.98)',
+      motif: 'stars',
+      baseSize: 142,
+      particleCount: 28,
+    },
+    special2: {
+      archetype: 'beam',
+      primaryHex: '#facc15',
+      secondaryHex: '#ffffff',
+      glowRgba: 'rgba(250, 204, 21, 0.98)',
+      motif: 'stars',
+      baseSize: 150,
+      particleCount: 30,
+    },
+  },
 };
 
 function seededUnit(seed: number, idx: number, salt: number): number {
@@ -4674,7 +4981,9 @@ export function drawDigimonSpecialVfx(
       formId === 'sakuyamon' ||
       formId === 'justimon' ||
       formId === 'phoenixmon' ||
-      formId === 'grankuwagamon'
+      formId === 'grankuwagamon' ||
+      formId === 'magnadramon' ||
+      formId === 'seraphimon'
         ? 1.4
         : formId === 'rizegreymon' ||
             formId === 'metalgreymon' ||
@@ -4695,7 +5004,10 @@ export function drawDigimonSpecialVfx(
             formId === 'taomon' ||
             formId === 'cyberdramon' ||
             formId === 'garudamon' ||
-            formId === 'okuwamon'
+            formId === 'okuwamon' ||
+            formId === 'angewomon' ||
+            formId === 'magnaangemon' ||
+            formId === 'superstarmon'
           ? 1.24
           : formId === 'geogreymon' ||
               formId === 'greymon' ||
@@ -4716,7 +5028,9 @@ export function drawDigimonSpecialVfx(
               formId === 'kyubimon' ||
               formId === 'strikedramon' ||
               formId === 'birdramon' ||
-              formId === 'flymon'
+              formId === 'flymon' ||
+              formId === 'gatomon' ||
+              formId === 'angemon'
             ? 1.12
             : 1.0;
 
@@ -4989,9 +5303,19 @@ export function drawDigimonSpecialVfx(
       formId === 'kunemon' ||
       formId === 'flymon' ||
       formId === 'okuwamon' ||
-      formId === 'grankuwagamon'
+      formId === 'grankuwagamon' ||
+      formId === 'salamon' ||
+      formId === 'gatomon' ||
+      formId === 'angewomon' ||
+      formId === 'magnadramon' ||
+      formId === 'patamon' ||
+      formId === 'angemon' ||
+      formId === 'magnaangemon' ||
+      formId === 'seraphimon' ||
+      formId === 'starmon' ||
+      formId === 'superstarmon'
     ) {
-      // Sonic / Royal V-Force / Thunder / Cyber / Aerial X-cross crescent slash
+      // Sonic / Royal V-Force / Thunder / Cyber / Holy / Starlight X-cross crescent slash
       ctx.strokeStyle =
         formId === 'ulforceveedramon' ||
         formId === 'gryphonmon' ||
@@ -5008,8 +5332,20 @@ export function drawDigimonSpecialVfx(
         formId === 'sakuyamon' ||
         formId === 'phoenixmon' ||
         formId === 'kunemon' ||
-        formId === 'flymon'
+        formId === 'flymon' ||
+        formId === 'patamon' ||
+        formId === 'angemon' ||
+        formId === 'seraphimon' ||
+        formId === 'starmon' ||
+        formId === 'superstarmon'
           ? '#facc15'
+          : formId === 'salamon' ||
+              formId === 'gatomon' ||
+              formId === 'angewomon' ||
+              formId === 'magnadramon'
+            ? '#f472b6'
+          : formId === 'magnaangemon'
+            ? '#38bdf8'
           : formId === 'boltmon' || formId === 'silphymon' || formId === 'okuwamon'
             ? '#34d399'
             : formId === 'hawkmon' ||
